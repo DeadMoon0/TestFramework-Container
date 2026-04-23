@@ -1,0 +1,27 @@
+{
+  "UserConfig": {
+    "Namespaces": [
+      {
+        "Name": "sbemulatorns",
+        "Queues": [
+          {
+            "Name": "default-queue"
+          }
+        ],
+        "Topics": [
+          {
+            "Name": "default-topic",
+            "Subscriptions": [
+              {
+                "Name": "default-subscription"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "Logging": {
+      "Type": "Console"
+    }
+  }
+}

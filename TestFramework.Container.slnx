@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="UnitTests/TestFramework.Container.Tests/TestFramework.Container.Tests.csproj" />
+  <Project Path="TestFramework.Container/TestFramework.Container.csproj" />
+</Solution>
