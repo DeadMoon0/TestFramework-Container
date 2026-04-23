@@ -1,0 +1,32 @@
+{
+  "StorageAccount": {
+    "Default": {
+      "ConnectionString": "UseDevelopmentStorage=true",
+      "BlobContainerName": "default-blob",
+      "QueueContainerName": "default-queue",
+      "TableContainerName": "default-table"
+    }
+  },
+  "CosmosDb": {
+    "Default": {
+      "ConnectionString": "AccountEndpoint=https://127.0.0.1:8081/;AccountKey=C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==;",
+      "DatabaseName": "default-db",
+      "ContainerName": "default-container"
+    }
+  },
+  "ServiceBus": {
+    "Default": {
+      "ConnectionString": "Endpoint=sb://127.0.0.1/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=SAS_KEY_VALUE;UseDevelopmentEmulator=true;",
+      "QueueName": "default-queue",
+      "TopicName": null,
+      "SubscriptionName": null,
+      "RequiredSession": false
+    }
+  },
+  "SqlDatabase": {
+    "Default": {
+      "ConnectionString": "Server=127.0.0.1,1433;Database=master;User Id=sa;Password=TestFramework_Container1!;TrustServerCertificate=True",
+      "DatabaseName": "master"
+    }
+  }
+}
