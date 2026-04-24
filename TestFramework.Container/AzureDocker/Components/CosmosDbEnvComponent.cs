@@ -1,10 +1,12 @@
 using Microsoft.Azure.Cosmos;
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
+using DotNet.Testcontainers.Networks;
 using System.Diagnostics;
 using System.IO;
 using TestFramework.Azure.Configuration;
 using TestFramework.Azure.Configuration.SpecificConfigs;
+using TestFramework.Azure.DB.CosmosDB;
 using TestFramework.Core.Artifacts;
 using TestFramework.Core.Environment;
 using TestFramework.Core.Logging;
@@ -18,10 +20,15 @@ internal sealed class CosmosDbEnvComponent : EnvComponent
 
     public override EnvComponentIdentifier Id => DockerAzureEnvironment.CosmosDbComponentId;
 
+    public override IReadOnlyList<EnvComponentIdentifier> Dependencies => [DockerAzureEnvironment.NetworkComponentId];
+
     public override async Task<object?> CreateAsync(IEnvironmentProvider environment, IServiceProvider serviceProvider, VariableStore variableStore, ArtifactStore artifactStore, ScopedLogger logger, CancellationToken cancellationToken)
     {
         DockerAzureEnvironment dockerEnvironment = (DockerAzureEnvironment)environment;
+        INetwork network = dockerEnvironment.GetRequiredRuntimeState<INetwork>(DockerAzureEnvironment.NetworkComponentId);
         ContainerBuilder builder = new ContainerBuilder(dockerEnvironment.Options.CosmosDbImage)
+            .WithNetwork(network)
+            .WithNetworkAliases(DockerAzureEnvironment.CosmosDbNetworkAlias)
             .WithPortBinding(8080, true)
             .WithPortBinding(8081, true)
             .WithPortBinding(1234, true);
@@ -59,11 +66,11 @@ internal sealed class CosmosDbEnvComponent : EnvComponent
                 CosmosContainerDbConfig updated = current with { ConnectionString = connectionString };
                 configStore.AddConfig(identifier, updated);
 
-                if (!string.IsNullOrWhiteSpace(updated.PartitionKeyPath))
+                if (dockerEnvironment.CosmosPartitionKeyPaths.TryGetValue(identifier, out string? partitionKeyPath))
                 {
-                    LogDebug($"Deploying Cosmos schema for '{identifier}': {updated.DatabaseName}/{updated.ContainerName} ({updated.PartitionKeyPath})");
-                    logger.LogInformation($"Deploying Cosmos schema for '{identifier}': {updated.DatabaseName}/{updated.ContainerName} ({updated.PartitionKeyPath})");
-                    await DeploySchemaAsync(client, updated, logger, cancellationToken).ConfigureAwait(false);
+                    LogDebug($"Deploying Cosmos schema for '{identifier}': {updated.DatabaseName}/{updated.ContainerName} ({partitionKeyPath})");
+                    logger.LogInformation($"Deploying Cosmos schema for '{identifier}': {updated.DatabaseName}/{updated.ContainerName} ({partitionKeyPath})");
+                    await DeploySchemaAsync(updated.ConnectionString, updated, partitionKeyPath, logger, cancellationToken).ConfigureAwait(false);
                     LogDebug($"Finished Cosmos schema deployment for '{identifier}'.");
                     logger.LogInformation($"Finished Cosmos schema deployment for '{identifier}'.");
                 }
@@ -114,7 +121,7 @@ internal sealed class CosmosDbEnvComponent : EnvComponent
         throw new TimeoutException("The Cosmos emulator gateway did not become ready within two minutes.", lastError);
     }
 
-    private static async Task DeploySchemaAsync(CosmosClient client, CosmosContainerDbConfig config, ScopedLogger logger, CancellationToken cancellationToken)
+    private static async Task DeploySchemaAsync(string connectionString, CosmosContainerDbConfig config, string partitionKeyPath, ScopedLogger logger, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -123,18 +130,9 @@ internal sealed class CosmosDbEnvComponent : EnvComponent
         {
             LogDebug($"Cosmos schema step start: CreateDatabaseIfNotExistsAsync('{config.DatabaseName}')");
             logger.LogInformation($"Cosmos schema step start: CreateDatabaseIfNotExistsAsync('{config.DatabaseName}')");
-            Database database = await client.CreateDatabaseIfNotExistsAsync(config.DatabaseName, throughput: 400).ConfigureAwait(false);
+            await CosmosSchemaRestClient.EnsureDatabaseAndContainerExistAsync(connectionString, config.DatabaseName, config.ContainerName, partitionKeyPath, cancellationToken).ConfigureAwait(false);
             LogDebug($"Cosmos schema step complete: CreateDatabaseIfNotExistsAsync('{config.DatabaseName}') in {stopwatch.Elapsed}.");
             logger.LogInformation($"Cosmos schema step complete: CreateDatabaseIfNotExistsAsync('{config.DatabaseName}') in {stopwatch.Elapsed}.");
-
-            cancellationToken.ThrowIfCancellationRequested();
-
-            stopwatch.Restart();
-            LogDebug($"Cosmos schema step start: CreateContainerIfNotExistsAsync('{config.ContainerName}', '{config.PartitionKeyPath}')");
-            logger.LogInformation($"Cosmos schema step start: CreateContainerIfNotExistsAsync('{config.ContainerName}', '{config.PartitionKeyPath}')");
-            await database.CreateContainerIfNotExistsAsync(config.ContainerName, config.PartitionKeyPath!, throughput: 400).ConfigureAwait(false);
-            LogDebug($"Cosmos schema step complete: CreateContainerIfNotExistsAsync('{config.ContainerName}') in {stopwatch.Elapsed}.");
-            logger.LogInformation($"Cosmos schema step complete: CreateContainerIfNotExistsAsync('{config.ContainerName}') in {stopwatch.Elapsed}.");
         }
         catch (Exception exception)
         {

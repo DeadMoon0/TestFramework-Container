@@ -3,6 +3,7 @@ using TestFramework.Core.Artifacts;
 using TestFramework.Core.Environment;
 using TestFramework.Azure.DB.CosmosDB;
 using TestFramework.Azure.DB.SqlServer;
+using TestFramework.Azure.FunctionApp;
 using TestFramework.Azure.Identifier;
 using TestFramework.Azure.ServiceBus;
 using TestFramework.Azure.Trigger.IsLive;
@@ -13,6 +14,7 @@ using TestFramework.Core.Steps;
 using TestFramework.Core.Variables;
 using System.Reflection;
 using Azure.Messaging.ServiceBus;
+using Newtonsoft.Json;
 
 namespace TestFramework.Container.Tests;
 
@@ -29,11 +31,11 @@ public class DockerAzureEnvironmentTests
                 "blob",
                 new StorageAccountBlobArtifactReference("storage", Var.Const("path")),
                 new StorageAccountBlobArtifactData([], [])),
-            CreateArtifactInstance<CosmosDbItemArtifactDescriber<string>, CosmosDbItemArtifactData<string>, CosmosDbItemArtifactReference<string>>(
-                new CosmosDbItemArtifactDescriber<string>(),
+            CreateArtifactInstance<CosmosDbItemArtifactDescriber<TestCosmosItem>, CosmosDbItemArtifactData<TestCosmosItem>, CosmosDbItemArtifactReference<TestCosmosItem>>(
+                new CosmosDbItemArtifactDescriber<TestCosmosItem>(),
                 "cosmos",
-                new CosmosDbItemArtifactReference<string>("cosmos", Var.Const(Microsoft.Azure.Cosmos.PartitionKey.Null), Var.Const("id")),
-                new CosmosDbItemArtifactData<string>("value")),
+                new CosmosDbItemArtifactReference<TestCosmosItem>("cosmos", Var.Const(new Microsoft.Azure.Cosmos.PartitionKey("tenant-1")), Var.Const("id")),
+                new CosmosDbItemArtifactData<TestCosmosItem>(new TestCosmosItem("id", "tenant-1"))),
             CreateArtifactInstance<SqlRowArtifactDescriber<TestRow>, SqlRowArtifactData<TestRow>, SqlRowArtifactReference<TestRow>>(
                 new SqlRowArtifactDescriber<TestRow>(),
                 "sql",
@@ -49,6 +51,11 @@ public class DockerAzureEnvironmentTests
         Assert.Contains("storage", environment.UsedStorageIdentifiers);
         Assert.Contains("cosmos", environment.UsedCosmosIdentifiers);
         Assert.Contains("sql", environment.UsedSqlIdentifiers);
+
+        Dictionary<string, string> cosmosPartitionKeyPaths = (Dictionary<string, string>)typeof(DockerAzureEnvironment)
+            .GetProperty("CosmosPartitionKeyPaths", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(environment)!;
+        Assert.Equal("/PartitionKey", cosmosPartitionKeyPaths["cosmos"]);
     }
 
     [Fact]
@@ -100,20 +107,24 @@ public class DockerAzureEnvironmentTests
     public void ResolveComponents_MapsIsLiveStepRequirementsWithoutArtifacts()
     {
         DockerAzureEnvironment environment = new();
+        Step<object?> functionStep = new IsLiveTrigger().FunctionApp("func");
         Step<object?> blobStep = new IsLiveTrigger().Blob("storage");
         Step<object?> cosmosStep = new IsLiveTrigger().Cosmos("cosmos");
         Step<object?> sqlStep = new IsLiveTrigger().Sql("sql");
 
         List<EnvironmentRequirement> requirements = [];
+        requirements.AddRange(((IHasEnvironmentRequirements)functionStep).GetEnvironmentRequirements(null!));
         requirements.AddRange(((IHasEnvironmentRequirements)blobStep).GetEnvironmentRequirements(null!));
         requirements.AddRange(((IHasEnvironmentRequirements)cosmosStep).GetEnvironmentRequirements(null!));
         requirements.AddRange(((IHasEnvironmentRequirements)sqlStep).GetEnvironmentRequirements(null!));
 
         IReadOnlyCollection<EnvComponentIdentifier> result = environment.ResolveComponents([], requirements);
 
+        Assert.Contains(DockerAzureEnvironment.FunctionAppComponentId, result);
         Assert.Contains(DockerAzureEnvironment.AzuriteComponentId, result);
         Assert.Contains(DockerAzureEnvironment.CosmosDbComponentId, result);
         Assert.Contains(DockerAzureEnvironment.MsSqlComponentId, result);
+        Assert.Contains("func", environment.UsedFunctionAppIdentifiers);
     }
 
     [Fact]
@@ -164,6 +175,10 @@ public class DockerAzureEnvironmentTests
             .Invoke(null, [connectionString]);
 
     private sealed class TestRow;
+
+    private sealed record TestCosmosItem(
+        [property: JsonProperty("id")] string Id,
+        [property: JsonProperty("PartitionKey")] string PartitionKey);
 
     private sealed class TestTableEntity : global::Azure.Data.Tables.ITableEntity
     {

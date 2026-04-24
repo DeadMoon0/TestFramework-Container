@@ -2,6 +2,7 @@ using Azure.Storage.Blobs;
 using Azure.Data.Tables;
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
+using DotNet.Testcontainers.Networks;
 using TestFramework.Azure.Configuration;
 using TestFramework.Azure.Configuration.SpecificConfigs;
 using TestFramework.Core.Artifacts;
@@ -15,10 +16,15 @@ internal sealed class AzuriteEnvComponent : EnvComponent
 {
     public override EnvComponentIdentifier Id => DockerAzureEnvironment.AzuriteComponentId;
 
+    public override IReadOnlyList<EnvComponentIdentifier> Dependencies => [DockerAzureEnvironment.NetworkComponentId];
+
     public override async Task<object?> CreateAsync(IEnvironmentProvider environment, IServiceProvider serviceProvider, VariableStore variableStore, ArtifactStore artifactStore, ScopedLogger logger, CancellationToken cancellationToken)
     {
         DockerAzureEnvironment dockerEnvironment = (DockerAzureEnvironment)environment;
+        INetwork network = dockerEnvironment.GetRequiredRuntimeState<INetwork>(DockerAzureEnvironment.NetworkComponentId);
         IContainer container = new ContainerBuilder(dockerEnvironment.Options.AzuriteImage)
+            .WithNetwork(network)
+            .WithNetworkAliases(DockerAzureEnvironment.AzuriteNetworkAlias)
             .WithPortBinding(10000, true)
             .WithPortBinding(10001, true)
             .WithPortBinding(10002, true)

@@ -3,6 +3,7 @@ using TestFramework.Azure;
 using TestFramework.Azure.DB.CosmosDB;
 using TestFramework.Azure.DB.SqlServer;
 using TestFramework.Azure.Identifier;
+using TestFramework.Azure.FunctionApp;
 using TestFramework.Azure.StorageAccount.Blob;
 using TestFramework.Azure.StorageAccount.Table;
 using TestFramework.Core.Artifacts;
@@ -13,10 +14,14 @@ namespace TestFramework.Container.AzureDocker;
 public class DockerAzureEnvironment : EnvironmentProviderBase
 {
     public static readonly EnvComponentIdentifier NetworkComponentId = "docker-network";
+    public static readonly EnvComponentIdentifier FunctionAppComponentId = "functionapp";
     public static readonly EnvComponentIdentifier MsSqlComponentId = "mssql";
     public static readonly EnvComponentIdentifier AzuriteComponentId = "azurite";
     public static readonly EnvComponentIdentifier CosmosDbComponentId = "cosmos-emulator";
     public static readonly EnvComponentIdentifier ServiceBusComponentId = "servicebus-emulator";
+    public const string AzuriteNetworkAlias = "azurite";
+    public const string CosmosDbNetworkAlias = "cosmos-emulator";
+    public const string ServiceBusNetworkAlias = "servicebus-emulator";
 
     private readonly Dictionary<EnvComponentIdentifier, object?> _runtimeStates = [];
 
@@ -25,17 +30,21 @@ public class DockerAzureEnvironment : EnvironmentProviderBase
     public HashSet<string> UsedCosmosIdentifiers { get; } = [];
     public HashSet<string> UsedSqlIdentifiers { get; } = [];
     public HashSet<string> UsedServiceBusIdentifiers { get; } = [];
+    public HashSet<string> UsedFunctionAppIdentifiers { get; } = [];
+    internal Dictionary<string, string> CosmosPartitionKeyPaths { get; } = [];
 
     public DockerAzureEnvironment(DockerAzureEnvironmentOptions? options = null)
     {
         Options = options ?? new DockerAzureEnvironmentOptions();
 
         AddComponent(new Components.DockerNetworkEnvComponent());
+        AddComponent(new Components.FunctionAppEnvComponent());
         AddComponent(new Components.MsSqlEnvComponent());
         AddComponent(new Components.AzuriteEnvComponent());
         AddComponent(new Components.CosmosDbEnvComponent());
         AddComponent(new Components.ServiceBusEnvComponent());
 
+        MapResourceKind(AzureEnvironmentResourceKinds.FunctionApp, FunctionAppComponentId);
         MapResourceKind(AzureEnvironmentResourceKinds.Storage, AzuriteComponentId);
         MapResourceKind(AzureEnvironmentResourceKinds.Cosmos, CosmosDbComponentId);
         MapResourceKind(AzureEnvironmentResourceKinds.Sql, MsSqlComponentId);
@@ -53,7 +62,11 @@ public class DockerAzureEnvironment : EnvironmentProviderBase
         UsedCosmosIdentifiers.Clear();
         UsedSqlIdentifiers.Clear();
         UsedServiceBusIdentifiers.Clear();
+        UsedFunctionAppIdentifiers.Clear();
+        CosmosPartitionKeyPaths.Clear();
 
+        foreach (FunctionAppIdentifier identifier in Options.RequiredFunctionAppIdentifiers)
+            UsedFunctionAppIdentifiers.Add(identifier);
         foreach (StorageAccountIdentifier identifier in Options.RequiredStorageIdentifiers)
             UsedStorageIdentifiers.Add(identifier);
         foreach (CosmosContainerIdentifier identifier in Options.RequiredCosmosIdentifiers)
@@ -101,10 +114,22 @@ public class DockerAzureEnvironment : EnvironmentProviderBase
         if (TryReadIdentifier(reference, referenceType, "DbIdentifier", out string? databaseIdentifier))
         {
             if (MatchesGenericType(referenceType, typeof(CosmosDbItemArtifactReference<>)))
+            {
                 UsedCosmosIdentifiers.Add(databaseIdentifier);
+                RegisterCosmosSchema(databaseIdentifier, referenceType.GetGenericArguments()[0]);
+            }
             else if (MatchesGenericType(referenceType, typeof(SqlRowArtifactReference<>)))
                 UsedSqlIdentifiers.Add(databaseIdentifier);
         }
+    }
+
+    private void RegisterCosmosSchema(string identifier, Type modelType)
+    {
+        string partitionKeyPath = CosmosModelSchemaResolver.ResolvePartitionKeyPath(modelType);
+        if (CosmosPartitionKeyPaths.TryGetValue(identifier, out string? existingPath) && !string.Equals(existingPath, partitionKeyPath, StringComparison.Ordinal))
+            throw new InvalidOperationException($"Cosmos identifier '{identifier}' was configured with conflicting partition key paths: '{existingPath}' and '{partitionKeyPath}'.");
+
+        CosmosPartitionKeyPaths[identifier] = partitionKeyPath;
     }
 
     private static bool TryReadIdentifier(object instance, Type instanceType, string propertyName, out string value)
@@ -140,6 +165,9 @@ public class DockerAzureEnvironment : EnvironmentProviderBase
                 break;
             case AzureEnvironmentResourceKinds.ServiceBus:
                 UsedServiceBusIdentifiers.Add(requirement.ResourceIdentifier);
+                break;
+            case AzureEnvironmentResourceKinds.FunctionApp:
+                UsedFunctionAppIdentifiers.Add(requirement.ResourceIdentifier);
                 break;
         }
     }
