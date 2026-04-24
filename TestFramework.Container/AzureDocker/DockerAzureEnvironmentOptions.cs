@@ -5,6 +5,7 @@ namespace TestFramework.Container.AzureDocker;
 
 public class DockerAzureEnvironmentOptions
 {
+    public string FunctionAppImage { get; init; } = "mcr.microsoft.com/azure-functions/dotnet-isolated:4-dotnet-isolated8.0";
     public string MsSqlImage { get; init; } = "mcr.microsoft.com/mssql/server:2022-CU14-ubuntu-22.04";
     public string AzuriteImage { get; init; } = "mcr.microsoft.com/azure-storage/azurite:3.33.0";
     public string CosmosDbImage { get; init; } = "mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview";
@@ -12,8 +13,10 @@ public class DockerAzureEnvironmentOptions
     public string MsSqlPassword { get; init; } = "TestFramework_Container1!";
     public string ServiceBusTopologyConfigPath { get; init; } = Path.Combine("AzureDocker", "Configurations", "ServiceBus", "config.json");
     public IReadOnlyCollection<EnvComponentIdentifier> RequiredComponents { get; init; } = [];
+    public IReadOnlyCollection<FunctionAppIdentifier> RequiredFunctionAppIdentifiers { get; init; } = [];
     public IReadOnlyCollection<ServiceBusIdentifier> RequiredServiceBusIdentifiers { get; init; } = [];
     public IReadOnlyCollection<StorageAccountIdentifier> RequiredStorageIdentifiers { get; init; } = [];
     public IReadOnlyCollection<CosmosContainerIdentifier> RequiredCosmosIdentifiers { get; init; } = [];
     public IReadOnlyCollection<SqlDatabaseIdentifier> RequiredSqlIdentifiers { get; init; } = [];
+    public IReadOnlyCollection<DockerFunctionAppRegistration> FunctionApps { get; init; } = [];
 }

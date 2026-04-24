@@ -146,26 +146,25 @@ public class DockerAzureEnvironmentSmokeTests
     {
         ServiceCollection services = new();
 
-        services.AddSingleton(CreateStore("storage", new StorageAccountConfig
+        services.AddSingleton(ConfigStore<StorageAccountConfig>.Create("storage", new StorageAccountConfig
         {
             ConnectionString = "UseDevelopmentStorage=true",
             QueueContainerName = null,
             BlobContainerName = "smoke-blob",
             TableContainerName = SmokeTableName,
         }));
-        services.AddSingleton(CreateStore("cosmos", new CosmosContainerDbConfig
+        services.AddSingleton(ConfigStore<CosmosContainerDbConfig>.Create("cosmos", new CosmosContainerDbConfig
         {
             ConnectionString = "AccountEndpoint=https://localhost:8081/;AccountKey=C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==;",
             DatabaseName = "smoke-db",
             ContainerName = "smoke-container",
-            PartitionKeyPath = "/PartitionKey",
         }));
-        services.AddSingleton(CreateStore("sql", new SqlDatabaseConfig
+        services.AddSingleton(ConfigStore<SqlDatabaseConfig>.Create("sql", new SqlDatabaseConfig
         {
             ConnectionString = "Server=localhost;Database=master;User Id=sa;Password=Your_password123;TrustServerCertificate=True",
             DatabaseName = "master",
         }));
-        services.AddSingleton(CreateStore("bus", new ServiceBusConfig
+        services.AddSingleton(ConfigStore<ServiceBusConfig>.Create("bus", new ServiceBusConfig
         {
             ConnectionString = "Endpoint=sb://localhost/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=local",
             QueueName = "default-queue",
@@ -190,13 +189,6 @@ public class DockerAzureEnvironmentSmokeTests
         services.AddSqlArtifactContexts(registry => registry.AddForIdentifier<SmokeSqlDbContext>("sql"));
 
         return services.BuildServiceProvider();
-    }
-
-    private static ConfigStore<TConfig> CreateStore<TConfig>(string identifier, TConfig config)
-    {
-        ConfigStore<TConfig> store = new();
-        store.AddConfig(identifier, config);
-        return store;
     }
 
     private static async Task<TimelineRun> RunSmokeTimelineAsync(
