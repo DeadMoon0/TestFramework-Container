@@ -1,7 +1,7 @@
 using TestFramework.Azure.Identifier;
 using TestFramework.Core.Environment;
 
-namespace TestFramework.Container.AzureDocker;
+namespace TestFramework.Container.Azure;
 
 public class DockerAzureEnvironmentOptions
 {

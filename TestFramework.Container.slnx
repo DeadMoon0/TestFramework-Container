@@ -1,4 +1,4 @@
 <Solution>
-  <Project Path="UnitTests/TestFramework.Container.Tests/TestFramework.Container.Tests.csproj" />
-  <Project Path="TestFramework.Container/TestFramework.Container.csproj" />
+  <Project Path="UnitTests/TestFramework.Container.Azure.Tests/TestFramework.Container.Azure.Tests.csproj" />
+  <Project Path="TestFramework.Container.Azure/TestFramework.Container.Azure.csproj" />
 </Solution>

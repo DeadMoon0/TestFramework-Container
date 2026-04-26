@@ -1,7 +1,7 @@
-using System.Data.Common;
 using Microsoft.Data.SqlClient;
+using System.Data.Common;
 
-namespace TestFramework.Container.AzureDocker;
+namespace TestFramework.Container.Azure;
 
 internal static class ConnectionStringGuards
 {

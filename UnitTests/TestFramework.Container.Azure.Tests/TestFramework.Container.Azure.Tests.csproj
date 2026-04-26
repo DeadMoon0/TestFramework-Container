@@ -16,7 +16,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\TestFramework.Container\TestFramework.Container.csproj" />
+    <ProjectReference Include="..\..\TestFramework.Container.Azure\TestFramework.Container.Azure.csproj" />
   </ItemGroup>
 
   <ItemGroup>

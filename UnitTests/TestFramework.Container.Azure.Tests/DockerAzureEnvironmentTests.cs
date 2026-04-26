@@ -1,22 +1,20 @@
-using TestFramework.Container.AzureDocker;
-using TestFramework.Core.Artifacts;
-using TestFramework.Core.Environment;
-using TestFramework.Azure.DB.CosmosDB;
-using TestFramework.Azure.DB.SqlServer;
-using TestFramework.Azure.FunctionApp;
-using TestFramework.Azure.Identifier;
-using TestFramework.Azure.ServiceBus;
-using TestFramework.Azure.Trigger.IsLive;
-using TestFramework.Azure.StorageAccount.Blob;
-using TestFramework.Azure.StorageAccount.Table;
-using TestFramework.Core.Logging;
-using TestFramework.Core.Steps;
-using TestFramework.Core.Variables;
-using System.Reflection;
 using Azure.Messaging.ServiceBus;
 using Newtonsoft.Json;
+using System.Reflection;
+using TestFramework.Azure.DB.CosmosDB;
+using TestFramework.Azure.DB.SqlServer;
+using TestFramework.Azure.Identifier;
+using TestFramework.Azure.ServiceBus;
+using TestFramework.Azure.StorageAccount.Blob;
+using TestFramework.Azure.StorageAccount.Table;
+using TestFramework.Azure.Trigger.IsLive;
+using TestFramework.Container.Azure;
+using TestFramework.Core.Artifacts;
+using TestFramework.Core.Environment;
+using TestFramework.Core.Steps;
+using TestFramework.Core.Variables;
 
-namespace TestFramework.Container.Tests;
+namespace TestFramework.Container.Azure.Tests;
 
 public class DockerAzureEnvironmentTests
 {
@@ -139,10 +137,10 @@ public class DockerAzureEnvironmentTests
     [Fact]
     public void ServiceBusConfigLocator_ResolvesOutputRelativeFile()
     {
-        string relativePath = Path.Combine("AzureDocker", "Configurations", "ServiceBus", "config.json");
+        string relativePath = Path.Combine("Configurations", "ServiceBus", "config.json");
 
         string resolved = typeof(DockerAzureEnvironment).Assembly
-            .GetType("TestFramework.Container.AzureDocker.ServiceBusConfigLocator")!
+            .GetType("TestFramework.Container.Azure.ServiceBusConfigLocator")!
             .GetMethod("Resolve", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!
             .Invoke(null, [relativePath])!
             .ToString()!;
@@ -152,25 +150,25 @@ public class DockerAzureEnvironmentTests
 
     private static void InvokeEnsureAzurite(string connectionString)
         => typeof(DockerAzureEnvironment).Assembly
-            .GetType("TestFramework.Container.AzureDocker.ConnectionStringGuards")!
+            .GetType("TestFramework.Container.Azure.ConnectionStringGuards")!
             .GetMethod("EnsureAzurite", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!
             .Invoke(null, [connectionString]);
 
     private static void InvokeEnsureServiceBus(string connectionString)
         => typeof(DockerAzureEnvironment).Assembly
-            .GetType("TestFramework.Container.AzureDocker.ConnectionStringGuards")!
+            .GetType("TestFramework.Container.Azure.ConnectionStringGuards")!
             .GetMethod("EnsureServiceBus", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!
             .Invoke(null, [connectionString]);
 
     private static void InvokeEnsureCosmos(string connectionString)
         => typeof(DockerAzureEnvironment).Assembly
-            .GetType("TestFramework.Container.AzureDocker.ConnectionStringGuards")!
+            .GetType("TestFramework.Container.Azure.ConnectionStringGuards")!
             .GetMethod("EnsureCosmos", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!
             .Invoke(null, [connectionString]);
 
     private static void InvokeEnsureSql(string connectionString)
         => typeof(DockerAzureEnvironment).Assembly
-            .GetType("TestFramework.Container.AzureDocker.ConnectionStringGuards")!
+            .GetType("TestFramework.Container.Azure.ConnectionStringGuards")!
             .GetMethod("EnsureSql", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!
             .Invoke(null, [connectionString]);
 

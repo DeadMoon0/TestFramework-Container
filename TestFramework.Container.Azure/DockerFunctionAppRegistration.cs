@@ -1,6 +1,6 @@
 using TestFramework.Azure.Identifier;
 
-namespace TestFramework.Container.AzureDocker;
+namespace TestFramework.Container.Azure;
 
 public sealed class DockerFunctionAppRegistration
 {

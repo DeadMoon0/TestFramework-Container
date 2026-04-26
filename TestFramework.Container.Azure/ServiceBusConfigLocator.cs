@@ -1,4 +1,4 @@
-namespace TestFramework.Container.AzureDocker;
+namespace TestFramework.Container.Azure;
 
 internal static class ServiceBusConfigLocator
 {

@@ -1,9 +1,8 @@
-using Microsoft.Azure.Cosmos;
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
 using DotNet.Testcontainers.Networks;
+using Microsoft.Azure.Cosmos;
 using System.Diagnostics;
-using System.IO;
 using TestFramework.Azure.Configuration;
 using TestFramework.Azure.Configuration.SpecificConfigs;
 using TestFramework.Azure.DB.CosmosDB;
@@ -12,7 +11,7 @@ using TestFramework.Core.Environment;
 using TestFramework.Core.Logging;
 using TestFramework.Core.Variables;
 
-namespace TestFramework.Container.AzureDocker.Components;
+namespace TestFramework.Container.Azure.Components;
 
 internal sealed class CosmosDbEnvComponent : EnvComponent
 {
