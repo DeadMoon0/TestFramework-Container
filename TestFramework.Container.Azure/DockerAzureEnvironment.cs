@@ -3,13 +3,12 @@ using TestFramework.Azure;
 using TestFramework.Azure.DB.CosmosDB;
 using TestFramework.Azure.DB.SqlServer;
 using TestFramework.Azure.Identifier;
-using TestFramework.Azure.FunctionApp;
 using TestFramework.Azure.StorageAccount.Blob;
 using TestFramework.Azure.StorageAccount.Table;
 using TestFramework.Core.Artifacts;
 using TestFramework.Core.Environment;
 
-namespace TestFramework.Container.AzureDocker;
+namespace TestFramework.Container.Azure;
 
 public class DockerAzureEnvironment : EnvironmentProviderBase
 {

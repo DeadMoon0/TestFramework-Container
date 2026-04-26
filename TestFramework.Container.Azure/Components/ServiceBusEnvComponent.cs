@@ -9,7 +9,7 @@ using TestFramework.Core.Environment;
 using TestFramework.Core.Logging;
 using TestFramework.Core.Variables;
 
-namespace TestFramework.Container.AzureDocker.Components;
+namespace TestFramework.Container.Azure.Components;
 
 internal sealed class ServiceBusEnvComponent : EnvComponent
 {

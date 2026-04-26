@@ -1,29 +1,23 @@
-using TestFramework.Container.AzureDocker;
+using Azure.Data.Tables;
+using Azure.Messaging.ServiceBus;
+using Microsoft.Azure.Cosmos;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using TestFramework.Azure;
 using TestFramework.Azure.Configuration;
 using TestFramework.Azure.Configuration.SpecificConfigs;
-using TestFramework.Azure.DB.CosmosDB;
 using TestFramework.Azure.DB.SqlServer;
 using TestFramework.Azure.Extensions;
-using TestFramework.Azure.ServiceBus;
 using TestFramework.Azure.StorageAccount.Blob;
 using TestFramework.Azure.StorageAccount.Table;
-using TestFramework.Core.Environment;
-using TestFramework.Core.Logging;
-using TestFramework.Core.Steps;
+using TestFramework.Container.Azure;
 using TestFramework.Core.Steps.Options;
 using TestFramework.Core.Timelines;
 using TestFramework.Core.Timelines.Builder.TimelineBuilder;
 using TestFramework.Core.Timelines.Builder.TimelineRunBuilder;
 using TestFramework.Core.Variables;
-using Azure.Messaging.ServiceBus;
-using Azure.Data.Tables;
-using Microsoft.Azure.Cosmos;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
-using System.Net.Http;
 
-namespace TestFramework.Container.Tests;
+namespace TestFramework.Container.Azure.Tests;
 
 public class DockerAzureEnvironmentSmokeTests
 {

@@ -1,10 +1,9 @@
-using System.Data.Common;
-using System.Net.Http;
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Configurations;
 using DotNet.Testcontainers.Containers;
 using DotNet.Testcontainers.Networks;
 using Microsoft.Extensions.DependencyInjection;
+using System.Data.Common;
 using TestFramework.Azure.Configuration;
 using TestFramework.Azure.Configuration.SpecificConfigs;
 using TestFramework.Core.Artifacts;
@@ -12,7 +11,7 @@ using TestFramework.Core.Environment;
 using TestFramework.Core.Logging;
 using TestFramework.Core.Variables;
 
-namespace TestFramework.Container.AzureDocker.Components;
+namespace TestFramework.Container.Azure.Components;
 
 internal sealed class FunctionAppEnvComponent : EnvComponent
 {

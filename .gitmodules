@@ -1,0 +1,3 @@
+[submodule "Modules/TestFramework-Common"]
+	path = Modules/TestFramework-Common
+	url = https://github.com/DeadMoon0/TestFramework-Common
