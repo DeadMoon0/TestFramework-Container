@@ -24,6 +24,7 @@ internal sealed class CosmosDbEnvComponent : EnvComponent
     public override async Task<object?> CreateAsync(IEnvironmentProvider environment, IServiceProvider serviceProvider, VariableStore variableStore, ArtifactStore artifactStore, ScopedLogger logger, CancellationToken cancellationToken)
     {
         DockerAzureEnvironment dockerEnvironment = (DockerAzureEnvironment)environment;
+        ConfigStore<CosmosContainerDbConfig>? configStore = EnvComponentConfigStoreGuard.GetRequiredStore<CosmosContainerDbConfig>(serviceProvider, dockerEnvironment.UsedCosmosIdentifiers, "Cosmos environment setup");
         INetwork network = dockerEnvironment.GetRequiredRuntimeState<INetwork>(DockerAzureEnvironment.NetworkComponentId);
         ContainerBuilder builder = new ContainerBuilder(dockerEnvironment.Options.CosmosDbImage)
             .WithNetwork(network)
@@ -56,7 +57,6 @@ internal sealed class CosmosDbEnvComponent : EnvComponent
         LogDebug("Cosmos gateway is ready.");
         logger.LogInformation("Cosmos gateway is ready.");
 
-        ConfigStore<CosmosContainerDbConfig>? configStore = serviceProvider.GetService(typeof(ConfigStore<CosmosContainerDbConfig>)) as ConfigStore<CosmosContainerDbConfig>;
         if (configStore is not null)
         {
             foreach (string identifier in dockerEnvironment.UsedCosmosIdentifiers)

@@ -20,6 +20,7 @@ internal sealed class MsSqlEnvComponent : EnvComponent
     public override async Task<object?> CreateAsync(IEnvironmentProvider environment, IServiceProvider serviceProvider, VariableStore variableStore, ArtifactStore artifactStore, ScopedLogger logger, CancellationToken cancellationToken)
     {
         DockerAzureEnvironment dockerEnvironment = (DockerAzureEnvironment)environment;
+        ConfigStore<SqlDatabaseConfig>? configStore = EnvComponentConfigStoreGuard.GetRequiredStore<SqlDatabaseConfig>(serviceProvider, dockerEnvironment.UsedSqlIdentifiers, "SQL environment setup");
         INetwork network = dockerEnvironment.GetRequiredRuntimeState<INetwork>(DockerAzureEnvironment.NetworkComponentId);
         MsSqlBuilder builder = new MsSqlBuilder(dockerEnvironment.Options.MsSqlImage)
             .WithPassword(dockerEnvironment.Options.MsSqlPassword)
@@ -34,7 +35,6 @@ internal sealed class MsSqlEnvComponent : EnvComponent
         await WaitForSqlReadyAsync(connectionString, cancellationToken).ConfigureAwait(false);
         ConnectionStringGuards.EnsureSql(connectionString);
 
-        ConfigStore<SqlDatabaseConfig>? configStore = serviceProvider.GetService(typeof(ConfigStore<SqlDatabaseConfig>)) as ConfigStore<SqlDatabaseConfig>;
         if (configStore is not null)
         {
             foreach (string identifier in dockerEnvironment.UsedSqlIdentifiers)

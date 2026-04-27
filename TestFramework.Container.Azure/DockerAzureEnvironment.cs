@@ -79,8 +79,11 @@ public class DockerAzureEnvironment : EnvironmentProviderBase
             CaptureIdentifiers(artifact.Reference);
 
         HashSet<EnvComponentIdentifier> resolved = [.. base.ResolveComponents(artifacts, requirements), .. Options.RequiredComponents];
+        CaptureFunctionAppDependencies();
         if (UsedServiceBusIdentifiers.Count > 0)
             resolved.Add(ServiceBusComponentId);
+
+        ValidateFunctionAppRegistrations();
 
         return [.. resolved];
     }
@@ -119,6 +122,41 @@ public class DockerAzureEnvironment : EnvironmentProviderBase
             }
             else if (MatchesGenericType(referenceType, typeof(SqlRowArtifactReference<>)))
                 UsedSqlIdentifiers.Add(databaseIdentifier);
+        }
+    }
+
+    private void ValidateFunctionAppRegistrations()
+    {
+        if (UsedFunctionAppIdentifiers.Count == 0)
+            return;
+
+        HashSet<string> configuredIdentifiers = [.. Options.FunctionApps.Select(x => x.Identifier)];
+        string[] missingIdentifiers = [.. UsedFunctionAppIdentifiers.Where(identifier => !configuredIdentifiers.Contains(identifier)).OrderBy(identifier => identifier, StringComparer.Ordinal)];
+        if (missingIdentifiers.Length > 0)
+            throw new InvalidOperationException($"No Docker Function App registration was configured for: {string.Join(", ", missingIdentifiers)}.");
+    }
+
+    private void CaptureFunctionAppDependencies()
+    {
+        if (UsedFunctionAppIdentifiers.Count == 0)
+            return;
+
+        foreach (string identifier in UsedFunctionAppIdentifiers)
+        {
+            DockerFunctionAppRegistration registration = Options.FunctionApps.FirstOrDefault(x => string.Equals(x.Identifier, identifier, StringComparison.Ordinal))
+                ?? throw new InvalidOperationException($"No Docker Function App registration was configured for identifier '{identifier}'.");
+
+            if (registration.StorageIdentifier is not null)
+                UsedStorageIdentifiers.Add(registration.StorageIdentifier);
+
+            if (registration.CosmosIdentifier is not null)
+                UsedCosmosIdentifiers.Add(registration.CosmosIdentifier);
+
+            if (registration.ServiceBusTriggerIdentifier is not null)
+                UsedServiceBusIdentifiers.Add(registration.ServiceBusTriggerIdentifier);
+
+            if (registration.ServiceBusReplyIdentifier is not null)
+                UsedServiceBusIdentifiers.Add(registration.ServiceBusReplyIdentifier);
         }
     }
 

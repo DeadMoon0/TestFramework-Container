@@ -28,6 +28,7 @@
     Use Required*Identifiers in DockerAzureEnvironmentOptions only when the timeline itself does not expose the dependency strongly enough.
     For Cosmos emulator clients that run through a mapped Docker port, prefer Gateway mode and certificate bypass in test-only code, and pin the client to the configured endpoint when the SDK would otherwise follow the emulator's advertised internal endpoint.
     Keep Service Bus topology configuration explicit through ServiceBusTopologyConfigPath instead of burying it in helper code.
+    Prefer one project-level helper that wires config stores and DockerAzureEnvironment consistently.
 </best_practices>
 
 <api_hints>
@@ -62,7 +63,18 @@
     - MsSqlEnvComponent starts SQL Server, waits for a successful query, then rewrites the SQL config store.
     - ServiceBusEnvComponent depends on the Docker network and SQL Server, loads the topology config file, starts the Service Bus emulator, validates namespace availability, then rewrites the Service Bus config store.
     - Environment component runtime state is kept in the environment context and deconstructed in cleanup.
+    - used Function App registrations contribute dependent storage, cosmos, and service-bus identifiers early enough that emulator setup can happen before startup
 </runtime_behavior>
+
+<validation_guidance>
+    Validation posture the agent should preserve:
+    - normal unit coverage is expected on every change
+    - Docker-backed smoke coverage should stay explicit and opt-in, typically through TESTFRAMEWORK_CONTAINER_SMOKE=1
+    - when the user asks for Function App hosting confidence, prefer the real smoke path over a purely mocked substitute
+
+    Documentation is thinner than the runtime sophistication.
+    When helping users, explain prerequisites, topology-path requirements, and config-store expectations explicitly instead of assuming the README already did it.
+</validation_guidance>
 
 <config_model>
     Important configuration ideas:
