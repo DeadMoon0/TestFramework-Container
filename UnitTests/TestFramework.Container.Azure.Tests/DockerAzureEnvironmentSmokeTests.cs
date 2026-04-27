@@ -16,6 +16,7 @@ using TestFramework.Core.Timelines;
 using TestFramework.Core.Timelines.Builder.TimelineBuilder;
 using TestFramework.Core.Timelines.Builder.TimelineRunBuilder;
 using TestFramework.Core.Variables;
+using FunctionApp;
 
 namespace TestFramework.Container.Azure.Tests;
 
@@ -131,12 +132,54 @@ public class DockerAzureEnvironmentSmokeTests
         Assert.True(run.EnvironmentContext.Contains(DockerAzureEnvironment.ServiceBusComponentId));
     }
 
+    [Fact]
+    [Trait("Category", "DockerSmoke")]
+    public async Task Timeline_CanInvokeDockerHostedFunctionAppHttpEndpoint_WhenSmokeEnabled()
+    {
+        if (!IsSmokeEnabled())
+            return;
+
+        using ServiceProvider serviceProvider = CreateAzureServiceProvider(withFunctionApp: true);
+        DockerAzureEnvironment environment = new(new DockerAzureEnvironmentOptions
+        {
+            FunctionApps =
+            [
+                DockerFunctionAppRegistration.Create<AnalysisProcessor>("func", builder => builder
+                    .UseStorage("storage", tableNameSettingName: "StorageTableName")
+                    .UseCosmos("cosmos")
+                    .UseServiceBusReply("bus"))
+            ],
+        });
+
+        Timeline timeline = Timeline.Create()
+            .Trigger(
+                AzureTF.Trigger.FunctionApp
+                    .Http("func")
+                    .SelectEndpointWithMethod<AnalysisProcessor>(nameof(AnalysisProcessor.Run))
+                    .WithBody(Var.Const("{\"runId\":\"\",\"sampleDocId\":\"\",\"analysisReplyCorrelationId\":\"\"}"))
+                    .Call())
+            .Name("function-call")
+            .Build();
+
+        TimelineRun run = await timeline
+            .SetupRun(serviceProvider)
+            .SetEnv(environment)
+            .RunAsync();
+
+        run.EnsureRanToCompletion();
+
+        HttpResponseMessage response = Assert.IsType<HttpResponseMessage>(run.Step("function-call").LastResult.Result);
+        string responseBody = await response.Content.ReadAsStringAsync();
+        Assert.True(response.StatusCode == System.Net.HttpStatusCode.InternalServerError, $"Expected InternalServerError but received {(int)response.StatusCode} {response.StatusCode}. Body: {responseBody}");
+        Assert.True(run.EnvironmentContext.Contains(DockerAzureEnvironment.FunctionAppComponentId));
+    }
+
     private static bool IsSmokeEnabled()
     {
         return string.Equals(Environment.GetEnvironmentVariable("TESTFRAMEWORK_CONTAINER_SMOKE"), "1", StringComparison.Ordinal);
     }
 
-    private static ServiceProvider CreateAzureServiceProvider()
+    private static ServiceProvider CreateAzureServiceProvider(bool withFunctionApp = false)
     {
         ServiceCollection services = new();
 
@@ -166,6 +209,15 @@ public class DockerAzureEnvironmentSmokeTests
             SubscriptionName = null,
             RequiredSession = false,
         }));
+
+        if (withFunctionApp)
+        {
+            services.AddSingleton(ConfigStore<FunctionAppConfig>.Create("func", new FunctionAppConfig
+            {
+                BaseUrl = "http://localhost/",
+                Code = "local-test-key",
+            }));
+        }
 
         services.ConfigureCosmosClientOptions(_ => new CosmosClientOptions
         {

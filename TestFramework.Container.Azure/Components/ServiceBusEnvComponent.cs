@@ -20,6 +20,7 @@ internal sealed class ServiceBusEnvComponent : EnvComponent
     public override async Task<object?> CreateAsync(IEnvironmentProvider environment, IServiceProvider serviceProvider, VariableStore variableStore, ArtifactStore artifactStore, ScopedLogger logger, CancellationToken cancellationToken)
     {
         DockerAzureEnvironment dockerEnvironment = (DockerAzureEnvironment)environment;
+        ConfigStore<ServiceBusConfig>? configStore = EnvComponentConfigStoreGuard.GetRequiredStore<ServiceBusConfig>(serviceProvider, dockerEnvironment.UsedServiceBusIdentifiers, "Service Bus environment setup");
         INetwork network = dockerEnvironment.GetRequiredRuntimeState<INetwork>(DockerAzureEnvironment.NetworkComponentId);
         MsSqlContainer msSqlContainer = dockerEnvironment.GetRequiredRuntimeState<MsSqlContainer>(DockerAzureEnvironment.MsSqlComponentId);
         string configPath = ServiceBusConfigLocator.Resolve(dockerEnvironment.Options.ServiceBusTopologyConfigPath);
@@ -39,7 +40,6 @@ internal sealed class ServiceBusEnvComponent : EnvComponent
         ServiceBusAdministrationClient administrationClient = new(container.GetHttpConnectionString());
         await administrationClient.GetNamespacePropertiesAsync(cancellationToken).ConfigureAwait(false);
 
-        ConfigStore<ServiceBusConfig>? configStore = serviceProvider.GetService(typeof(ConfigStore<ServiceBusConfig>)) as ConfigStore<ServiceBusConfig>;
         if (configStore is not null)
         {
             foreach (string identifier in dockerEnvironment.UsedServiceBusIdentifiers)

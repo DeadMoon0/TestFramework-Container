@@ -1,0 +1,33 @@
+name: Unit Tests
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: unit-tests-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit-tests:
+    name: unit-tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore test project
+        run: dotnet restore UnitTests/TestFramework.Container.Azure.Tests/TestFramework.Container.Azure.Tests.csproj
+
+      - name: Run unit tests
+        run: dotnet test UnitTests/TestFramework.Container.Azure.Tests/TestFramework.Container.Azure.Tests.csproj --configuration Release --no-restore --logger "trx"

@@ -1,7 +1,10 @@
 using Azure.Messaging.ServiceBus;
+using Microsoft.Extensions.DependencyInjection;
 using Newtonsoft.Json;
 using System.Reflection;
 using TestFramework.Azure.DB.CosmosDB;
+using TestFramework.Azure.Configuration;
+using TestFramework.Azure.Configuration.SpecificConfigs;
 using TestFramework.Azure.DB.SqlServer;
 using TestFramework.Azure.Identifier;
 using TestFramework.Azure.ServiceBus;
@@ -104,7 +107,10 @@ public class DockerAzureEnvironmentTests
     [Fact]
     public void ResolveComponents_MapsIsLiveStepRequirementsWithoutArtifacts()
     {
-        DockerAzureEnvironment environment = new();
+        DockerAzureEnvironment environment = new(new DockerAzureEnvironmentOptions
+        {
+            FunctionApps = [DockerFunctionAppRegistration.Create<DockerAzureEnvironmentTests>("func")],
+        });
         Step<object?> functionStep = new IsLiveTrigger().FunctionApp("func");
         Step<object?> blobStep = new IsLiveTrigger().Blob("storage");
         Step<object?> cosmosStep = new IsLiveTrigger().Cosmos("cosmos");
@@ -148,6 +154,78 @@ public class DockerAzureEnvironmentTests
         Assert.True(File.Exists(resolved));
     }
 
+    [Fact]
+    public void ServiceBusConfigLocator_ResolvesLegacyAzureDockerRelativeFile()
+    {
+        string relativePath = Path.Combine("AzureDocker", "Configurations", "ServiceBus", "config.json");
+
+        string resolved = typeof(DockerAzureEnvironment).Assembly
+            .GetType("TestFramework.Container.Azure.ServiceBusConfigLocator")!
+            .GetMethod("Resolve", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!
+            .Invoke(null, [relativePath])!
+            .ToString()!;
+
+        Assert.True(File.Exists(resolved));
+        Assert.EndsWith(Path.Combine("Configurations", "ServiceBus", "config.json"), resolved, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ResolveComponents_ThrowsWhenFunctionAppRegistrationIsMissing()
+    {
+        DockerAzureEnvironment environment = new(new DockerAzureEnvironmentOptions
+        {
+            RequiredFunctionAppIdentifiers = [new FunctionAppIdentifier("func")],
+        });
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => environment.ResolveComponents([], []));
+
+        Assert.Contains("func", exception.Message);
+    }
+
+    [Fact]
+    public void ResolveComponents_ThrowsWhenCosmosArtifactsDisagreeOnPartitionKeyPath()
+    {
+        DockerAzureEnvironment environment = new();
+        ArtifactInstanceGeneric[] artifacts =
+        [
+            CreateArtifactInstance<CosmosDbItemArtifactDescriber<TestCosmosItem>, CosmosDbItemArtifactData<TestCosmosItem>, CosmosDbItemArtifactReference<TestCosmosItem>>(
+                new CosmosDbItemArtifactDescriber<TestCosmosItem>(),
+                "first",
+                new CosmosDbItemArtifactReference<TestCosmosItem>("cosmos", Var.Const(new Microsoft.Azure.Cosmos.PartitionKey("tenant-1")), Var.Const("id-1")),
+                new CosmosDbItemArtifactData<TestCosmosItem>(new TestCosmosItem("id-1", "tenant-1"))),
+            CreateArtifactInstance<CosmosDbItemArtifactDescriber<TestCosmosItemAlternatePartition>, CosmosDbItemArtifactData<TestCosmosItemAlternatePartition>, CosmosDbItemArtifactReference<TestCosmosItemAlternatePartition>>(
+                new CosmosDbItemArtifactDescriber<TestCosmosItemAlternatePartition>(),
+                "second",
+                new CosmosDbItemArtifactReference<TestCosmosItemAlternatePartition>("cosmos", Var.Const(new Microsoft.Azure.Cosmos.PartitionKey("tenant-2")), Var.Const("id-2")),
+                new CosmosDbItemArtifactData<TestCosmosItemAlternatePartition>(new TestCosmosItemAlternatePartition("id-2", "tenant-2")))
+        ];
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => environment.ResolveComponents(artifacts, []));
+
+        Assert.Contains("conflicting partition key paths", exception.Message);
+    }
+
+    [Fact]
+    public async Task AzuriteEnvComponent_ThrowsWhenStorageIdentifiersAreUsedWithoutConfigStore()
+    {
+        DockerAzureEnvironment environment = new(new DockerAzureEnvironmentOptions
+        {
+            RequiredStorageIdentifiers = [new StorageAccountIdentifier("storage")],
+        });
+
+        environment.ResolveComponents([], []);
+        typeof(DockerAzureEnvironment)
+            .GetMethod("SetRuntimeState", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(environment, [DockerAzureEnvironment.NetworkComponentId, new StubNetwork()]);
+
+        object component = Activator.CreateInstance(typeof(DockerAzureEnvironment).Assembly.GetType("TestFramework.Container.Azure.Components.AzuriteEnvComponent")!, true)!;
+        Task createTask = (Task)component.GetType().GetMethod("CreateAsync")!.Invoke(component,
+        [environment, new ServiceCollection().BuildServiceProvider(), null!, null!, null!, CancellationToken.None])!;
+
+        InvalidOperationException exception = await Assert.ThrowsAsync<InvalidOperationException>(async () => await createTask);
+        Assert.Contains("ConfigStore<StorageAccountConfig>", exception.Message);
+    }
+
     private static void InvokeEnsureAzurite(string connectionString)
         => typeof(DockerAzureEnvironment).Assembly
             .GetType("TestFramework.Container.Azure.ConnectionStringGuards")!
@@ -178,6 +256,10 @@ public class DockerAzureEnvironmentTests
         [property: JsonProperty("id")] string Id,
         [property: JsonProperty("PartitionKey")] string PartitionKey);
 
+    private sealed record TestCosmosItemAlternatePartition(
+        [property: JsonProperty("id")] string Id,
+        [property: JsonProperty("TenantId")] string PartitionKey);
+
     private sealed class TestTableEntity : global::Azure.Data.Tables.ITableEntity
     {
         public string PartitionKey { get; set; } = "pk";
@@ -207,5 +289,14 @@ public class DockerAzureEnvironmentTests
     {
         TargetInvocationException exception = Assert.Throws<TargetInvocationException>(action);
         Assert.IsType<InvalidOperationException>(exception.InnerException);
+    }
+
+    private sealed class StubNetwork : DotNet.Testcontainers.Networks.INetwork
+    {
+        public string Id => "stub";
+        public string Name => "stub";
+        public Task CreateAsync(CancellationToken ct = default) => Task.CompletedTask;
+        public Task DeleteAsync(CancellationToken ct = default) => Task.CompletedTask;
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 }
