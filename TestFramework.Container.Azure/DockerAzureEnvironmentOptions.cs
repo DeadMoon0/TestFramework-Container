@@ -11,7 +11,7 @@ public class DockerAzureEnvironmentOptions
     public string CosmosDbImage { get; init; } = "mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview";
     public string ServiceBusImage { get; init; } = "mcr.microsoft.com/azure-messaging/servicebus-emulator:latest";
     public string MsSqlPassword { get; init; } = "TestFramework_Container1!";
-    public string ServiceBusTopologyConfigPath { get; init; } = Path.Combine("AzureDocker", "Configurations", "ServiceBus", "config.json");
+    public string ServiceBusTopologyConfigPath { get; init; } = Path.Combine("Configurations", "ServiceBus", "config.json");
     public IReadOnlyCollection<EnvComponentIdentifier> RequiredComponents { get; init; } = [];
     public IReadOnlyCollection<FunctionAppIdentifier> RequiredFunctionAppIdentifiers { get; init; } = [];
     public IReadOnlyCollection<ServiceBusIdentifier> RequiredServiceBusIdentifiers { get; init; } = [];

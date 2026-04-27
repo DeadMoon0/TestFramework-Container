@@ -34,8 +34,8 @@ internal sealed class FunctionAppEnvComponent : EnvComponent
         if (dockerEnvironment.UsedFunctionAppIdentifiers.Count == 0)
             return Array.Empty<IContainer>();
 
+        ConfigStore<FunctionAppConfig>? functionStore = EnvComponentConfigStoreGuard.GetRequiredStore<FunctionAppConfig>(serviceProvider, dockerEnvironment.UsedFunctionAppIdentifiers, "Function App environment setup");
         INetwork network = dockerEnvironment.GetRequiredRuntimeState<INetwork>(DockerAzureEnvironment.NetworkComponentId);
-        ConfigStore<FunctionAppConfig>? functionStore = serviceProvider.GetService(typeof(ConfigStore<FunctionAppConfig>)) as ConfigStore<FunctionAppConfig>;
         List<IContainer> containers = [];
 
         foreach (string identifier in dockerEnvironment.UsedFunctionAppIdentifiers)
@@ -67,11 +67,8 @@ internal sealed class FunctionAppEnvComponent : EnvComponent
             string baseUrl = $"http://{container.Hostname}:{container.GetMappedPublicPort(80)}/";
             await WaitForHttpReadyAsync(baseUrl, cancellationToken).ConfigureAwait(false);
 
-            if (functionStore is not null)
-            {
-                FunctionAppConfig current = functionStore.GetConfig(identifier);
-                functionStore.AddConfig(identifier, current with { BaseUrl = baseUrl });
-            }
+            FunctionAppConfig current = functionStore!.GetConfig(identifier);
+            functionStore.AddConfig(identifier, current with { BaseUrl = baseUrl });
 
             containers.Add(container);
         }

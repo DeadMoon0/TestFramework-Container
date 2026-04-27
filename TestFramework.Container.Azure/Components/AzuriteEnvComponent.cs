@@ -19,6 +19,7 @@ internal sealed class AzuriteEnvComponent : EnvComponent
     public override async Task<object?> CreateAsync(IEnvironmentProvider environment, IServiceProvider serviceProvider, VariableStore variableStore, ArtifactStore artifactStore, ScopedLogger logger, CancellationToken cancellationToken)
     {
         DockerAzureEnvironment dockerEnvironment = (DockerAzureEnvironment)environment;
+        ConfigStore<StorageAccountConfig>? configStore = EnvComponentConfigStoreGuard.GetRequiredStore<StorageAccountConfig>(serviceProvider, dockerEnvironment.UsedStorageIdentifiers, "Azurite environment setup");
         INetwork network = dockerEnvironment.GetRequiredRuntimeState<INetwork>(DockerAzureEnvironment.NetworkComponentId);
         IContainer container = new ContainerBuilder(dockerEnvironment.Options.AzuriteImage)
             .WithNetwork(network)
@@ -34,7 +35,6 @@ internal sealed class AzuriteEnvComponent : EnvComponent
         string connectionString = CreateConnectionString(container);
         ConnectionStringGuards.EnsureAzurite(connectionString);
 
-        ConfigStore<StorageAccountConfig>? configStore = serviceProvider.GetService(typeof(ConfigStore<StorageAccountConfig>)) as ConfigStore<StorageAccountConfig>;
         if (configStore is not null)
         {
             foreach (string identifier in dockerEnvironment.UsedStorageIdentifiers)
