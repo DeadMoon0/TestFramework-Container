@@ -5,7 +5,7 @@
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
 		<Title>TestFramework Container Azure</Title>
-		<Version>0.1.0</Version>
+		<Version>0.1.1</Version>
 		<Authors>DeadMoon0</Authors>
 		<Product>TestFramework</Product>
 		<Description>Docker-backed environment providers for TestFramework timelines for Azure components.</Description>
@@ -17,6 +17,7 @@
 		<PackageTags>Test;UnitTest;IntegrationTest;Framework;Timeline;Docker;Azure</PackageTags>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<Copyright>Copyright (c) DeadMoon0 2026</Copyright>
+		<PackageReleaseNotes>Added better docs</PackageReleaseNotes>
 	</PropertyGroup>
 
 	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
@@ -45,9 +46,9 @@
 		<PackageReference Include="Testcontainers.CosmosDb" Version="4.11.0" />
 		<PackageReference Include="Testcontainers.MsSql" Version="4.11.0" />
 		<PackageReference Include="Testcontainers.ServiceBus" Version="4.11.0" />
-		<PackageReference Include="TestFramework.Core" Version="0.1.1" />
-		<PackageReference Include="TestFramework.Config" Version="0.1.0" />
-		<PackageReference Include="TestFramework.Azure" Version="0.1.4" />
+		<PackageReference Include="TestFramework.Core" Version="0.1.2" />
+		<PackageReference Include="TestFramework.Config" Version="0.1.1" />
+		<PackageReference Include="TestFramework.Azure" Version="0.1.6" />
 	</ItemGroup>
 
 	<ItemGroup>

@@ -17,7 +17,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\TestFramework.Container.Azure\TestFramework.Container.Azure.csproj" />
-    <ProjectReference Include="..\..\..\TestFramework-Showroom\Azure\FunctionApp\FunctionApp.csproj" />
   </ItemGroup>
 
   <ItemGroup>
