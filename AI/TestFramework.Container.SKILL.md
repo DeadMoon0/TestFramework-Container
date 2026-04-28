@@ -29,6 +29,7 @@
     For Cosmos emulator clients that run through a mapped Docker port, prefer Gateway mode and certificate bypass in test-only code, and pin the client to the configured endpoint when the SDK would otherwise follow the emulator's advertised internal endpoint.
     Keep Service Bus topology configuration explicit through ServiceBusTopologyConfigPath instead of burying it in helper code.
     Prefer one project-level helper that wires config stores and DockerAzureEnvironment consistently.
+    Prefer run assertions and environment assertions on TimelineRun over ad-hoc low-level debugging output.
 </best_practices>
 
 <api_hints>
@@ -115,6 +116,7 @@
     Prefer one shared service-provider builder that registers the typed config stores and Cosmos client options for emulator usage.
     Keep assertions focused on run results and environment presence, not on ad-hoc Docker plumbing.
     For smoke tests, gate expensive end-to-end container runs behind an explicit environment variable rather than making the whole suite require Docker.
+    Keep `SetupRun(...).SetEnv(new DockerAzureEnvironment(...)).RunAsync()` examples compact unless an option object is the real point of the sample.
 </style_guide>
 
 <sample_patterns>
@@ -123,7 +125,7 @@
     - configure any required Cosmos client options for emulator TLS/gateway behavior
     - build the timeline
     - call timeline.SetupRun(serviceProvider).SetEnv(new DockerAzureEnvironment()).RunAsync()
-    - assert on run completion and relevant artifacts
+    - assert on run completion, environment components, and relevant artifacts
 
     Forced-resource pattern:
     - create DockerAzureEnvironmentOptions with RequiredCosmosIdentifiers, RequiredServiceBusIdentifiers, or RequiredComponents

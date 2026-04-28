@@ -16,20 +16,38 @@ using TestFramework.Core.Timelines;
 using TestFramework.Core.Timelines.Builder.TimelineBuilder;
 using TestFramework.Core.Timelines.Builder.TimelineRunBuilder;
 using TestFramework.Core.Variables;
+using System.Net;
 
 namespace TestFramework.Container.Azure.Tests;
 
+// README sync note: the README golden sample is backed by the smoke test below.
+// If you update that sample path or assertions, update the corresponding README sample as well.
 public class DockerAzureEnvironmentSmokeTests
 {
     private const string SmokeTableName = "smoketable";
 
     [Fact]
     [Trait("Category", "DockerSmoke")]
+    public async Task PackageReadme_GoldenSample_RunsAgainstContainerBackedCosmos_WhenSmokeEnabled()
+    {
+        using ServiceProvider serviceProvider = CreateAzureServiceProvider();
+        Timeline timeline = Timeline.Create()
+            .Trigger(AzureTF.Trigger.IsLive.Cosmos("cosmos", AlivenessLevel.Authenticated)).WithTimeOut(TimeSpan.FromMinutes(2))
+            .Build();
+
+        TimelineRun run = await timeline
+            .SetupRun(serviceProvider)
+            .SetEnv(new DockerAzureEnvironment())
+            .RunAsync();
+
+        run.EnsureRanToCompletion();
+        Assert.True(run.EnvironmentContext.Contains(DockerAzureEnvironment.CosmosDbComponentId));
+    }
+
+    [Fact]
+    [Trait("Category", "DockerSmoke")]
     public async Task Timeline_CanRunBlobIsLiveWithDockerAzureEnvironment_WhenSmokeEnabled()
     {
-        if (!IsSmokeEnabled())
-            return;
-
         using ServiceProvider serviceProvider = CreateAzureServiceProvider();
         TimelineRun run = await RunSmokeTimelineAsync(
             serviceProvider,
@@ -43,9 +61,6 @@ public class DockerAzureEnvironmentSmokeTests
     [Trait("Category", "DockerSmoke")]
     public async Task Timeline_CanRunTableIsLiveWithDockerAzureEnvironment_WhenSmokeEnabled()
     {
-        if (!IsSmokeEnabled())
-            return;
-
         using ServiceProvider serviceProvider = CreateAzureServiceProvider();
         TimelineRun run = await RunSmokeTimelineAsync(
             serviceProvider,
@@ -62,9 +77,6 @@ public class DockerAzureEnvironmentSmokeTests
     [Trait("Category", "DockerSmoke")]
     public async Task Timeline_CanRunCosmosIsLiveWithDockerAzureEnvironment_WhenSmokeEnabled()
     {
-        if (!IsSmokeEnabled())
-            return;
-
         using ServiceProvider serviceProvider = CreateAzureServiceProvider();
         TimelineRun run = await RunSmokeTimelineAsync(
             serviceProvider,
@@ -77,9 +89,6 @@ public class DockerAzureEnvironmentSmokeTests
     [Trait("Category", "DockerSmoke")]
     public async Task Timeline_CanRunSqlIsLiveWithDockerAzureEnvironment_WhenSmokeEnabled()
     {
-        if (!IsSmokeEnabled())
-            return;
-
         using ServiceProvider serviceProvider = CreateAzureServiceProvider();
         TimelineRun run = await RunSmokeTimelineAsync(
             serviceProvider,
@@ -92,9 +101,6 @@ public class DockerAzureEnvironmentSmokeTests
     [Trait("Category", "DockerSmoke")]
     public async Task Timeline_CanRunServiceBusStepsWithDockerAzureEnvironment_WhenSmokeEnabled()
     {
-        if (!IsSmokeEnabled())
-            return;
-
         using ServiceProvider serviceProvider = CreateAzureServiceProvider();
         TimelineRun run = await RunSmokeTimelineAsync(
             serviceProvider,
@@ -108,9 +114,6 @@ public class DockerAzureEnvironmentSmokeTests
     [Trait("Category", "DockerSmoke")]
     public async Task Timeline_CanRunAllAzureStepsAcrossDockerAzureComponents_WhenSmokeEnabled()
     {
-        if (!IsSmokeEnabled())
-            return;
-
         using ServiceProvider serviceProvider = CreateAzureServiceProvider();
         TimelineRun run = await RunSmokeTimelineAsync(
             serviceProvider,
@@ -131,51 +134,44 @@ public class DockerAzureEnvironmentSmokeTests
         Assert.True(run.EnvironmentContext.Contains(DockerAzureEnvironment.ServiceBusComponentId));
     }
 
-    //[Fact]
-    //[Trait("Category", "DockerSmoke")]
-    //public async Task Timeline_CanInvokeDockerHostedFunctionAppHttpEndpoint_WhenSmokeEnabled()
-    //{
-    //    if (!IsSmokeEnabled())
-    //        return;
-
-    //    using ServiceProvider serviceProvider = CreateAzureServiceProvider(withFunctionApp: true);
-    //    DockerAzureEnvironment environment = new(new DockerAzureEnvironmentOptions
-    //    {
-    //        FunctionApps =
-    //        [
-    //            DockerFunctionAppRegistration.Create<AnalysisProcessor>("func", builder => builder
-    //                .UseStorage("storage", tableNameSettingName: "StorageTableName")
-    //                .UseCosmos("cosmos")
-    //                .UseServiceBusReply("bus"))
-    //        ],
-    //    });
-
-    //    Timeline timeline = Timeline.Create()
-    //        .Trigger(
-    //            AzureTF.Trigger.FunctionApp
-    //                .Http("func")
-    //                .SelectEndpointWithMethod<AnalysisProcessor>(nameof(AnalysisProcessor.Run))
-    //                .WithBody(Var.Const("{\"runId\":\"\",\"sampleDocId\":\"\",\"analysisReplyCorrelationId\":\"\"}"))
-    //                .Call())
-    //        .Name("function-call")
-    //        .Build();
-
-    //    TimelineRun run = await timeline
-    //        .SetupRun(serviceProvider)
-    //        .SetEnv(environment)
-    //        .RunAsync();
-
-    //    run.EnsureRanToCompletion();
-
-    //    HttpResponseMessage response = Assert.IsType<HttpResponseMessage>(run.Step("function-call").LastResult.Result);
-    //    string responseBody = await response.Content.ReadAsStringAsync();
-    //    Assert.True(response.StatusCode == System.Net.HttpStatusCode.InternalServerError, $"Expected InternalServerError but received {(int)response.StatusCode} {response.StatusCode}. Body: {responseBody}");
-    //    Assert.True(run.EnvironmentContext.Contains(DockerAzureEnvironment.FunctionAppComponentId));
-    //}
-
-    private static bool IsSmokeEnabled()
+    [Fact]
+    [Trait("Category", "DockerSmoke")]
+    public async Task Timeline_CanInvokeDockerHostedFunctionAppHttpEndpoint_WithoutExternalDependencies()
     {
-        return string.Equals(Environment.GetEnvironmentVariable("TESTFRAMEWORK_CONTAINER_SMOKE"), "1", StringComparison.Ordinal);
+        using ServiceProvider serviceProvider = CreateAzureServiceProvider(withFunctionApp: true);
+        DockerAzureEnvironment environment = new(new DockerAzureEnvironmentOptions
+        {
+            FunctionApps =
+            [
+                DockerFunctionAppRegistration.Create<LocalFunctionAppSmokeFunction>("func", builder => builder
+                    .UseStorage("storage", tableNameSettingName: "StorageTableName")
+                    .UseCosmos("cosmos")
+                    .UseServiceBusReply("bus"))
+            ],
+        });
+
+        Timeline timeline = Timeline.Create()
+            .Trigger(
+                AzureTF.Trigger.FunctionApp
+                    .Http("func")
+                    .SelectEndpointWithMethod<LocalFunctionAppSmokeFunction>(nameof(LocalFunctionAppSmokeFunction.Run))
+                    .WithBody(Var.Const("{\"runId\":\"\",\"sampleDocId\":\"\",\"analysisReplyCorrelationId\":\"\"}"))
+                    .Call())
+            .Name("function-call")
+            .Build();
+
+        TimelineRun run = await timeline
+            .SetupRun(serviceProvider)
+            .SetEnv(environment)
+            .RunAsync();
+
+        run.EnsureRanToCompletion();
+
+        HttpResponseMessage response = Assert.IsType<HttpResponseMessage>(run.Step("function-call").LastResult.Result);
+        string responseBody = await response.Content.ReadAsStringAsync();
+        Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
+        Assert.Contains("Local smoke function executed.", responseBody, StringComparison.Ordinal);
+        Assert.True(run.EnvironmentContext.Contains(DockerAzureEnvironment.FunctionAppComponentId));
     }
 
     private static ServiceProvider CreateAzureServiceProvider(bool withFunctionApp = false)

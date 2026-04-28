@@ -1,8 +1,8 @@
-# TestFramework-Container
+# TestFramework.Container.Azure
 
-`TestFramework.Container.Azure` lets a normal TestFramework timeline run against Docker-backed Azure emulators.
+`TestFramework.Container.Azure` lets a normal TestFramework Azure timeline run against Docker-backed emulator infrastructure.
 
-Use it when you want the Azure timeline shape from `TestFramework.Azure`, but you want the backing services to come from local containers instead of a live cloud environment.
+Use it when you want to keep the normal `TestFramework.Azure` timeline shape, but you want Blob, Table, Cosmos, SQL Server, or Service Bus dependencies to come from local containers instead of a live Azure environment.
 
 ## Install
 
@@ -10,22 +10,23 @@ Use it when you want the Azure timeline shape from `TestFramework.Azure`, but yo
 dotnet add package TestFramework.Container.Azure
 ```
 
-## What It Does
+## What It Adds
 
-The package plugs into the run builder through `SetEnv(new DockerAzureEnvironment(...))`.
+The package plugs into the run through `SetEnv(new DockerAzureEnvironment(...))`.
 
 That environment:
-- starts only the emulator components the timeline actually needs
-- rewrites the configured Azure connection settings to the mapped local Docker endpoints
+- starts the required emulator components before the main timeline steps run
+- rewrites registered Azure config entries to the mapped local Docker endpoints
 - keeps the normal identifier-driven Azure config contract intact
 
-The timeline still reads like a normal TestFramework timeline. The environment is the switch that makes the run container-backed.
+The timeline itself still looks like a normal TestFramework timeline. The environment is the switch that makes the run container-backed.
 
 ## Prerequisites
 
 - Docker Desktop or another compatible Docker engine must be running
-- the test project must already reference the normal Azure config identifiers it uses in the timeline
+- the test project must register the Azure identifiers that the timeline uses
 - Service Bus scenarios need a valid topology file path
+- Cosmos scenarios often need emulator-specific client options such as certificate bypass
 
 ## Golden Sample
 
@@ -39,7 +40,6 @@ using TestFramework.Azure.Extensions;
 using TestFramework.Container.Azure;
 using TestFramework.Core.Timelines;
 using TestFramework.Core.Timelines.Assertions;
-using TestFramework.Core.Variables;
 using Xunit;
 
 public class ContainerAzureSample
@@ -86,8 +86,8 @@ Why this is the default shape:
 
 ## Typical Pattern
 
-1. Register the normal Azure config stores your timeline identifiers use.
-2. Configure client options that emulators need, such as Cosmos gateway mode or certificate bypass.
+1. Register the normal Azure config stores that your timeline identifiers use.
+2. Configure emulator-specific client options where needed.
 3. Build the timeline the same way you would for a normal Azure test.
 4. Call `SetupRun(serviceProvider).SetEnv(new DockerAzureEnvironment()).RunAsync()`.
 5. Assert on `TimelineRun`, artifacts, and `EnvironmentContext`.
@@ -97,21 +97,21 @@ Why this is the default shape:
 Use `DockerAzureEnvironmentOptions` when the timeline does not expose enough information for the environment to infer the required components.
 
 Typical cases:
-- force a specific Cosmos or Service Bus identifier
+- force a specific Cosmos, Storage, SQL, or Service Bus identifier
 - provide `ServiceBusTopologyConfigPath`
 - register Docker-hosted Function Apps
 
 ## Smoke Tests
 
-The expensive end-to-end smoke path is intentionally opt-in:
+The end-to-end smoke path is intentionally opt-in:
 
 ```powershell
 $env:TESTFRAMEWORK_CONTAINER_SMOKE = '1'
 dotnet test .\UnitTests\TestFramework.Container.Azure.Tests\TestFramework.Container.Azure.Tests.csproj -c Release
 ```
 
-## Documentation Map
+## Related Packages
 
-- `TestFramework.Container.Azure`: container-backed Azure runtime integration
-- `DockerAzureEnvironment`: main environment provider
-- `DockerAzureEnvironmentOptions`: explicit overrides for identifiers, topology, and Docker images
+- `TestFramework.Azure` for Azure triggers, waits, and artifact types
+- `TestFramework.Config` for building the service provider and config stores used by the run
+- `TestFramework.Core` for the base timeline model and run assertions
