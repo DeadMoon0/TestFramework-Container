@@ -56,6 +56,14 @@ public sealed class DockerFunctionAppRegistration
         return registration;
     }
 
+    internal static DockerFunctionAppRegistration Create(string identifier, Type functionType, Action<Builder>? configure = null)
+    {
+        DockerFunctionAppRegistration registration = new(identifier, functionType);
+        Builder builder = new(registration);
+        configure?.Invoke(builder);
+        return registration;
+    }
+
     public sealed class Builder(DockerFunctionAppRegistration registration)
     {
         public Builder WithImage(string image)

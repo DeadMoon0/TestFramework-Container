@@ -40,7 +40,7 @@ internal sealed class FunctionAppEnvComponent : EnvComponent
 
         foreach (string identifier in dockerEnvironment.UsedFunctionAppIdentifiers)
         {
-            DockerFunctionAppRegistration registration = dockerEnvironment.Options.FunctionApps.FirstOrDefault(x => string.Equals(x.Identifier, identifier, StringComparison.Ordinal))
+            DockerFunctionAppRegistration registration = dockerEnvironment.GetFunctionAppRegistrations().FirstOrDefault(x => string.Equals(x.Identifier, identifier, StringComparison.Ordinal))
                 ?? throw new InvalidOperationException($"No Docker Function App registration was configured for identifier '{identifier}'.");
 
             FunctionAppLocation location = ResolveFunctionAppLocation(registration.FunctionType);
