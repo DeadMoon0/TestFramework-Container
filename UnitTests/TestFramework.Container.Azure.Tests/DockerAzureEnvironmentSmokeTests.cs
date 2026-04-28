@@ -8,6 +8,7 @@ using TestFramework.Azure.Configuration;
 using TestFramework.Azure.Configuration.SpecificConfigs;
 using TestFramework.Azure.DB.SqlServer;
 using TestFramework.Azure.Extensions;
+using TestFramework.Azure.Identifier;
 using TestFramework.Azure.StorageAccount.Blob;
 using TestFramework.Azure.StorageAccount.Table;
 using TestFramework.Container.Azure;
@@ -26,6 +27,39 @@ public class DockerAzureEnvironmentSmokeTests
 {
     private const string SmokeTableName = "smoketable";
 
+    private sealed class ReadmeCosmosDefinition : DockerCosmosDefinition<SmokeTableEntity>
+    {
+        public override CosmosContainerIdentifier Identifier => "cosmos";
+    }
+
+    private sealed class SmokeStorageDefinition : DockerStorageDefinition
+    {
+        public override StorageAccountIdentifier Identifier => "storage";
+    }
+
+    private sealed class SmokeCosmosDefinition : DockerCosmosDefinition<SmokeTableEntity>
+    {
+        public override CosmosContainerIdentifier Identifier => "cosmos";
+    }
+
+    private sealed class SmokeServiceBusDefinition : DockerServiceBusDefinition
+    {
+        public override ServiceBusIdentifier Identifier => "bus";
+    }
+
+    private sealed class SmokeFunctionAppDefinition : DockerFunctionAppDefinition<LocalFunctionAppSmokeFunction>
+    {
+        public override FunctionAppIdentifier Identifier => "func";
+
+        protected override void Configure(DockerFunctionAppBuilder builder)
+        {
+            builder
+                .UseStorage<SmokeStorageDefinition>(tableNameSettingName: "StorageTableName")
+                .UseCosmos<SmokeCosmosDefinition>()
+                .UseServiceBusReply<SmokeServiceBusDefinition>();
+        }
+    }
+
     [Fact]
     [Trait("Category", "DockerSmoke")]
     public async Task PackageReadme_GoldenSample_RunsAgainstContainerBackedCosmos_WhenSmokeEnabled()
@@ -37,7 +71,7 @@ public class DockerAzureEnvironmentSmokeTests
 
         TimelineRun run = await timeline
             .SetupRun(serviceProvider)
-            .SetEnv(new DockerAzureEnvironment())
+            .SetEnv(DockerAzureEnvironment.For<ReadmeCosmosDefinition>())
             .RunAsync();
 
         run.EnsureRanToCompletion();
@@ -139,16 +173,7 @@ public class DockerAzureEnvironmentSmokeTests
     public async Task Timeline_CanInvokeDockerHostedFunctionAppHttpEndpoint_WithoutExternalDependencies()
     {
         using ServiceProvider serviceProvider = CreateAzureServiceProvider(withFunctionApp: true);
-        DockerAzureEnvironment environment = new(new DockerAzureEnvironmentOptions
-        {
-            FunctionApps =
-            [
-                DockerFunctionAppRegistration.Create<LocalFunctionAppSmokeFunction>("func", builder => builder
-                    .UseStorage("storage", tableNameSettingName: "StorageTableName")
-                    .UseCosmos("cosmos")
-                    .UseServiceBusReply("bus"))
-            ],
-        });
+        DockerAzureEnvironment environment = DockerAzureEnvironment.For<SmokeFunctionAppDefinition>();
 
         Timeline timeline = Timeline.Create()
             .Trigger(

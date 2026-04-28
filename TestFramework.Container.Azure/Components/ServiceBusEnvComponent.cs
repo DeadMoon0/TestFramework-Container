@@ -23,11 +23,11 @@ internal sealed class ServiceBusEnvComponent : EnvComponent
         ConfigStore<ServiceBusConfig>? configStore = EnvComponentConfigStoreGuard.GetRequiredStore<ServiceBusConfig>(serviceProvider, dockerEnvironment.UsedServiceBusIdentifiers, "Service Bus environment setup");
         INetwork network = dockerEnvironment.GetRequiredRuntimeState<INetwork>(DockerAzureEnvironment.NetworkComponentId);
         MsSqlContainer msSqlContainer = dockerEnvironment.GetRequiredRuntimeState<MsSqlContainer>(DockerAzureEnvironment.MsSqlComponentId);
-        string configPath = ServiceBusConfigLocator.Resolve(dockerEnvironment.Options.ServiceBusTopologyConfigPath);
+        string configPath = ServiceBusConfigLocator.Resolve(dockerEnvironment.GetServiceBusTopologyConfigPath());
 
-        ServiceBusContainer container = new ServiceBusBuilder(dockerEnvironment.Options.ServiceBusImage)
+        ServiceBusContainer container = new ServiceBusBuilder(dockerEnvironment.GetServiceBusImage())
             .WithAcceptLicenseAgreement(true)
-            .WithMsSqlContainer(network, msSqlContainer, ServiceBusBuilder.DatabaseNetworkAlias, dockerEnvironment.Options.MsSqlPassword)
+            .WithMsSqlContainer(network, msSqlContainer, ServiceBusBuilder.DatabaseNetworkAlias, dockerEnvironment.GetMsSqlPassword())
             .WithConfig(configPath)
             .WithNetworkAliases(DockerAzureEnvironment.ServiceBusNetworkAlias)
             .Build();

@@ -12,12 +12,14 @@ dotnet add package TestFramework.Container.Azure
 
 ## What It Does
 
-The package plugs into the run builder through `SetEnv(new DockerAzureEnvironment(...))`.
+The package plugs into the run builder through `SetEnv(...)` with a `DockerAzureEnvironment`.
 
 That environment:
 - starts only the emulator components the timeline actually needs
 - rewrites the configured Azure connection settings to the mapped local Docker endpoints
 - keeps the normal identifier-driven Azure config contract intact
+
+Those placeholder config entries can be registered directly by the test project, or owned by shared component classes when a reusable test stack wants each component to describe itself completely.
 
 The timeline still reads like a normal TestFramework timeline. The environment is the switch that makes the run container-backed.
 
@@ -36,14 +38,21 @@ using TestFramework.Azure;
 using TestFramework.Azure.Configuration;
 using TestFramework.Azure.Configuration.SpecificConfigs;
 using TestFramework.Azure.Extensions;
+using TestFramework.Azure.Identifier;
 using TestFramework.Container.Azure;
 using TestFramework.Core.Timelines;
 using TestFramework.Core.Timelines.Assertions;
-using TestFramework.Core.Variables;
 using Xunit;
 
 public class ContainerAzureSample
 {
+	private sealed class SampleCosmos : DockerCosmosDefinition<SampleDocument>
+	{
+		public override CosmosContainerIdentifier Identifier => "cosmos";
+	}
+
+	private sealed record SampleDocument(string Id, string PartitionKey);
+
 	private static readonly Timeline _timeline = Timeline.Create()
 		.Trigger(AzureTF.Trigger.IsLive.Cosmos("cosmos", AlivenessLevel.Authenticated)).WithTimeOut(TimeSpan.FromMinutes(2))
 		.Build();
@@ -69,7 +78,7 @@ public class ContainerAzureSample
 
 		TimelineRun run = await _timeline
 			.SetupRun(serviceProvider)
-			.SetEnv(new DockerAzureEnvironment())
+			.SetEnv(DockerAzureEnvironment.For<SampleCosmos>())
 			.RunAsync();
 
 		run.EnsureRanToCompletion();
@@ -81,32 +90,29 @@ public class ContainerAzureSample
 
 Why this is the default shape:
 - the timeline stays consumer-first and looks like a normal Azure test
-- `SetEnv(new DockerAzureEnvironment())` is the only visible switch that makes the run container-backed
+- `SetEnv(DockerAzureEnvironment.For<...>())` makes the root component explicit while dependent components stay with the component type that needs them
 - assertions focus on the run result and the created environment components
+
+## Definition-Based Composition
+
+Prefer named definition classes for new code. They keep the local infrastructure shape visible in code, make shared test setup easy to reuse, and stay compile-verifiable.
+Treat each component class as the owner of its own identifier and structure. If a reusable stack needs fixed placeholder config, let the component class own that registration too.
+
+In shared test helpers, that usually means a small project-local base class that couples the definition to its placeholder config registration, for example a storage/cosmos/service-bus component that exposes a `Register(IServiceCollection ...)` helper next to its identifier and model shape.
 
 ## Typical Pattern
 
-1. Register the normal Azure config stores your timeline identifiers use.
+1. Register the Azure config stores your timeline identifiers use, either directly in the test project or through shared component-owned registration helpers.
 2. Configure client options that emulators need, such as Cosmos gateway mode or certificate bypass.
 3. Build the timeline the same way you would for a normal Azure test.
-4. Call `SetupRun(serviceProvider).SetEnv(new DockerAzureEnvironment()).RunAsync()`.
+4. Call `SetupRun(serviceProvider).SetEnv(DockerAzureEnvironment.For<TComponent>()).RunAsync()` and chain `.Include<TComponent>()` when you need extra explicit components.
 5. Assert on `TimelineRun`, artifacts, and `EnvironmentContext`.
-
-## When To Use Options
-
-Use `DockerAzureEnvironmentOptions` when the timeline does not expose enough information for the environment to infer the required components.
-
-Typical cases:
-- force a specific Cosmos or Service Bus identifier
-- provide `ServiceBusTopologyConfigPath`
-- register Docker-hosted Function Apps
 
 ## Smoke Tests
 
-The expensive end-to-end smoke path is intentionally opt-in:
+The normal Container.Azure test project already includes the end-to-end smoke path:
 
 ```powershell
-$env:TESTFRAMEWORK_CONTAINER_SMOKE = '1'
 dotnet test .\UnitTests\TestFramework.Container.Azure.Tests\TestFramework.Container.Azure.Tests.csproj -c Release
 ```
 
@@ -114,4 +120,4 @@ dotnet test .\UnitTests\TestFramework.Container.Azure.Tests\TestFramework.Contai
 
 - `TestFramework.Container.Azure`: container-backed Azure runtime integration
 - `DockerAzureEnvironment`: main environment provider
-- `DockerAzureEnvironmentOptions`: explicit overrides for identifiers, topology, and Docker images
+- `DockerAzureDefinition` types plus `DockerAzureEnvironment.For<TComponent>()` / `.Include<TComponent>()`: preferred public composition model

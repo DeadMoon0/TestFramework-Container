@@ -62,10 +62,7 @@ public class DockerAzureEnvironmentTests
     [Fact]
     public void ResolveComponents_IncludesForcedServiceBusComponent()
     {
-        DockerAzureEnvironment environment = new(new DockerAzureEnvironmentOptions
-        {
-            RequiredServiceBusIdentifiers = [new ServiceBusIdentifier("bus")],
-        });
+        DockerAzureEnvironment environment = DockerAzureEnvironment.For<TestServiceBusDefinition>();
 
         IReadOnlyCollection<EnvComponentIdentifier> result = environment.ResolveComponents([], []);
 
@@ -107,10 +104,7 @@ public class DockerAzureEnvironmentTests
     [Fact]
     public void ResolveComponents_MapsIsLiveStepRequirementsWithoutArtifacts()
     {
-        DockerAzureEnvironment environment = new(new DockerAzureEnvironmentOptions
-        {
-            FunctionApps = [DockerFunctionAppRegistration.Create<DockerAzureEnvironmentTests>("func")],
-        });
+        DockerAzureEnvironment environment = DockerAzureEnvironment.For<MinimalFunctionAppDefinition>();
         Step<object?> functionStep = new IsLiveTrigger().FunctionApp("func");
         Step<object?> blobStep = new IsLiveTrigger().Blob("storage");
         Step<object?> cosmosStep = new IsLiveTrigger().Cosmos("cosmos");
@@ -129,6 +123,47 @@ public class DockerAzureEnvironmentTests
         Assert.Contains(DockerAzureEnvironment.CosmosDbComponentId, result);
         Assert.Contains(DockerAzureEnvironment.MsSqlComponentId, result);
         Assert.Contains("func", environment.UsedFunctionAppIdentifiers);
+    }
+
+    [Fact]
+    public void ResolveComponents_ForAddsTypedFunctionAppDefinitionsAndDependencies()
+    {
+        DockerAzureEnvironment environment = DockerAzureEnvironment.For<TestFunctionAppDefinition>();
+        Step<object?> functionStep = new IsLiveTrigger().FunctionApp("func");
+
+        IReadOnlyCollection<EnvComponentIdentifier> result = environment.ResolveComponents([], ((IHasEnvironmentRequirements)functionStep).GetEnvironmentRequirements(null!));
+
+        Assert.Contains(DockerAzureEnvironment.FunctionAppComponentId, result);
+        Assert.Contains(DockerAzureEnvironment.AzuriteComponentId, result);
+        Assert.Contains(DockerAzureEnvironment.CosmosDbComponentId, result);
+        Assert.Contains(DockerAzureEnvironment.ServiceBusComponentId, result);
+        Assert.Contains("func", environment.UsedFunctionAppIdentifiers);
+        Assert.Contains("storage", environment.UsedStorageIdentifiers);
+        Assert.Contains("cosmos", environment.UsedCosmosIdentifiers);
+        Assert.Contains("bus", environment.UsedServiceBusIdentifiers);
+
+        IReadOnlyCollection<DockerFunctionAppRegistration> registrations = (IReadOnlyCollection<DockerFunctionAppRegistration>)typeof(DockerAzureEnvironment)
+            .GetMethod("GetFunctionAppRegistrations", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(environment, [])!;
+        DockerFunctionAppRegistration registration = Assert.Single(registrations);
+        Assert.Equal("func", registration.Identifier);
+        Assert.Equal(typeof(TestFunctionHost), registration.FunctionType);
+    }
+
+    [Fact]
+    public void ResolveComponents_ForAppliesServiceBusTopologyPathFromDependencies()
+    {
+        DockerAzureEnvironment environment = DockerAzureEnvironment.For<TestFunctionAppDefinition>();
+
+        IReadOnlyCollection<EnvComponentIdentifier> result = environment.ResolveComponents([], []);
+
+        Assert.Contains(DockerAzureEnvironment.ServiceBusComponentId, result);
+        Assert.Contains("bus", environment.UsedServiceBusIdentifiers);
+
+        string topologyPath = (string)typeof(DockerAzureEnvironment)
+            .GetMethod("GetServiceBusTopologyConfigPath", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(environment, [])!;
+        Assert.Equal(Path.Combine("TestTopology", "servicebus.json"), topologyPath);
     }
 
     [Fact]
@@ -172,12 +207,10 @@ public class DockerAzureEnvironmentTests
     [Fact]
     public void ResolveComponents_ThrowsWhenFunctionAppRegistrationIsMissing()
     {
-        DockerAzureEnvironment environment = new(new DockerAzureEnvironmentOptions
-        {
-            RequiredFunctionAppIdentifiers = [new FunctionAppIdentifier("func")],
-        });
+        DockerAzureEnvironment environment = new();
+        Step<object?> functionStep = new IsLiveTrigger().FunctionApp("func");
 
-        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => environment.ResolveComponents([], []));
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => environment.ResolveComponents([], ((IHasEnvironmentRequirements)functionStep).GetEnvironmentRequirements(null!)));
 
         Assert.Contains("func", exception.Message);
     }
@@ -208,10 +241,7 @@ public class DockerAzureEnvironmentTests
     [Fact]
     public async Task AzuriteEnvComponent_ThrowsWhenStorageIdentifiersAreUsedWithoutConfigStore()
     {
-        DockerAzureEnvironment environment = new(new DockerAzureEnvironmentOptions
-        {
-            RequiredStorageIdentifiers = [new StorageAccountIdentifier("storage")],
-        });
+        DockerAzureEnvironment environment = DockerAzureEnvironment.For<TestStorageDefinition>();
 
         environment.ResolveComponents([], []);
         typeof(DockerAzureEnvironment)
@@ -224,6 +254,41 @@ public class DockerAzureEnvironmentTests
 
         InvalidOperationException exception = await Assert.ThrowsAsync<InvalidOperationException>(async () => await createTask);
         Assert.Contains("ConfigStore<StorageAccountConfig>", exception.Message);
+    }
+
+    [Fact]
+    public void ResolveComponents_IncludeAppliesInfrastructureOverrides()
+    {
+        DockerAzureEnvironment environment = DockerAzureEnvironment.For<TestDefaultServiceBusDefinition>()
+            .Include<TestInfrastructureDefinition>();
+
+        IReadOnlyCollection<EnvComponentIdentifier> result = environment.ResolveComponents([], []);
+
+        Assert.Contains(DockerAzureEnvironment.ServiceBusComponentId, result);
+        Assert.Equal("custom/azurite:1", typeof(DockerAzureEnvironment).GetMethod("GetAzuriteImage", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(environment, []));
+        Assert.Equal("custom/cosmos:1", typeof(DockerAzureEnvironment).GetMethod("GetCosmosDbImage", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(environment, []));
+        Assert.Equal("custom/mssql:1", typeof(DockerAzureEnvironment).GetMethod("GetMsSqlImage", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(environment, []));
+        Assert.Equal("custom/servicebus:1", typeof(DockerAzureEnvironment).GetMethod("GetServiceBusImage", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(environment, []));
+        Assert.Equal("StrongerPassword_123!", typeof(DockerAzureEnvironment).GetMethod("GetMsSqlPassword", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(environment, []));
+        Assert.Equal(Path.Combine("Infrastructure", "bus-topology.json"), typeof(DockerAzureEnvironment).GetMethod("GetServiceBusTopologyConfigPath", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(environment, []));
+    }
+
+    [Fact]
+    public void Include_ThrowsWhenInfrastructureOverridesConflict()
+    {
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => DockerAzureEnvironment.For<TestInfrastructureDefinition>()
+            .Include<ConflictingInfrastructureDefinition>());
+
+        Assert.Contains(nameof(DockerAzureInfrastructureDefinition.AzuriteImage), exception.Message);
+    }
+
+    [Fact]
+    public void Include_ThrowsWhenInfrastructureTopologyConflictsWithCustomServiceBusTopology()
+    {
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => DockerAzureEnvironment.For<TestInfrastructureDefinition>()
+            .Include<ConflictingTopologyServiceBusDefinition>());
+
+        Assert.Contains("Multiple Service Bus topology paths", exception.Message);
     }
 
     private static void InvokeEnsureAzurite(string connectionString)
@@ -251,6 +316,70 @@ public class DockerAzureEnvironmentTests
             .Invoke(null, [connectionString]);
 
     private sealed class TestRow;
+
+    private sealed class TestStorageDefinition : DockerStorageDefinition
+    {
+        public override StorageAccountIdentifier Identifier => "storage";
+    }
+
+    private sealed class TestCosmosDefinition : DockerCosmosDefinition<TestCosmosItem>
+    {
+        public override CosmosContainerIdentifier Identifier => "cosmos";
+    }
+
+    private sealed class TestServiceBusDefinition : DockerServiceBusDefinition
+    {
+        public override ServiceBusIdentifier Identifier => "bus";
+
+        public override string TopologyConfigPath => Path.Combine("TestTopology", "servicebus.json");
+    }
+
+    private sealed class TestDefaultServiceBusDefinition : DockerServiceBusDefinition
+    {
+        public override ServiceBusIdentifier Identifier => "bus";
+    }
+
+    private sealed class TestFunctionHost;
+
+    private sealed class MinimalFunctionAppDefinition : DockerFunctionAppDefinition<DockerAzureEnvironmentTests>
+    {
+        public override FunctionAppIdentifier Identifier => "func";
+    }
+
+    private sealed class TestFunctionAppDefinition : DockerFunctionAppDefinition<TestFunctionHost>
+    {
+        public override FunctionAppIdentifier Identifier => "func";
+
+        protected override void Configure(DockerFunctionAppBuilder builder)
+        {
+            builder
+                .UseStorage<TestStorageDefinition>()
+                .UseCosmos<TestCosmosDefinition>()
+                .UseServiceBusReply<TestServiceBusDefinition>();
+        }
+    }
+
+    private sealed class TestInfrastructureDefinition : DockerAzureInfrastructureDefinition
+    {
+        public override string? AzuriteImage => "custom/azurite:1";
+        public override string? CosmosDbImage => "custom/cosmos:1";
+        public override string? MsSqlImage => "custom/mssql:1";
+        public override string? ServiceBusImage => "custom/servicebus:1";
+        public override string? MsSqlPassword => "StrongerPassword_123!";
+        public override string? ServiceBusTopologyConfigPath => Path.Combine("Infrastructure", "bus-topology.json");
+    }
+
+    private sealed class ConflictingInfrastructureDefinition : DockerAzureInfrastructureDefinition
+    {
+        public override string? AzuriteImage => "custom/azurite:2";
+    }
+
+    private sealed class ConflictingTopologyServiceBusDefinition : DockerServiceBusDefinition
+    {
+        public override ServiceBusIdentifier Identifier => "bus";
+
+        public override string TopologyConfigPath => Path.Combine("Conflicting", "bus-topology.json");
+    }
 
     private sealed record TestCosmosItem(
         [property: JsonProperty("id")] string Id,
