@@ -52,10 +52,9 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<None Include="..\README.md">
+		<None Include="README.md">
 			<Pack>True</Pack>
 			<PackagePath>\</PackagePath>
-			<Link>README.md</Link>
 		</None>
 		<None Update="Configurations\ServiceBus\config.json">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
