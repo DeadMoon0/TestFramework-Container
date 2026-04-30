@@ -2,7 +2,7 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using System.Net;
 
-namespace TestFramework.Container.Azure.Tests;
+namespace TestFramework.Container.Azure.FunctionApp;
 
 public sealed class LocalFunctionAppSmokeFunction
 {

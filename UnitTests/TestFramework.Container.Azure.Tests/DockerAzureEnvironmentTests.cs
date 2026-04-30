@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Newtonsoft.Json;
 using System.Reflection;
 using TestFramework.Azure.DB.CosmosDB;
+using TestFramework.Azure.FunctionApp;
 using TestFramework.Azure.Configuration;
 using TestFramework.Azure.Configuration.SpecificConfigs;
 using TestFramework.Azure.DB.SqlServer;
@@ -60,14 +61,14 @@ public class DockerAzureEnvironmentTests
     }
 
     [Fact]
-    public void ResolveComponents_IncludesForcedServiceBusComponent()
+    public void ResolveComponents_IncludeOnlyDoesNotForceServiceBusComponent()
     {
         DockerAzureEnvironment environment = DockerAzureEnvironment.For<TestServiceBusDefinition>();
 
         IReadOnlyCollection<EnvComponentIdentifier> result = environment.ResolveComponents([], []);
 
-        Assert.Contains(DockerAzureEnvironment.ServiceBusComponentId, result);
-        Assert.Contains("bus", environment.UsedServiceBusIdentifiers);
+        Assert.DoesNotContain(DockerAzureEnvironment.ServiceBusComponentId, result);
+        Assert.DoesNotContain("bus", environment.UsedServiceBusIdentifiers);
     }
 
     [Fact]
@@ -154,8 +155,9 @@ public class DockerAzureEnvironmentTests
     public void ResolveComponents_ForAppliesServiceBusTopologyPathFromDependencies()
     {
         DockerAzureEnvironment environment = DockerAzureEnvironment.For<TestFunctionAppDefinition>();
+        Step<object?> functionStep = new IsLiveTrigger().FunctionApp("func");
 
-        IReadOnlyCollection<EnvComponentIdentifier> result = environment.ResolveComponents([], []);
+        IReadOnlyCollection<EnvComponentIdentifier> result = environment.ResolveComponents([], ((IHasEnvironmentRequirements)functionStep).GetEnvironmentRequirements(null!));
 
         Assert.Contains(DockerAzureEnvironment.ServiceBusComponentId, result);
         Assert.Contains("bus", environment.UsedServiceBusIdentifiers);
@@ -164,6 +166,118 @@ public class DockerAzureEnvironmentTests
             .GetMethod("GetServiceBusTopologyConfigPath", BindingFlags.Instance | BindingFlags.NonPublic)!
             .Invoke(environment, [])!;
         Assert.Equal(Path.Combine("TestTopology", "servicebus.json"), topologyPath);
+    }
+
+    [Fact]
+    public void FunctionAppEnvComponent_BuildsAppSettingsFromDefinitionResourceBindings()
+    {
+        DockerAzureEnvironment environment = DockerAzureEnvironment.For<TestFunctionAppDefinition>();
+
+        object descriptor = typeof(DockerAzureEnvironment)
+            .GetMethod("GetRequiredFunctionAppDescriptor", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(environment, [new FunctionAppIdentifier("func")])!;
+
+        ServiceProvider serviceProvider = new ServiceCollection()
+            .AddSingleton(ConfigStore<StorageAccountConfig>.Create("storage", new StorageAccountConfig
+            {
+                ConnectionString = "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=key=;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;QueueEndpoint=http://127.0.0.1:10001/devstoreaccount1;TableEndpoint=http://127.0.0.1:10002/devstoreaccount1;",
+                QueueContainerName = null,
+                BlobContainerName = "blob-container",
+                TableContainerName = "table-container"
+            }))
+            .AddSingleton(ConfigStore<CosmosContainerDbConfig>.Create("cosmos", new CosmosContainerDbConfig
+            {
+                ConnectionString = "AccountEndpoint=https://localhost:8081/;AccountKey=key=;",
+                DatabaseName = "test-db",
+                ContainerName = "test-container"
+            }))
+            .AddSingleton(ConfigStore<ServiceBusConfig>.Create("bus", new ServiceBusConfig
+            {
+                ConnectionString = "Endpoint=sb://localhost/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=key=;",
+                QueueName = null,
+                TopicName = "processing-topic",
+                SubscriptionName = "processing-subscription",
+                RequiredSession = false
+            }))
+            .BuildServiceProvider();
+
+        Dictionary<string, string> settings = (Dictionary<string, string>)typeof(DockerAzureEnvironment).Assembly
+            .GetType("TestFramework.Container.Azure.Components.FunctionAppEnvComponent")!
+            .GetMethod("BuildAppSettings", BindingFlags.Static | BindingFlags.NonPublic)!
+            .Invoke(null, [serviceProvider, descriptor, null])!;
+
+        Assert.Contains(DockerAzureEnvironment.AzuriteNetworkAlias, settings["StorageAccountConnectionString"]);
+        Assert.Equal(settings["StorageAccountConnectionString"], settings["AzureWebJobsStorage"]);
+        Assert.DoesNotContain("accountkey=\"", settings["StorageAccountConnectionString"], StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("table-container", settings["StorageTableName"]);
+        Assert.Contains(DockerAzureEnvironment.CosmosDbNetworkAlias, settings["CosmosDbConnectionString"]);
+        Assert.DoesNotContain("accountkey=\"", settings["CosmosDbConnectionString"], StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("test-db", settings["CosmosDatabaseName"]);
+        Assert.Equal("test-container", settings["CosmosContainerName"]);
+        Assert.Contains($"endpoint=sb://{DockerAzureEnvironment.ServiceBusNetworkAlias}/", settings["ServiceBusTriggerConnection"], StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("processing-topic", settings["ServiceBusTriggerTopicName"]);
+        Assert.Equal("processing-subscription", settings["ServiceBusTriggerSubscriptionName"]);
+        Assert.Contains($"endpoint=sb://{DockerAzureEnvironment.ServiceBusNetworkAlias}/", settings["ServiceBusReplyConnectionString"], StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("processing-topic", settings["ServiceBusReplyTopicName"]);
+        Assert.DoesNotContain(FunctionAppResourceSettingNames.StorageIdentifier, settings.Keys);
+        Assert.DoesNotContain(FunctionAppResourceSettingNames.CosmosIdentifier, settings.Keys);
+        Assert.DoesNotContain(FunctionAppResourceSettingNames.ServiceBusTriggerIdentifier, settings.Keys);
+        Assert.DoesNotContain(FunctionAppResourceSettingNames.ServiceBusReplyIdentifier, settings.Keys);
+    }
+
+    [Fact]
+    public void DockerConnectionStringRewriter_StorageForContainer_RewritesEndpointsAndUnquotesAccountKey()
+    {
+        string connectionString = "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=key=;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;QueueEndpoint=http://127.0.0.1:10001/devstoreaccount1;TableEndpoint=http://127.0.0.1:10002/devstoreaccount1;";
+
+        string rewritten = typeof(DockerAzureEnvironment).Assembly
+            .GetType("TestFramework.Container.Azure.DockerConnectionStringRewriter")!
+            .GetMethod("RewriteStorageForContainer", BindingFlags.Static | BindingFlags.NonPublic)!
+            .Invoke(null, [connectionString])!
+            .ToString()!;
+
+        Assert.Contains($"blobendpoint=http://{DockerAzureEnvironment.AzuriteNetworkAlias}:10000", rewritten, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains($"queueendpoint=http://{DockerAzureEnvironment.AzuriteNetworkAlias}:10001", rewritten, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains($"tableendpoint=http://{DockerAzureEnvironment.AzuriteNetworkAlias}:10002", rewritten, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("accountkey=\"", rewritten, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void DockerConnectionStringRewriter_CosmosForContainer_RewritesEndpointAndUnquotesAccountKey()
+    {
+        string connectionString = "AccountEndpoint=https://localhost:8081/;AccountKey=key=;";
+
+        string rewritten = typeof(DockerAzureEnvironment).Assembly
+            .GetType("TestFramework.Container.Azure.DockerConnectionStringRewriter")!
+            .GetMethod("RewriteCosmosForContainer", BindingFlags.Static | BindingFlags.NonPublic)!
+            .Invoke(null, [connectionString])!
+            .ToString()!;
+
+        Assert.Contains($"accountendpoint=https://{DockerAzureEnvironment.CosmosDbNetworkAlias}:8081/", rewritten, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("accountkey=\"", rewritten, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void DockerConnectionStringRewriter_ServiceBusForSameNetworkContainer_UsesAliasAndContainerPort()
+    {
+        string connectionString = "Endpoint=sb://localhost:19123/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=key=;UseDevelopmentEmulator=true;";
+
+        string rewritten = typeof(DockerAzureEnvironment).Assembly
+            .GetType("TestFramework.Container.Azure.DockerConnectionStringRewriter")!
+            .GetMethod("RewriteServiceBusForSameNetworkContainer", BindingFlags.Static | BindingFlags.NonPublic)!
+            .Invoke(null, [connectionString])!
+            .ToString()!;
+
+        Assert.Contains($"endpoint=sb://{DockerAzureEnvironment.ServiceBusNetworkAlias}/", rewritten, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(":19123/", rewritten, StringComparison.Ordinal);
+        Assert.DoesNotContain("amqp://", rewritten, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("UseDevelopmentEmulator=true", rewritten, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ConnectionStringGuards_AcceptsValidServiceBusEmulatorConnectionString()
+    {
+        InvokeEnsureServiceBus("Endpoint=sb://localhost/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=key=;UseDevelopmentEmulator=true;");
     }
 
     [Fact]
@@ -242,8 +356,9 @@ public class DockerAzureEnvironmentTests
     public async Task AzuriteEnvComponent_ThrowsWhenStorageIdentifiersAreUsedWithoutConfigStore()
     {
         DockerAzureEnvironment environment = DockerAzureEnvironment.For<TestStorageDefinition>();
+        Step<object?> blobStep = new IsLiveTrigger().Blob("storage");
 
-        environment.ResolveComponents([], []);
+        environment.ResolveComponents([], ((IHasEnvironmentRequirements)blobStep).GetEnvironmentRequirements(null!));
         typeof(DockerAzureEnvironment)
             .GetMethod("SetRuntimeState", BindingFlags.Instance | BindingFlags.NonPublic)!
             .Invoke(environment, [DockerAzureEnvironment.NetworkComponentId, new StubNetwork()]);
@@ -261,8 +376,9 @@ public class DockerAzureEnvironmentTests
     {
         DockerAzureEnvironment environment = DockerAzureEnvironment.For<TestDefaultServiceBusDefinition>()
             .Include<TestInfrastructureDefinition>();
+        ServiceBusSendTrigger trigger = new("bus", Var.Const(new ServiceBusMessage("payload")));
 
-        IReadOnlyCollection<EnvComponentIdentifier> result = environment.ResolveComponents([], []);
+        IReadOnlyCollection<EnvComponentIdentifier> result = environment.ResolveComponents([], ((IHasEnvironmentRequirements)trigger).GetEnvironmentRequirements(null!));
 
         Assert.Contains(DockerAzureEnvironment.ServiceBusComponentId, result);
         Assert.Equal("custom/azurite:1", typeof(DockerAzureEnvironment).GetMethod("GetAzuriteImage", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(environment, []));
@@ -288,7 +404,39 @@ public class DockerAzureEnvironmentTests
         InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => DockerAzureEnvironment.For<TestInfrastructureDefinition>()
             .Include<ConflictingTopologyServiceBusDefinition>());
 
-        Assert.Contains("Multiple Service Bus topology paths", exception.Message);
+        Assert.Contains("Multiple Service Bus topology sources", exception.Message);
+    }
+
+    [Fact]
+    public void ResolveComponents_MaterializesFluentServiceBusTopology()
+    {
+        DockerAzureEnvironment environment = DockerAzureEnvironment.For<FluentServiceBusDefinition>();
+        ServiceBusSendTrigger trigger = new("bus", Var.Const(new ServiceBusMessage("payload")));
+
+        IReadOnlyCollection<EnvComponentIdentifier> result = environment.ResolveComponents([], ((IHasEnvironmentRequirements)trigger).GetEnvironmentRequirements(null!));
+
+        Assert.Contains(DockerAzureEnvironment.ServiceBusComponentId, result);
+
+        object topologySource = typeof(DockerAzureEnvironment).GetMethod("GetServiceBusTopologySource", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(environment, [])!;
+        object materialized = typeof(DockerAzureEnvironment).Assembly
+            .GetType("TestFramework.Container.Azure.ServiceBusTopologyMaterializer")!
+            .GetMethod("Materialize", BindingFlags.Static | BindingFlags.NonPublic)!
+            .Invoke(null, [topologySource])!;
+
+        string configPath = (string)materialized.GetType().GetProperty("ConfigPath")!.GetValue(materialized)!;
+        bool isTemporary = (bool)materialized.GetType().GetProperty("IsTemporary")!.GetValue(materialized)!;
+
+        try
+        {
+            string json = File.ReadAllText(configPath);
+            Assert.Contains("fluent-topic", json, StringComparison.Ordinal);
+            Assert.Contains("fluent-subscription", json, StringComparison.Ordinal);
+        }
+        finally
+        {
+            if (isTemporary && File.Exists(configPath))
+                File.Delete(configPath);
+        }
     }
 
     private static void InvokeEnsureAzurite(string connectionString)
@@ -339,6 +487,17 @@ public class DockerAzureEnvironmentTests
         public override ServiceBusIdentifier Identifier => "bus";
     }
 
+    private sealed class FluentServiceBusDefinition : DockerServiceBusDefinition
+    {
+        public override ServiceBusIdentifier Identifier => "bus";
+
+        protected override void ConfigureServiceBusTopology(DockerServiceBusTopologyBuilder builder)
+        {
+            builder.AddNamespace("sbemulatorns", ns => ns
+                .AddTopic("fluent-topic", topic => topic.AddSubscription("fluent-subscription")));
+        }
+    }
+
     private sealed class TestFunctionHost;
 
     private sealed class MinimalFunctionAppDefinition : DockerFunctionAppDefinition<DockerAzureEnvironmentTests>
@@ -355,6 +514,7 @@ public class DockerAzureEnvironmentTests
             builder
                 .UseStorage<TestStorageDefinition>()
                 .UseCosmos<TestCosmosDefinition>()
+                .UseServiceBusTrigger<TestServiceBusDefinition>()
                 .UseServiceBusReply<TestServiceBusDefinition>();
         }
     }
