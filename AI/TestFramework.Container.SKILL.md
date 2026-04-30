@@ -63,7 +63,7 @@
     - MsSqlEnvComponent starts SQL Server, waits for a successful query, then rewrites the SQL config store.
     - ServiceBusEnvComponent depends on the Docker network and SQL Server, loads the topology config file, starts the Service Bus emulator, validates namespace availability, then rewrites the Service Bus config store.
     - Environment component runtime state is kept in the environment context and deconstructed in cleanup.
-    - used Function App registrations contribute dependent storage, cosmos, and service-bus identifiers early enough that emulator setup can happen before startup
+    - Function App definitions contribute dependency edges and runtime bindings into the validated component graph early enough that emulator setup can happen before startup
 </runtime_behavior>
 
 <validation_guidance>

@@ -6,14 +6,10 @@
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
-    <OutputType>Exe</OutputType>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="6.0.0" />
-    <PackageReference Include="Microsoft.Azure.Functions.Worker" Version="2.1.0" />
-    <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Http" Version="3.2.0" />
-    <PackageReference Include="Microsoft.Azure.Functions.Worker.Sdk" Version="2.0.5" OutputItemType="Analyzer" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
     <PackageReference Include="xunit" Version="2.5.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.5.3" />
@@ -21,16 +17,12 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\TestFramework.Container.Azure\TestFramework.Container.Azure.csproj" />
+    <ProjectReference Include="..\TestFramework.Container.Azure.FunctionApp\TestFramework.Container.Azure.FunctionApp.csproj" />
+    <ProjectReference Include="..\TestFramework.Container.Azure.ServiceBusFunctionApp\TestFramework.Container.Azure.ServiceBusFunctionApp.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <Using Include="Xunit" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <None Update="host.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
   </ItemGroup>
 
 </Project>

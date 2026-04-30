@@ -9,11 +9,29 @@ public abstract class DockerAzureDefinition
     {
     }
 
-    internal IReadOnlyCollection<Type> GetDependencyDefinitionTypes()
+    protected virtual void ConfigureContracts(DockerAzureContractBuilder contracts)
+    {
+    }
+
+    protected internal IReadOnlyCollection<ComponentDependency> GetDependencies()
     {
         DockerAzureDependencyBuilder dependencies = new();
         ConfigureDependencies(dependencies);
-        return dependencies.DefinitionTypes;
+        return dependencies.Dependencies;
+    }
+
+    protected internal IReadOnlyCollection<IEnvironmentResourceContract> GetProvidedContracts()
+    {
+        DockerAzureContractBuilder contracts = new();
+        ConfigureContracts(contracts);
+        return contracts.Provides;
+    }
+
+    protected internal IReadOnlyCollection<IEnvironmentResourceContract> GetRequiredContracts()
+    {
+        DockerAzureContractBuilder contracts = new();
+        ConfigureContracts(contracts);
+        return contracts.Requires;
     }
 }
 
@@ -30,6 +48,23 @@ public abstract class DockerAzureInfrastructureDefinition : DockerAzureDefinitio
     public virtual string? MsSqlPassword => null;
 
     public virtual string? ServiceBusTopologyConfigPath => null;
+
+    protected virtual void ConfigureServiceBusTopology(DockerServiceBusTopologyBuilder builder)
+    {
+    }
+
+    internal ServiceBusTopologySource? GetServiceBusTopologySource()
+    {
+        DockerServiceBusTopologyBuilder builder = new();
+        ConfigureServiceBusTopology(builder);
+        if (builder.HasNamespaces)
+            return ServiceBusTopologySource.FromTopology(builder.Build());
+
+        if (!string.IsNullOrWhiteSpace(ServiceBusTopologyConfigPath))
+            return ServiceBusTopologySource.FromPath(ServiceBusTopologyConfigPath);
+
+        return null;
+    }
 }
 
 public abstract class DockerStorageDefinition : DockerAzureDefinition
@@ -59,6 +94,19 @@ public abstract class DockerServiceBusDefinition : DockerAzureDefinition
     public abstract ServiceBusIdentifier Identifier { get; }
 
     public virtual string TopologyConfigPath => DockerAzureDefaults.ServiceBusTopologyConfigPath;
+
+    protected virtual void ConfigureServiceBusTopology(DockerServiceBusTopologyBuilder builder)
+    {
+    }
+
+    internal ServiceBusTopologySource GetTopologySource()
+    {
+        DockerServiceBusTopologyBuilder builder = new();
+        ConfigureServiceBusTopology(builder);
+        return builder.HasNamespaces
+            ? ServiceBusTopologySource.FromTopology(builder.Build())
+            : ServiceBusTopologySource.FromPath(TopologyConfigPath);
+    }
 }
 
 public abstract class DockerFunctionAppDefinition : DockerAzureDefinition
@@ -84,46 +132,11 @@ public abstract class DockerFunctionAppDefinition : DockerAzureDefinition
                 if (!string.Equals(Image, DockerAzureDefaults.FunctionAppImage, StringComparison.Ordinal))
                     registrationBuilder.WithImage(Image);
 
-                if (builder.StorageIdentifier is not null)
-                {
-                    registrationBuilder.UseStorage(
-                        builder.StorageIdentifier,
-                        builder.StorageConnectionSettingName,
-                        builder.HostStorageSettingName,
-                        builder.StorageTableNameSettingName);
-                }
-
-                if (builder.CosmosIdentifier is not null)
-                {
-                    registrationBuilder.UseCosmos(
-                        builder.CosmosIdentifier,
-                        builder.CosmosConnectionSettingName,
-                        builder.CosmosDatabaseSettingName,
-                        builder.CosmosContainerSettingName);
-                }
-
-                if (builder.ServiceBusTriggerIdentifier is not null)
-                {
-                    registrationBuilder.UseServiceBusTrigger(
-                        builder.ServiceBusTriggerIdentifier,
-                        builder.ServiceBusTriggerConnectionSettingName,
-                        builder.ServiceBusTriggerEntitySettingName,
-                        builder.ServiceBusTriggerSubscriptionSettingName);
-                }
-
-                if (builder.ServiceBusReplyIdentifier is not null)
-                {
-                    registrationBuilder.UseServiceBusReply(
-                        builder.ServiceBusReplyIdentifier,
-                        builder.ServiceBusReplyConnectionSettingName,
-                        builder.ServiceBusReplyEntitySettingName);
-                }
-
                 foreach ((string key, string value) in builder.AdditionalSettings)
                     registrationBuilder.WithAppSetting(key, value);
             });
 
-        return new FunctionAppDefinitionDescriptor(registration, builder.ServiceBusTopologyPaths, builder.DependencyDefinitionTypes);
+        return new FunctionAppDefinitionDescriptor(registration, builder.ServiceBusTopologySources, builder.Dependencies, builder.ResourceBindings);
     }
 
     internal abstract Type FunctionType { get; }
@@ -136,85 +149,109 @@ public abstract class DockerFunctionAppDefinition<TFunctionApp> : DockerFunction
 
 public sealed class DockerAzureDependencyBuilder
 {
-    internal HashSet<Type> DefinitionTypes { get; } = [];
+    private readonly Dictionary<Type, ComponentDependency> _dependencies = [];
 
-    public DockerAzureDependencyBuilder Include<TDefinition>()
+    internal IReadOnlyCollection<ComponentDependency> Dependencies => _dependencies.Values;
+
+    public DockerAzureDependencyBuilder Include<TDefinition>(DependencyOwnership ownership = DependencyOwnership.Shared)
         where TDefinition : DockerAzureDefinition, new()
     {
-        DefinitionTypes.Add(typeof(TDefinition));
+        Type definitionType = typeof(TDefinition);
+        ComponentDependency dependency = new(definitionType, ownership);
+
+        if (_dependencies.TryGetValue(definitionType, out ComponentDependency? existing) && existing is not null && existing.Ownership != ownership)
+            throw new InvalidOperationException($"Dependency '{definitionType.FullName}' was configured with conflicting ownership values.");
+
+        _dependencies[definitionType] = dependency;
         return this;
     }
 }
 
 public sealed class DockerFunctionAppBuilder
 {
-    internal StorageAccountIdentifier? StorageIdentifier { get; private set; }
-    internal string StorageConnectionSettingName { get; private set; } = "StorageAccountConnectionString";
-    internal string HostStorageSettingName { get; private set; } = "AzureWebJobsStorage";
-    internal string? StorageTableNameSettingName { get; private set; }
-    internal CosmosContainerIdentifier? CosmosIdentifier { get; private set; }
-    internal string CosmosConnectionSettingName { get; private set; } = "CosmosDbConnectionString";
-    internal string CosmosDatabaseSettingName { get; private set; } = "CosmosDatabaseName";
-    internal string CosmosContainerSettingName { get; private set; } = "CosmosContainerName";
-    internal ServiceBusIdentifier? ServiceBusTriggerIdentifier { get; private set; }
-    internal string ServiceBusTriggerConnectionSettingName { get; private set; } = "ServiceBusTriggerConnection";
-    internal string ServiceBusTriggerEntitySettingName { get; private set; } = "ServiceBusTriggerTopicName";
-    internal string? ServiceBusTriggerSubscriptionSettingName { get; private set; } = "ServiceBusTriggerSubscriptionName";
-    internal ServiceBusIdentifier? ServiceBusReplyIdentifier { get; private set; }
-    internal string ServiceBusReplyConnectionSettingName { get; private set; } = "ServiceBusReplyConnectionString";
-    internal string ServiceBusReplyEntitySettingName { get; private set; } = "ServiceBusReplyTopicName";
-    internal Dictionary<string, string> AdditionalSettings { get; } = [];
-    internal HashSet<string> ServiceBusTopologyPaths { get; } = [];
-    internal HashSet<Type> DependencyDefinitionTypes { get; } = [];
+    private readonly Dictionary<Type, ComponentDependency> _dependencies = [];
 
-    public DockerFunctionAppBuilder UseStorage<TStorage>(string connectionSettingName = "StorageAccountConnectionString", string hostStorageSettingName = "AzureWebJobsStorage", string? tableNameSettingName = null)
+    internal Dictionary<string, string> AdditionalSettings { get; } = [];
+    internal List<ServiceBusTopologySource> ServiceBusTopologySources { get; } = [];
+    internal List<FunctionAppResourceBinding> ResourceBindings { get; } = [];
+    internal IReadOnlyCollection<ComponentDependency> Dependencies => _dependencies.Values;
+
+    /// <summary>
+    /// Binds a storage definition into the Function App container settings.
+    /// </summary>
+    /// <param name="connectionSettingName">Setting name for the storage connection string consumed by the app.</param>
+    /// <param name="hostStorageSettingName">Setting name for the Functions host storage connection string.</param>
+    /// <param name="tableNameSettingName">Setting name for the table name. Defaults to <c>StorageTableName</c>; set <see langword="null"/> to suppress table-name injection.</param>
+    /// <param name="ownership">Whether the dependency may be shared with other definitions.</param>
+    public DockerFunctionAppBuilder UseStorage<TStorage>(
+        string connectionSettingName = "StorageAccountConnectionString",
+        string hostStorageSettingName = "AzureWebJobsStorage",
+        string? tableNameSettingName = "StorageTableName",
+        DependencyOwnership ownership = DependencyOwnership.Shared)
         where TStorage : DockerStorageDefinition, new()
     {
         TStorage definition = new();
-        DependencyDefinitionTypes.Add(typeof(TStorage));
-        StorageIdentifier = definition.Identifier;
-        StorageConnectionSettingName = connectionSettingName;
-        HostStorageSettingName = hostStorageSettingName;
-        StorageTableNameSettingName = tableNameSettingName;
+        AddDependency(typeof(TStorage), ownership);
+        ReplaceResourceBinding(new FunctionAppResourceBinding(
+            FunctionAppResourceBindingKind.Storage,
+            definition.Identifier,
+            connectionSettingName,
+            hostStorageSettingName,
+            tableNameSettingName));
         return this;
     }
 
-    public DockerFunctionAppBuilder UseCosmos<TCosmos>(string connectionSettingName = "CosmosDbConnectionString", string databaseSettingName = "CosmosDatabaseName", string containerSettingName = "CosmosContainerName")
+    public DockerFunctionAppBuilder UseCosmos<TCosmos>(
+        string connectionSettingName = "CosmosDbConnectionString",
+        string databaseSettingName = "CosmosDatabaseName",
+        string containerSettingName = "CosmosContainerName",
+        DependencyOwnership ownership = DependencyOwnership.Shared)
         where TCosmos : DockerCosmosDefinition, new()
     {
         TCosmos definition = new();
-        DependencyDefinitionTypes.Add(typeof(TCosmos));
-        CosmosIdentifier = definition.Identifier;
-        CosmosConnectionSettingName = connectionSettingName;
-        CosmosDatabaseSettingName = databaseSettingName;
-        CosmosContainerSettingName = containerSettingName;
+        AddDependency(typeof(TCosmos), ownership);
+        ReplaceResourceBinding(new FunctionAppResourceBinding(
+            FunctionAppResourceBindingKind.Cosmos,
+            definition.Identifier,
+            connectionSettingName,
+            databaseSettingName,
+            containerSettingName));
         return this;
     }
 
-    public DockerFunctionAppBuilder UseServiceBusTrigger<TServiceBus>(string connectionSettingName = "ServiceBusTriggerConnection", string entitySettingName = "ServiceBusTriggerTopicName", string? subscriptionSettingName = "ServiceBusTriggerSubscriptionName")
+    public DockerFunctionAppBuilder UseServiceBusTrigger<TServiceBus>(
+        string connectionSettingName = "ServiceBusTriggerConnection",
+        string entitySettingName = "ServiceBusTriggerTopicName",
+        string? subscriptionSettingName = "ServiceBusTriggerSubscriptionName",
+        DependencyOwnership ownership = DependencyOwnership.Shared)
         where TServiceBus : DockerServiceBusDefinition, new()
     {
         TServiceBus definition = new();
-        DependencyDefinitionTypes.Add(typeof(TServiceBus));
-        ServiceBusTriggerIdentifier = definition.Identifier;
-        ServiceBusTriggerConnectionSettingName = connectionSettingName;
-        ServiceBusTriggerEntitySettingName = entitySettingName;
-        ServiceBusTriggerSubscriptionSettingName = subscriptionSettingName;
-        if (!string.Equals(definition.TopologyConfigPath, DockerAzureDefaults.ServiceBusTopologyConfigPath, StringComparison.OrdinalIgnoreCase))
-            ServiceBusTopologyPaths.Add(definition.TopologyConfigPath);
+        AddDependency(typeof(TServiceBus), ownership);
+        ReplaceResourceBinding(new FunctionAppResourceBinding(
+            FunctionAppResourceBindingKind.ServiceBusTrigger,
+            definition.Identifier,
+            connectionSettingName,
+            entitySettingName,
+            subscriptionSettingName));
+        AddServiceBusTopologySource(definition.GetTopologySource());
         return this;
     }
 
-    public DockerFunctionAppBuilder UseServiceBusReply<TServiceBus>(string connectionSettingName = "ServiceBusReplyConnectionString", string entitySettingName = "ServiceBusReplyTopicName")
+    public DockerFunctionAppBuilder UseServiceBusReply<TServiceBus>(
+        string connectionSettingName = "ServiceBusReplyConnectionString",
+        string entitySettingName = "ServiceBusReplyTopicName",
+        DependencyOwnership ownership = DependencyOwnership.Shared)
         where TServiceBus : DockerServiceBusDefinition, new()
     {
         TServiceBus definition = new();
-        DependencyDefinitionTypes.Add(typeof(TServiceBus));
-        ServiceBusReplyIdentifier = definition.Identifier;
-        ServiceBusReplyConnectionSettingName = connectionSettingName;
-        ServiceBusReplyEntitySettingName = entitySettingName;
-        if (!string.Equals(definition.TopologyConfigPath, DockerAzureDefaults.ServiceBusTopologyConfigPath, StringComparison.OrdinalIgnoreCase))
-            ServiceBusTopologyPaths.Add(definition.TopologyConfigPath);
+        AddDependency(typeof(TServiceBus), ownership);
+        ReplaceResourceBinding(new FunctionAppResourceBinding(
+            FunctionAppResourceBindingKind.ServiceBusReply,
+            definition.Identifier,
+            connectionSettingName,
+            entitySettingName));
+        AddServiceBusTopologySource(definition.GetTopologySource());
         return this;
     }
 
@@ -222,6 +259,33 @@ public sealed class DockerFunctionAppBuilder
     {
         AdditionalSettings[key] = value;
         return this;
+    }
+
+    private void AddDependency(Type dependencyType, DependencyOwnership ownership)
+    {
+        ComponentDependency dependency = new(dependencyType, ownership);
+
+        if (_dependencies.TryGetValue(dependencyType, out ComponentDependency? existing) && existing is not null && existing.Ownership != ownership)
+            throw new InvalidOperationException($"Dependency '{dependencyType.FullName}' was configured with conflicting ownership values.");
+
+        _dependencies[dependencyType] = dependency;
+    }
+
+    private void ReplaceResourceBinding(FunctionAppResourceBinding binding)
+    {
+        ResourceBindings.RemoveAll(existing => existing.Kind == binding.Kind);
+        ResourceBindings.Add(binding);
+    }
+
+    private void AddServiceBusTopologySource(ServiceBusTopologySource source)
+    {
+        if (source.IsPath && string.Equals(source.ConfigPath, DockerAzureDefaults.ServiceBusTopologyConfigPath, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        if (ServiceBusTopologySources.Any(existing => existing.SemanticallyEquals(source)))
+            return;
+
+        ServiceBusTopologySources.Add(source);
     }
 }
 
@@ -238,27 +302,40 @@ public static class DockerAzureDefaults
 
 internal sealed record FunctionAppDefinitionDescriptor(
     DockerFunctionAppRegistration Registration,
-    IReadOnlyCollection<string> ServiceBusTopologyPaths,
-    IReadOnlyCollection<Type> DependencyDefinitionTypes);
+    IReadOnlyCollection<ServiceBusTopologySource> ServiceBusTopologySources,
+    IReadOnlyCollection<ComponentDependency> Dependencies,
+    IReadOnlyCollection<FunctionAppResourceBinding> ResourceBindings);
+
+internal enum FunctionAppResourceBindingKind
+{
+    Storage,
+    Cosmos,
+    ServiceBusTrigger,
+    ServiceBusReply,
+}
+
+internal sealed record FunctionAppResourceBinding(
+    FunctionAppResourceBindingKind Kind,
+    string ResourceIdentifier,
+    string PrimarySettingName,
+    string? SecondarySettingName = null,
+    string? TertiarySettingName = null);
 
 internal sealed class DockerAzureDefinitionState
 {
     private readonly HashSet<Type> _definitionTypes = [];
+    private readonly Dictionary<Type, DockerAzureDefinitionMetadata> _definitionMetadata = [];
+    private readonly Dictionary<string, DockerAzureDefinitionMetadata> _definitionMetadataByIdentity = new(StringComparer.Ordinal);
+    private readonly Dictionary<FunctionAppIdentifier, FunctionAppDefinitionDescriptor> _functionAppDescriptors = [];
 
-    public HashSet<EnvComponentIdentifier> RequiredComponents { get; } = [];
-    public HashSet<FunctionAppIdentifier> RequiredFunctionAppIdentifiers { get; } = [];
-    public HashSet<ServiceBusIdentifier> RequiredServiceBusIdentifiers { get; } = [];
-    public HashSet<StorageAccountIdentifier> RequiredStorageIdentifiers { get; } = [];
-    public HashSet<CosmosContainerIdentifier> RequiredCosmosIdentifiers { get; } = [];
-    public HashSet<SqlDatabaseIdentifier> RequiredSqlIdentifiers { get; } = [];
     public List<DockerFunctionAppRegistration> FunctionApps { get; } = [];
-    public Dictionary<string, Type> CosmosModelTypes { get; } = new(StringComparer.Ordinal);
-    public string? ServiceBusTopologyConfigPath { get; private set; }
+    public ServiceBusTopologySource? ServiceBusTopologySource { get; private set; }
     public string? AzuriteImage { get; private set; }
     public string? CosmosDbImage { get; private set; }
     public string? MsSqlImage { get; private set; }
     public string? ServiceBusImage { get; private set; }
     public string? MsSqlPassword { get; private set; }
+    public IReadOnlyCollection<ComponentContractBinding> LastContractBindings { get; private set; } = [];
 
     public void AddDefinition(DockerAzureDefinition definition)
     {
@@ -266,8 +343,18 @@ internal sealed class DockerAzureDefinitionState
         if (!_definitionTypes.Add(definitionType))
             return;
 
-        foreach (Type dependencyType in definition.GetDependencyDefinitionTypes())
-            AddDependencyDefinition(dependencyType, definitionType);
+        DockerAzureDefinitionMetadata metadata = new(
+            definition,
+            definitionType,
+            ResolveRealizedIdentity(definition),
+            [.. definition.GetDependencies()],
+            [.. definition.GetProvidedContracts()],
+            [.. definition.GetRequiredContracts()]);
+        _definitionMetadata[definitionType] = metadata;
+        _definitionMetadataByIdentity[metadata.RealizedIdentity] = metadata;
+
+        foreach (ComponentDependency dependency in metadata.Dependencies)
+            AddDependencyDefinition(dependency.ComponentType, definitionType);
 
         switch (definition)
         {
@@ -277,33 +364,34 @@ internal sealed class DockerAzureDefinitionState
                 MsSqlImage = ResolveOverride(MsSqlImage, infrastructure.MsSqlImage, nameof(DockerAzureInfrastructureDefinition.MsSqlImage));
                 ServiceBusImage = ResolveOverride(ServiceBusImage, infrastructure.ServiceBusImage, nameof(DockerAzureInfrastructureDefinition.ServiceBusImage));
                 MsSqlPassword = ResolveOverride(MsSqlPassword, infrastructure.MsSqlPassword, nameof(DockerAzureInfrastructureDefinition.MsSqlPassword));
-                if (!string.IsNullOrWhiteSpace(infrastructure.ServiceBusTopologyConfigPath))
-                    SetServiceBusTopologyConfigPath(infrastructure.ServiceBusTopologyConfigPath);
+                if (infrastructure.GetServiceBusTopologySource() is ServiceBusTopologySource infrastructureTopologySource)
+                    SetServiceBusTopologySource(infrastructureTopologySource);
                 break;
-            case DockerStorageDefinition storage:
-                RequiredStorageIdentifiers.Add(storage.Identifier);
+            case DockerStorageDefinition:
                 break;
-            case DockerCosmosDefinition cosmos:
-                RequiredCosmosIdentifiers.Add(cosmos.Identifier);
-                if (cosmos.ModelType is not null)
-                    AddCosmosModelType(cosmos.Identifier, cosmos.ModelType);
+            case DockerCosmosDefinition:
                 break;
-            case DockerSqlDefinition sql:
-                RequiredSqlIdentifiers.Add(sql.Identifier);
+            case DockerSqlDefinition:
                 break;
             case DockerServiceBusDefinition serviceBus:
-                RequiredServiceBusIdentifiers.Add(serviceBus.Identifier);
-                if (!string.Equals(serviceBus.TopologyConfigPath, DockerAzureDefaults.ServiceBusTopologyConfigPath, StringComparison.OrdinalIgnoreCase))
-                    SetServiceBusTopologyConfigPath(serviceBus.TopologyConfigPath);
+                ServiceBusTopologySource serviceBusTopologySource = serviceBus.GetTopologySource();
+                if (!serviceBusTopologySource.IsPath || !string.Equals(serviceBusTopologySource.ConfigPath, DockerAzureDefaults.ServiceBusTopologyConfigPath, StringComparison.OrdinalIgnoreCase))
+                    SetServiceBusTopologySource(serviceBusTopologySource);
                 break;
             case DockerFunctionAppDefinition functionApp:
-                RequiredFunctionAppIdentifiers.Add(functionApp.Identifier);
                 FunctionAppDefinitionDescriptor descriptor = functionApp.CreateDescriptor();
-                foreach (Type dependencyType in descriptor.DependencyDefinitionTypes)
-                    AddDependencyDefinition(dependencyType, definitionType);
-                AddFunctionAppRegistration(descriptor.Registration);
-                foreach (string path in descriptor.ServiceBusTopologyPaths)
-                    SetServiceBusTopologyConfigPath(path);
+                DockerAzureDefinitionMetadata functionAppMetadata = _definitionMetadata[definitionType];
+                DockerAzureDefinitionMetadata mergedMetadata = functionAppMetadata with
+                {
+                    Dependencies = MergeDependencies(functionAppMetadata.Dependencies, descriptor.Dependencies)
+                };
+                _definitionMetadata[definitionType] = mergedMetadata;
+                _definitionMetadataByIdentity[mergedMetadata.RealizedIdentity] = mergedMetadata;
+                foreach (ComponentDependency dependency in descriptor.Dependencies)
+                    AddDependencyDefinition(dependency.ComponentType, definitionType);
+                AddFunctionAppDescriptor(functionApp.Identifier, descriptor);
+                foreach (ServiceBusTopologySource source in descriptor.ServiceBusTopologySources)
+                    SetServiceBusTopologySource(source);
                 break;
             default:
                 throw new InvalidOperationException($"Unsupported Docker Azure definition type '{definition.GetType().FullName}'.");
@@ -324,41 +412,95 @@ internal sealed class DockerAzureDefinitionState
         AddDefinition(dependencyDefinition);
     }
 
-    private void AddFunctionAppRegistration(DockerFunctionAppRegistration registration)
+    public IReadOnlyCollection<ComponentContractBinding> ValidateAndBindContracts(Func<IEnvironmentResourceContract, IEnvironmentResourceContract, bool> matcher)
     {
-        DockerFunctionAppRegistration? existing = FunctionApps.FirstOrDefault(x => string.Equals(x.Identifier, registration.Identifier, StringComparison.Ordinal));
-        if (existing is not null)
+        ComponentGraphNode[] nodes = [.. _definitionMetadata.Values.Select(CreateGraphNode)];
+        ComponentGraphValidator.Validate(nodes);
+        LastContractBindings = ContractBindingPass.Bind(nodes, matcher);
+        return LastContractBindings;
+    }
+
+    public IReadOnlyCollection<DockerAzureDefinitionMetadata> ExpandActivatedDefinitions(
+        IEnumerable<FunctionAppIdentifier> functionAppIdentifiers,
+        IEnumerable<StorageAccountIdentifier> storageIdentifiers,
+        IEnumerable<CosmosContainerIdentifier> cosmosIdentifiers,
+        IEnumerable<SqlDatabaseIdentifier> sqlIdentifiers,
+        IEnumerable<ServiceBusIdentifier> serviceBusIdentifiers,
+        IEnumerable<ComponentContractBinding> bindings)
+    {
+        Dictionary<string, List<ComponentContractBinding>> bindingsByConsumer = bindings
+            .GroupBy(x => x.ConsumerIdentity, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.Ordinal);
+
+        Queue<string> pending = new();
+        foreach (FunctionAppIdentifier identifier in functionAppIdentifiers)
+            EnqueueKnownIdentity(pending, $"functionapp:{identifier}");
+        foreach (StorageAccountIdentifier identifier in storageIdentifiers)
+            EnqueueKnownIdentity(pending, $"storage:{identifier}");
+        foreach (CosmosContainerIdentifier identifier in cosmosIdentifiers)
+            EnqueueKnownIdentity(pending, $"cosmos:{identifier}");
+        foreach (SqlDatabaseIdentifier identifier in sqlIdentifiers)
+            EnqueueKnownIdentity(pending, $"sql:{identifier}");
+        foreach (ServiceBusIdentifier identifier in serviceBusIdentifiers)
+            EnqueueKnownIdentity(pending, $"servicebus:{identifier}");
+
+        HashSet<string> visited = new(StringComparer.Ordinal);
+        List<DockerAzureDefinitionMetadata> activated = [];
+        while (pending.Count > 0)
         {
-            if (existing.FunctionType != registration.FunctionType)
-                throw new InvalidOperationException($"Docker Function App identifier '{registration.Identifier}' was configured for multiple function types.");
+            string identity = pending.Dequeue();
+            if (!visited.Add(identity) || !_definitionMetadataByIdentity.TryGetValue(identity, out DockerAzureDefinitionMetadata? metadata))
+                continue;
+
+            activated.Add(metadata);
+
+            foreach (ComponentGraphDependency dependency in CreateGraphNode(metadata).Dependencies)
+                EnqueueKnownIdentity(pending, dependency.RealizedComponentIdentity);
+
+            if (bindingsByConsumer.TryGetValue(identity, out List<ComponentContractBinding>? consumerBindings))
+            {
+                foreach (ComponentContractBinding binding in consumerBindings)
+                    EnqueueKnownIdentity(pending, binding.ProviderIdentity);
+            }
+        }
+
+        return activated;
+    }
+
+    public FunctionAppDefinitionDescriptor GetRequiredFunctionAppDescriptor(FunctionAppIdentifier identifier)
+    {
+        if (_functionAppDescriptors.TryGetValue(identifier, out FunctionAppDefinitionDescriptor? descriptor))
+            return descriptor;
+
+        throw new InvalidOperationException($"No Docker Function App registration was configured for identifier '{identifier}'.");
+    }
+
+    private void AddFunctionAppDescriptor(FunctionAppIdentifier identifier, FunctionAppDefinitionDescriptor descriptor)
+    {
+        if (_functionAppDescriptors.TryGetValue(identifier, out FunctionAppDefinitionDescriptor? existing))
+        {
+            if (existing.Registration.FunctionType != descriptor.Registration.FunctionType)
+                throw new InvalidOperationException($"Docker Function App identifier '{identifier}' was configured for multiple function types.");
 
             return;
         }
 
-        FunctionApps.Add(registration);
+        _functionAppDescriptors[identifier] = descriptor;
+        FunctionApps.Add(descriptor.Registration);
     }
 
-    private void AddCosmosModelType(CosmosContainerIdentifier identifier, Type modelType)
+    private void SetServiceBusTopologySource(ServiceBusTopologySource source)
     {
-        if (CosmosModelTypes.TryGetValue(identifier, out Type? existing) && existing != modelType)
-            throw new InvalidOperationException($"Cosmos identifier '{identifier}' was configured for multiple model types.");
+        ArgumentNullException.ThrowIfNull(source);
 
-        CosmosModelTypes[identifier] = modelType;
-    }
-
-    private void SetServiceBusTopologyConfigPath(string path)
-    {
-        if (string.IsNullOrWhiteSpace(path))
-            return;
-
-        if (ServiceBusTopologyConfigPath is null)
+        if (ServiceBusTopologySource is null)
         {
-            ServiceBusTopologyConfigPath = path;
+            ServiceBusTopologySource = source;
             return;
         }
 
-        if (!string.Equals(ServiceBusTopologyConfigPath, path, StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException($"Multiple Service Bus topology paths were configured: '{ServiceBusTopologyConfigPath}' and '{path}'.");
+        if (!ServiceBusTopologySource.SemanticallyEquals(source))
+            throw new InvalidOperationException($"Multiple Service Bus topology sources were configured: {ServiceBusTopologySource.Describe()} and {source.Describe()}.");
     }
 
     private static string? ResolveOverride(string? current, string? value, string propertyName)
@@ -374,4 +516,66 @@ internal sealed class DockerAzureDefinitionState
 
         return current;
     }
+
+    private ComponentGraphNode CreateGraphNode(DockerAzureDefinitionMetadata metadata)
+    {
+        ComponentGraphDependency[] dependencies = [.. metadata.Dependencies.Select(dependency =>
+            new ComponentGraphDependency(
+                dependency.ComponentType,
+                _definitionMetadata[dependency.ComponentType].RealizedIdentity,
+                dependency.Ownership))];
+
+        return new ComponentGraphNode(
+            metadata.DefinitionType,
+            metadata.RealizedIdentity,
+            dependencies,
+            metadata.Provides,
+            metadata.Requires);
+    }
+
+    private void EnqueueKnownIdentity(Queue<string> pending, string identity)
+    {
+        if (_definitionMetadataByIdentity.ContainsKey(identity))
+            pending.Enqueue(identity);
+    }
+
+    private static IReadOnlyCollection<ComponentDependency> MergeDependencies(
+        IEnumerable<ComponentDependency> left,
+        IEnumerable<ComponentDependency> right)
+    {
+        Dictionary<Type, ComponentDependency> merged = new();
+        foreach (ComponentDependency dependency in left.Concat(right))
+        {
+            if (merged.TryGetValue(dependency.ComponentType, out ComponentDependency? existing) && existing is not null && existing.Ownership != dependency.Ownership)
+            {
+                throw new InvalidOperationException($"Dependency '{dependency.ComponentType.FullName}' was configured with conflicting ownership values.");
+            }
+
+            merged[dependency.ComponentType] = dependency;
+        }
+
+        return merged.Values.ToArray();
+    }
+
+    private static string ResolveRealizedIdentity(DockerAzureDefinition definition)
+    {
+        return definition switch
+        {
+            DockerStorageDefinition storage => $"storage:{storage.Identifier}",
+            DockerCosmosDefinition cosmos => $"cosmos:{cosmos.Identifier}",
+            DockerSqlDefinition sql => $"sql:{sql.Identifier}",
+            DockerServiceBusDefinition serviceBus => $"servicebus:{serviceBus.Identifier}",
+            DockerFunctionAppDefinition functionApp => $"functionapp:{functionApp.Identifier}",
+            DockerAzureInfrastructureDefinition infrastructure => $"infrastructure:{infrastructure.GetType().FullName}",
+            _ => $"definition:{definition.GetType().FullName}"
+        };
+    }
 }
+
+internal sealed record DockerAzureDefinitionMetadata(
+    DockerAzureDefinition Definition,
+    Type DefinitionType,
+    string RealizedIdentity,
+    IReadOnlyCollection<ComponentDependency> Dependencies,
+    IReadOnlyCollection<IEnvironmentResourceContract> Provides,
+    IReadOnlyCollection<IEnvironmentResourceContract> Requires);
