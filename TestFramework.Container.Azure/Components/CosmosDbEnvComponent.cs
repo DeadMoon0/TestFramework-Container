@@ -13,7 +13,7 @@ using TestFramework.Core.Variables;
 
 namespace TestFramework.Container.Azure.Components;
 
-internal sealed class CosmosDbEnvComponent : EnvComponent
+internal sealed class CosmosDbEnvComponent : DockerAzureEnvComponent
 {
     private static readonly string DebugLogPath = Path.Combine(AppContext.BaseDirectory, "cosmos-env-debug.log");
 
@@ -23,7 +23,7 @@ internal sealed class CosmosDbEnvComponent : EnvComponent
 
     public override async Task<object?> CreateAsync(IEnvironmentProvider environment, IServiceProvider serviceProvider, VariableStore variableStore, ArtifactStore artifactStore, ScopedLogger logger, CancellationToken cancellationToken)
     {
-        DockerAzureEnvironment dockerEnvironment = (DockerAzureEnvironment)environment;
+        DockerAzureEnvironment dockerEnvironment = GetDockerEnvironment(environment);
         ConfigStore<CosmosContainerDbConfig>? configStore = EnvComponentConfigStoreGuard.GetRequiredStore<CosmosContainerDbConfig>(serviceProvider, dockerEnvironment.UsedCosmosIdentifiers, "Cosmos environment setup");
         INetwork network = dockerEnvironment.GetRequiredRuntimeState<INetwork>(DockerAzureEnvironment.NetworkComponentId);
         string cosmosImage = dockerEnvironment.GetCosmosDbImage();

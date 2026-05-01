@@ -11,7 +11,7 @@ using TestFramework.Core.Variables;
 
 namespace TestFramework.Container.Azure.Components;
 
-internal sealed class MsSqlEnvComponent : EnvComponent
+internal sealed class MsSqlEnvComponent : DockerAzureEnvComponent
 {
     public override EnvComponentIdentifier Id => DockerAzureEnvironment.MsSqlComponentId;
 
@@ -19,7 +19,7 @@ internal sealed class MsSqlEnvComponent : EnvComponent
 
     public override async Task<object?> CreateAsync(IEnvironmentProvider environment, IServiceProvider serviceProvider, VariableStore variableStore, ArtifactStore artifactStore, ScopedLogger logger, CancellationToken cancellationToken)
     {
-        DockerAzureEnvironment dockerEnvironment = (DockerAzureEnvironment)environment;
+        DockerAzureEnvironment dockerEnvironment = GetDockerEnvironment(environment);
         ConfigStore<SqlDatabaseConfig>? configStore = EnvComponentConfigStoreGuard.GetRequiredStore<SqlDatabaseConfig>(serviceProvider, dockerEnvironment.UsedSqlIdentifiers, "SQL environment setup");
         INetwork network = dockerEnvironment.GetRequiredRuntimeState<INetwork>(DockerAzureEnvironment.NetworkComponentId);
         MsSqlBuilder builder = new MsSqlBuilder(dockerEnvironment.GetMsSqlImage())

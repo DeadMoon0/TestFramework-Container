@@ -13,7 +13,7 @@ using TestFramework.Core.Variables;
 
 namespace TestFramework.Container.Azure.Components;
 
-internal sealed class FunctionAppEnvComponent : EnvComponent
+internal sealed class FunctionAppEnvComponent : DockerAzureEnvComponent
 {
     private const string FunctionAppRoot = "/home/site/wwwroot";
 
@@ -30,7 +30,7 @@ internal sealed class FunctionAppEnvComponent : EnvComponent
 
     public override async Task<object?> CreateAsync(IEnvironmentProvider environment, IServiceProvider serviceProvider, VariableStore variableStore, ArtifactStore artifactStore, ScopedLogger logger, CancellationToken cancellationToken)
     {
-        DockerAzureEnvironment dockerEnvironment = (DockerAzureEnvironment)environment;
+        DockerAzureEnvironment dockerEnvironment = GetDockerEnvironment(environment);
         if (dockerEnvironment.UsedFunctionAppIdentifiers.Count == 0)
             return Array.Empty<IContainer>();
 
