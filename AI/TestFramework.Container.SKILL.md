@@ -8,11 +8,11 @@
 </objective>
 
 <package_scope>
-    Covers DockerAzureEnvironment, DockerAzureEnvironmentOptions, Docker-backed Azurite, Cosmos emulator, SQL Server, Service Bus emulator, environment component resolution, connection-string rewriting, and smoke-test usage patterns.
+    Covers DockerAzureEnvironment, DockerAzureDefinition-based composition, Docker-backed Azurite, Cosmos emulator, SQL Server, Service Bus emulator, environment component resolution, connection-string rewriting, and smoke-test usage patterns.
 </package_scope>
 
 <key_concepts>
-    TestFramework.Container does not replace the Core timeline model. It plugs into the run through SetEnv(new DockerAzureEnvironment(...)).
+    TestFramework.Container does not replace the Core timeline model. It plugs into the run through SetEnv(...) with DockerAzureEnvironment.
     The environment is created in pre-setup before the main timeline steps run.
     The package keeps the normal identifier-driven Azure config contract. Users still register ConfigStore entries such as storage, cosmos, sql, or bus.
     The environment starts local Docker infrastructure only for the Azure resources actually required by the timeline artifacts and environment requirements.
@@ -25,7 +25,7 @@
     Keep the timeline explicit and readable. Let SetEnv(...) be the one visible signal that the run is container-backed.
     Still register typed config stores up front. The environment mutates those stores at runtime; it does not invent identifiers for you.
     Prefer logical defaults in the test code and let DockerAzureEnvironment replace the connection strings with mapped ports.
-    Use Required*Identifiers in DockerAzureEnvironmentOptions only when the timeline itself does not expose the dependency strongly enough.
+    Prefer DockerAzureDefinition classes plus DockerAzureEnvironment.For<TComponent>() and .Include<TComponent>() for new code.
     For Cosmos emulator clients that run through a mapped Docker port, prefer Gateway mode and certificate bypass in test-only code, and pin the client to the configured endpoint when the SDK would otherwise follow the emulator's advertised internal endpoint.
     Keep Service Bus topology configuration explicit through ServiceBusTopologyConfigPath instead of burying it in helper code.
     Prefer one project-level helper that wires config stores and DockerAzureEnvironment consistently.
@@ -34,16 +34,15 @@
 
 <api_hints>
     Important APIs and shapes from the package:
-    - new DockerAzureEnvironment()
-    - new DockerAzureEnvironment(new DockerAzureEnvironmentOptions { ... })
+    - DockerAzureEnvironment.For<TComponent>()
+    - environment.Include<TComponent>()
     - runBuilder.SetEnv(environment)
-    - DockerAzureEnvironmentOptions.RequiredStorageIdentifiers
-    - DockerAzureEnvironmentOptions.RequiredCosmosIdentifiers
-    - DockerAzureEnvironmentOptions.RequiredSqlIdentifiers
-    - DockerAzureEnvironmentOptions.RequiredServiceBusIdentifiers
-    - DockerAzureEnvironmentOptions.RequiredComponents
-    - DockerAzureEnvironmentOptions.ServiceBusTopologyConfigPath
-
+    - DockerAzureDefinition
+    - DockerAzureInfrastructureDefinition
+    - DockerStorageDefinition
+    - DockerCosmosDefinition<T>
+    - DockerServiceBusDefinition
+    - DockerFunctionAppDefinition<T>
     Component identifiers surfaced by the environment:
     - DockerAzureEnvironment.AzuriteComponentId
     - DockerAzureEnvironment.CosmosDbComponentId
@@ -64,13 +63,13 @@
     - MsSqlEnvComponent starts SQL Server, waits for a successful query, then rewrites the SQL config store.
     - ServiceBusEnvComponent depends on the Docker network and SQL Server, loads the topology config file, starts the Service Bus emulator, validates namespace availability, then rewrites the Service Bus config store.
     - Environment component runtime state is kept in the environment context and deconstructed in cleanup.
-    - used Function App registrations contribute dependent storage, cosmos, and service-bus identifiers early enough that emulator setup can happen before startup
+    - Function App definitions contribute dependency edges and runtime bindings into the validated component graph early enough that emulator setup can happen before startup
 </runtime_behavior>
 
 <validation_guidance>
     Validation posture the agent should preserve:
     - normal unit coverage is expected on every change
-    - Docker-backed smoke coverage should stay explicit and opt-in, typically through TESTFRAMEWORK_CONTAINER_SMOKE=1
+    - Docker-backed smoke coverage should stay part of the normal Container.Azure test project unless the repo explicitly reintroduces opt-in gating
     - when the user asks for Function App hosting confidence, prefer the real smoke path over a purely mocked substitute
 
     Documentation is thinner than the runtime sophistication.
@@ -91,7 +90,7 @@
     When the user uses DockerAzureEnvironment, they must:
     - have Docker running and reachable from Testcontainers
     - register the normal Azure identifiers and typed config stores the timeline refers to
-    - call SetEnv(new DockerAzureEnvironment(...)) on the run builder
+    - call SetEnv(...) with DockerAzureEnvironment on the run builder
     - provide a valid Service Bus topology config path when Service Bus is involved
     - define Cosmos models with id and partitionKey semantics, by property name or JSON-mapped name
 
@@ -106,7 +105,7 @@
     Adapting this package to a project:
     - keep one shared helper that registers the Azure config stores and applies DockerAzureEnvironment when the project wants container-backed execution
     - do not scatter DockerAzureEnvironment construction across many tests when one project-level helper can centralize the policy
-    - if a project needs different emulator images or extra required identifiers, express that through DockerAzureEnvironmentOptions
+    - if a project needs different emulator images or shared topology/image overrides, prefer a DockerAzureInfrastructureDefinition added with `.Include<TInfrastructure>()`
     - if the project mixes container-backed and non-container runs, keep the difference explicit at the SetupRun(...).SetEnv(...) call site
 </project_adaptation>
 
@@ -116,7 +115,7 @@
     Prefer one shared service-provider builder that registers the typed config stores and Cosmos client options for emulator usage.
     Keep assertions focused on run results and environment presence, not on ad-hoc Docker plumbing.
     For smoke tests, gate expensive end-to-end container runs behind an explicit environment variable rather than making the whole suite require Docker.
-    Keep `SetupRun(...).SetEnv(new DockerAzureEnvironment(...)).RunAsync()` examples compact unless an option object is the real point of the sample.
+    Keep `SetupRun(...).SetEnv(DockerAzureEnvironment.For<...>()).RunAsync()` examples compact unless component-owned placeholder config is the real point of the sample.
 </style_guide>
 
 <sample_patterns>
@@ -124,21 +123,17 @@
     - register ConfigStore<StorageAccountConfig>, ConfigStore<CosmosContainerDbConfig>, ConfigStore<SqlDatabaseConfig>, or ConfigStore<ServiceBusConfig>
     - configure any required Cosmos client options for emulator TLS/gateway behavior
     - build the timeline
-    - call timeline.SetupRun(serviceProvider).SetEnv(new DockerAzureEnvironment()).RunAsync()
+    - define named DockerAzureDefinition classes for the concrete components you need
+    - let one root component declare its dependent component types
+    - call timeline.SetupRun(serviceProvider).SetEnv(DockerAzureEnvironment.For<TRootComponent>()).RunAsync()
     - assert on run completion, environment components, and relevant artifacts
-
-    Forced-resource pattern:
-    - create DockerAzureEnvironmentOptions with RequiredCosmosIdentifiers, RequiredServiceBusIdentifiers, or RequiredComponents
-    - pass the options into new DockerAzureEnvironment(options)
-    - use this when the timeline dependency is indirect and artifact scanning alone would not force the needed component
 
     Service Bus emulator pattern:
     - register ServiceBusConfig entries as normal named configs
-    - provide ServiceBusTopologyConfigPath in DockerAzureEnvironmentOptions
+    - prefer a DockerServiceBusDefinition or DockerAzureInfrastructureDefinition for topology-path ownership
     - let the environment start SQL + Service Bus emulator and rewrite the connection strings
 
     Smoke-test pattern:
-    - gate with an environment variable such as TESTFRAMEWORK_CONTAINER_SMOKE=1
     - keep the smoke test readable and end-to-end
     - assert that the expected environment components were created in EnvironmentContext
 
@@ -164,7 +159,6 @@
 <important_type_map>
     Common type map for discovery and error interpretation:
     - DockerAzureEnvironment: the environment provider that decides which Docker-backed resources to create
-    - DockerAzureEnvironmentOptions: image names, passwords, topology path, and forced identifier sets
     - AzuriteEnvComponent: Docker-backed blob/table storage emulator component
     - CosmosDbEnvComponent: Docker-backed Cosmos emulator component with gateway wait and schema deployment
     - MsSqlEnvComponent: Docker-backed SQL Server component
@@ -189,7 +183,6 @@
 <grounding_files>
     Most important files for expert grounding:
     - TestFramework-Container/TestFramework.Container/AzureDocker/DockerAzureEnvironment.cs
-    - TestFramework-Container/TestFramework.Container/AzureDocker/DockerAzureEnvironmentOptions.cs
     - TestFramework-Container/TestFramework.Container/AzureDocker/Components/AzuriteEnvComponent.cs
     - TestFramework-Container/TestFramework.Container/AzureDocker/Components/CosmosDbEnvComponent.cs
     - TestFramework-Container/TestFramework.Container/AzureDocker/Components/MsSqlEnvComponent.cs

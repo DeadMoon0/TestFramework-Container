@@ -8,9 +8,12 @@ using TestFramework.Azure.Configuration;
 using TestFramework.Azure.Configuration.SpecificConfigs;
 using TestFramework.Azure.DB.SqlServer;
 using TestFramework.Azure.Extensions;
+using TestFramework.Azure.Identifier;
 using TestFramework.Azure.StorageAccount.Blob;
 using TestFramework.Azure.StorageAccount.Table;
 using TestFramework.Container.Azure;
+using TestFramework.Container.Azure.FunctionApp;
+using TestFramework.Container.Azure.ServiceBusFunctionApp;
 using TestFramework.Core.Steps.Options;
 using TestFramework.Core.Timelines;
 using TestFramework.Core.Timelines.Builder.TimelineBuilder;
@@ -26,6 +29,75 @@ public class DockerAzureEnvironmentSmokeTests
 {
     private const string SmokeTableName = "smoketable";
 
+    private sealed class ReadmeCosmosDefinition : DockerCosmosDefinition<SmokeTableEntity>
+    {
+        public override CosmosContainerIdentifier Identifier => "cosmos";
+    }
+
+    private sealed class SmokeStorageDefinition : DockerStorageDefinition
+    {
+        public override StorageAccountIdentifier Identifier => "storage";
+    }
+
+    private sealed class SmokeCosmosDefinition : DockerCosmosDefinition<SmokeTableEntity>
+    {
+        public override CosmosContainerIdentifier Identifier => "cosmos";
+    }
+
+    private sealed class SmokeServiceBusDefinition : DockerServiceBusDefinition
+    {
+        public override ServiceBusIdentifier Identifier => "bus";
+    }
+
+    private sealed class SmokeFunctionTriggerBusDefinition : DockerServiceBusDefinition
+    {
+        public override ServiceBusIdentifier Identifier => "func-trigger-bus";
+
+        protected override void ConfigureServiceBusTopology(DockerServiceBusTopologyBuilder builder)
+            => ConfigureDedicatedFunctionAppServiceBusTopology(builder);
+    }
+
+    private sealed class SmokeFunctionReplyBusDefinition : DockerServiceBusDefinition
+    {
+        public override ServiceBusIdentifier Identifier => "func-reply-bus";
+
+        protected override void ConfigureServiceBusTopology(DockerServiceBusTopologyBuilder builder)
+            => ConfigureDedicatedFunctionAppServiceBusTopology(builder);
+    }
+
+    private sealed class SmokeFunctionAppDefinition : DockerFunctionAppDefinition<LocalFunctionAppSmokeFunction>
+    {
+        public override FunctionAppIdentifier Identifier => "func";
+
+        protected override void Configure(DockerFunctionAppBuilder builder)
+        {
+            builder
+                .UseStorage<SmokeStorageDefinition>(tableNameSettingName: "StorageTableName")
+                .UseCosmos<SmokeCosmosDefinition>()
+                .UseServiceBusReply<SmokeServiceBusDefinition>();
+        }
+    }
+
+    private sealed class SmokeServiceBusFunctionAppDefinition : DockerFunctionAppDefinition<LocalServiceBusFunctionAppSmokeFunction>
+    {
+        public override FunctionAppIdentifier Identifier => "func-sb";
+
+        protected override void Configure(DockerFunctionAppBuilder builder)
+        {
+            builder
+                .UseStorage<SmokeStorageDefinition>()
+                .UseServiceBusTrigger<SmokeFunctionTriggerBusDefinition>()
+                .UseServiceBusReply<SmokeFunctionReplyBusDefinition>();
+        }
+    }
+
+    private static void ConfigureDedicatedFunctionAppServiceBusTopology(DockerServiceBusTopologyBuilder builder)
+    {
+        builder.AddNamespace("sbemulatorns", ns => ns
+            .AddTopic("smoke-trigger-topic", topic => topic.AddSubscription("smoke-trigger-subscription"))
+            .AddTopic("smoke-reply-topic", topic => topic.AddSubscription("smoke-reply-default")));
+    }
+
     [Fact]
     [Trait("Category", "DockerSmoke")]
     public async Task PackageReadme_GoldenSample_RunsAgainstContainerBackedCosmos_WhenSmokeEnabled()
@@ -37,7 +109,7 @@ public class DockerAzureEnvironmentSmokeTests
 
         TimelineRun run = await timeline
             .SetupRun(serviceProvider)
-            .SetEnv(new DockerAzureEnvironment())
+            .SetEnv(DockerAzureEnvironment.For<ReadmeCosmosDefinition>())
             .RunAsync();
 
         run.EnsureRanToCompletion();
@@ -139,16 +211,7 @@ public class DockerAzureEnvironmentSmokeTests
     public async Task Timeline_CanInvokeDockerHostedFunctionAppHttpEndpoint_WithoutExternalDependencies()
     {
         using ServiceProvider serviceProvider = CreateAzureServiceProvider(withFunctionApp: true);
-        DockerAzureEnvironment environment = new(new DockerAzureEnvironmentOptions
-        {
-            FunctionApps =
-            [
-                DockerFunctionAppRegistration.Create<LocalFunctionAppSmokeFunction>("func", builder => builder
-                    .UseStorage("storage", tableNameSettingName: "StorageTableName")
-                    .UseCosmos("cosmos")
-                    .UseServiceBusReply("bus"))
-            ],
-        });
+        DockerAzureEnvironment environment = DockerAzureEnvironment.For<SmokeFunctionAppDefinition>();
 
         Timeline timeline = Timeline.Create()
             .Trigger(
@@ -174,6 +237,36 @@ public class DockerAzureEnvironmentSmokeTests
         Assert.True(run.EnvironmentContext.Contains(DockerAzureEnvironment.FunctionAppComponentId));
     }
 
+    [Fact]
+    [Trait("Category", "DockerSmoke")]
+    public async Task Timeline_CanInvokeDockerHostedFunctionAppServiceBusTrigger_WithDedicatedServiceBusHost()
+    {
+        const string correlationId = "smoke-servicebus-correlation";
+
+        using ServiceProvider serviceProvider = CreateAzureServiceProvider();
+        DockerAzureEnvironment environment = DockerAzureEnvironment.For<SmokeServiceBusFunctionAppDefinition>();
+
+        Timeline timeline = Timeline.Create()
+            .Trigger(AzureTF.Trigger.IsLive.FunctionApp("func-sb", AlivenessLevel.Reachable)).WithTimeOut(TimeSpan.FromMinutes(1)).Name("func-sb-reachable")
+            .Trigger(AzureTF.Trigger.ServiceBus.Send("func-trigger-bus", Var.Const(new ServiceBusMessage(correlationId) { CorrelationId = correlationId })))
+            .WaitForEvent(AzureTF.Event.ServiceBus.MessageReceived("func-reply-bus", correlationId: Var.Const(correlationId), completeMessage: Var.Const(true))).WithTimeOut(TimeSpan.FromMinutes(1)).Name("reply-received")
+            .Build();
+
+        TimelineRun run = await timeline
+            .SetupRun(serviceProvider)
+            .SetEnv(environment)
+            .RunAsync();
+
+        run.EnsureRanToCompletion();
+
+        ServiceBusReceivedMessage message = Assert.IsType<ServiceBusReceivedMessage>(run.Step("reply-received").LastResult.Result);
+        Assert.Equal(correlationId, message.CorrelationId);
+        Assert.Equal("servicebus-smoke-processed", message.Subject);
+        Assert.Equal($"processed:{correlationId}", message.Body.ToString());
+        Assert.True(run.EnvironmentContext.Contains(DockerAzureEnvironment.FunctionAppComponentId));
+        Assert.True(run.EnvironmentContext.Contains(DockerAzureEnvironment.ServiceBusComponentId));
+    }
+
     private static ServiceProvider CreateAzureServiceProvider(bool withFunctionApp = false)
     {
         ServiceCollection services = new();
@@ -196,23 +289,48 @@ public class DockerAzureEnvironmentSmokeTests
             ConnectionString = "Server=localhost;Database=master;User Id=sa;Password=Your_password123;TrustServerCertificate=True",
             DatabaseName = "master",
         }));
-        services.AddSingleton(ConfigStore<ServiceBusConfig>.Create("bus", new ServiceBusConfig
+        ConfigStore<ServiceBusConfig> serviceBusStore = ConfigStore<ServiceBusConfig>.Create("bus", new ServiceBusConfig
         {
             ConnectionString = "Endpoint=sb://localhost/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=local",
             QueueName = "default-queue",
             TopicName = null,
             SubscriptionName = null,
             RequiredSession = false,
-        }));
+        });
+        serviceBusStore.AddConfig("func-trigger-bus", new ServiceBusConfig
+        {
+            ConnectionString = "Endpoint=sb://localhost/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=local",
+            QueueName = null,
+            TopicName = "smoke-trigger-topic",
+            SubscriptionName = "smoke-trigger-subscription",
+            RequiredSession = false,
+        });
+        serviceBusStore.AddConfig("func-reply-bus", new ServiceBusConfig
+        {
+            ConnectionString = "Endpoint=sb://localhost/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=local",
+            QueueName = null,
+            TopicName = "smoke-reply-topic",
+            SubscriptionName = "smoke-reply-default",
+            RequiredSession = false,
+        });
+        services.AddSingleton(serviceBusStore);
+
+        ConfigStore<FunctionAppConfig> functionAppStore = ConfigStore<FunctionAppConfig>.Create("func-sb", new FunctionAppConfig
+        {
+            BaseUrl = "http://localhost/",
+            Code = "local-test-key",
+        });
 
         if (withFunctionApp)
         {
-            services.AddSingleton(ConfigStore<FunctionAppConfig>.Create("func", new FunctionAppConfig
+            functionAppStore.AddConfig("func", new FunctionAppConfig
             {
                 BaseUrl = "http://localhost/",
                 Code = "local-test-key",
-            }));
+            });
         }
+
+        services.AddSingleton(functionAppStore);
 
         services.ConfigureCosmosClientOptions(_ => new CosmosClientOptions
         {

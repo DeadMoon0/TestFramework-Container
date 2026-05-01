@@ -23,12 +23,12 @@ internal sealed class ServiceBusEnvComponent : EnvComponent
         ConfigStore<ServiceBusConfig>? configStore = EnvComponentConfigStoreGuard.GetRequiredStore<ServiceBusConfig>(serviceProvider, dockerEnvironment.UsedServiceBusIdentifiers, "Service Bus environment setup");
         INetwork network = dockerEnvironment.GetRequiredRuntimeState<INetwork>(DockerAzureEnvironment.NetworkComponentId);
         MsSqlContainer msSqlContainer = dockerEnvironment.GetRequiredRuntimeState<MsSqlContainer>(DockerAzureEnvironment.MsSqlComponentId);
-        string configPath = ServiceBusConfigLocator.Resolve(dockerEnvironment.Options.ServiceBusTopologyConfigPath);
+        MaterializedServiceBusTopology materializedTopology = ServiceBusTopologyMaterializer.Materialize(dockerEnvironment.GetServiceBusTopologySource());
 
-        ServiceBusContainer container = new ServiceBusBuilder(dockerEnvironment.Options.ServiceBusImage)
+        ServiceBusContainer container = new ServiceBusBuilder(dockerEnvironment.GetServiceBusImage())
             .WithAcceptLicenseAgreement(true)
-            .WithMsSqlContainer(network, msSqlContainer, ServiceBusBuilder.DatabaseNetworkAlias, dockerEnvironment.Options.MsSqlPassword)
-            .WithConfig(configPath)
+            .WithMsSqlContainer(network, msSqlContainer, ServiceBusBuilder.DatabaseNetworkAlias, dockerEnvironment.GetMsSqlPassword())
+            .WithConfig(materializedTopology.ConfigPath)
             .WithNetworkAliases(DockerAzureEnvironment.ServiceBusNetworkAlias)
             .Build();
 
@@ -49,8 +49,9 @@ internal sealed class ServiceBusEnvComponent : EnvComponent
             }
         }
 
-        dockerEnvironment.SetRuntimeState(Id, container);
-        return container;
+        ServiceBusRuntimeState runtimeState = new(container, materializedTopology.IsTemporary ? materializedTopology.ConfigPath : null);
+        dockerEnvironment.SetRuntimeState(Id, runtimeState);
+        return runtimeState;
     }
 
     public override async Task DeconstructAsync(object? state, IEnvironmentProvider environment, IServiceProvider serviceProvider, VariableStore variableStore, ArtifactStore artifactStore, ScopedLogger logger, CancellationToken cancellationToken)

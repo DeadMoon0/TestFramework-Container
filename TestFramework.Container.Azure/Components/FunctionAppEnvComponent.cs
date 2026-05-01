@@ -40,11 +40,11 @@ internal sealed class FunctionAppEnvComponent : EnvComponent
 
         foreach (string identifier in dockerEnvironment.UsedFunctionAppIdentifiers)
         {
-            DockerFunctionAppRegistration registration = dockerEnvironment.Options.FunctionApps.FirstOrDefault(x => string.Equals(x.Identifier, identifier, StringComparison.Ordinal))
-                ?? throw new InvalidOperationException($"No Docker Function App registration was configured for identifier '{identifier}'.");
+            FunctionAppDefinitionDescriptor descriptor = dockerEnvironment.GetRequiredFunctionAppDescriptor(identifier);
+            DockerFunctionAppRegistration registration = descriptor.Registration;
 
             FunctionAppLocation location = ResolveFunctionAppLocation(registration.FunctionType);
-            Dictionary<string, string> appSettings = BuildAppSettings(dockerEnvironment, serviceProvider, registration);
+            Dictionary<string, string> appSettings = BuildAppSettings(serviceProvider, descriptor, logger);
             appSettings["AzureFunctionsJobHost__Logging__Console__IsEnabled"] = "true";
             appSettings["AzureWebJobsScriptRoot"] = FunctionAppRoot;
             appSettings["FUNCTIONS_WORKER_RUNTIME"] = "dotnet-isolated";
@@ -82,8 +82,31 @@ internal sealed class FunctionAppEnvComponent : EnvComponent
         {
             foreach (IContainer container in containers)
             {
+                await LogContainerOutputAsync(container, logger, cancellationToken).ConfigureAwait(false);
                 await container.DisposeAsync().ConfigureAwait(false);
             }
+        }
+    }
+
+    private static async Task LogContainerOutputAsync(IContainer container, ScopedLogger logger, CancellationToken cancellationToken)
+    {
+        try
+        {
+            (string stdout, string stderr) = await container.GetLogsAsync(
+                since: DateTime.UnixEpoch,
+                until: DateTime.UtcNow,
+                timestampsEnabled: false,
+                ct: cancellationToken).ConfigureAwait(false);
+
+            if (!string.IsNullOrWhiteSpace(stdout))
+                logger.LogInformation($"Function App container stdout ({container.Id}):{Environment.NewLine}{stdout}");
+
+            if (!string.IsNullOrWhiteSpace(stderr))
+                logger.LogWarning($"Function App container stderr ({container.Id}):{Environment.NewLine}{stderr}");
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning($"Failed to capture Function App container logs ({container.Id}): {exception.GetType().Name}: {exception.Message}");
         }
     }
 
@@ -118,100 +141,59 @@ internal sealed class FunctionAppEnvComponent : EnvComponent
         throw new DirectoryNotFoundException($"Could not locate the project directory for Function App assembly '{assemblyName}'.");
     }
 
-    private static Dictionary<string, string> BuildAppSettings(DockerAzureEnvironment environment, IServiceProvider serviceProvider, DockerFunctionAppRegistration registration)
+    private static Dictionary<string, string> BuildAppSettings(IServiceProvider serviceProvider, FunctionAppDefinitionDescriptor descriptor, ScopedLogger? logger = null)
     {
+        DockerFunctionAppRegistration registration = descriptor.Registration;
         Dictionary<string, string> settings = new(StringComparer.OrdinalIgnoreCase)
         { ["AzureWebJobsFeatureFlags"] = "EnableWorkerIndexing" };
 
         foreach ((string key, string value) in registration.AdditionalSettings)
             settings[key] = value;
 
-        if (registration.StorageIdentifier is not null)
+        foreach (FunctionAppResourceBinding binding in descriptor.ResourceBindings)
         {
-            StorageAccountConfig storage = serviceProvider.GetRequiredService<ConfigStore<StorageAccountConfig>>().GetConfig(registration.StorageIdentifier);
-            string rewritten = RewriteStorageConnectionString(storage.ConnectionString);
-            if (registration.StorageConnectionSettingName is not null)
-                settings[registration.StorageConnectionSettingName] = rewritten;
-            if (registration.HostStorageSettingName is not null)
-                settings[registration.HostStorageSettingName] = rewritten;
-            if (registration.StorageTableNameSettingName is not null)
-                settings[registration.StorageTableNameSettingName] = storage.TableContainerNameRequired;
-        }
-
-        if (registration.CosmosIdentifier is not null)
-        {
-            CosmosContainerDbConfig cosmos = serviceProvider.GetRequiredService<ConfigStore<CosmosContainerDbConfig>>().GetConfig(registration.CosmosIdentifier);
-            settings[registration.CosmosConnectionSettingName ?? "CosmosDbConnectionString"] = RewriteCosmosConnectionString(cosmos.ConnectionString);
-            if (registration.CosmosDatabaseSettingName is not null)
-                settings[registration.CosmosDatabaseSettingName] = cosmos.DatabaseName;
-            if (registration.CosmosContainerSettingName is not null)
-                settings[registration.CosmosContainerSettingName] = cosmos.ContainerName;
-        }
-
-        if (registration.ServiceBusTriggerIdentifier is not null)
-        {
-            ServiceBusConfig serviceBus = serviceProvider.GetRequiredService<ConfigStore<ServiceBusConfig>>().GetConfig(registration.ServiceBusTriggerIdentifier);
-            settings[registration.ServiceBusTriggerConnectionSettingName ?? "ServiceBusTriggerConnection"] = RewriteServiceBusConnectionString(serviceBus.ConnectionString);
-            if (registration.ServiceBusTriggerEntitySettingName is not null)
-                settings[registration.ServiceBusTriggerEntitySettingName] = serviceBus.TopicName ?? serviceBus.QueueName ?? throw new InvalidOperationException($"Service Bus identifier '{registration.ServiceBusTriggerIdentifier}' does not define a queue or topic name.");
-            if (registration.ServiceBusTriggerSubscriptionSettingName is not null && serviceBus.SubscriptionName is not null)
-                settings[registration.ServiceBusTriggerSubscriptionSettingName] = serviceBus.SubscriptionName;
-        }
-
-        if (registration.ServiceBusReplyIdentifier is not null)
-        {
-            ServiceBusConfig serviceBus = serviceProvider.GetRequiredService<ConfigStore<ServiceBusConfig>>().GetConfig(registration.ServiceBusReplyIdentifier);
-            settings[registration.ServiceBusReplyConnectionSettingName ?? "ServiceBusReplyConnectionString"] = RewriteServiceBusConnectionString(serviceBus.ConnectionString);
-            if (registration.ServiceBusReplyEntitySettingName is not null)
-                settings[registration.ServiceBusReplyEntitySettingName] = serviceBus.TopicName ?? serviceBus.QueueName ?? throw new InvalidOperationException($"Service Bus identifier '{registration.ServiceBusReplyIdentifier}' does not define a queue or topic name.");
+            switch (binding.Kind)
+            {
+                case FunctionAppResourceBindingKind.Storage:
+                    StorageAccountConfig storage = serviceProvider.GetRequiredService<ConfigStore<StorageAccountConfig>>().GetConfig(binding.ResourceIdentifier);
+                    string rewrittenStorage = DockerConnectionStringRewriter.RewriteStorageForContainer(storage.ConnectionString);
+                    settings[binding.PrimarySettingName] = rewrittenStorage;
+                    if (binding.SecondarySettingName is not null)
+                        settings[binding.SecondarySettingName] = rewrittenStorage;
+                    if (binding.TertiarySettingName is not null)
+                    {
+                        if (!string.IsNullOrWhiteSpace(storage.TableContainerName))
+                            settings[binding.TertiarySettingName] = storage.TableContainerName;
+                        else
+                            logger?.LogWarning($"Storage identifier '{binding.ResourceIdentifier}' does not define TableContainerName, so Function App setting '{binding.TertiarySettingName}' was not populated.");
+                    }
+                    break;
+                case FunctionAppResourceBindingKind.Cosmos:
+                    CosmosContainerDbConfig cosmos = serviceProvider.GetRequiredService<ConfigStore<CosmosContainerDbConfig>>().GetConfig(binding.ResourceIdentifier);
+                    settings[binding.PrimarySettingName] = DockerConnectionStringRewriter.RewriteCosmosForContainer(cosmos.ConnectionString);
+                    if (binding.SecondarySettingName is not null)
+                        settings[binding.SecondarySettingName] = cosmos.DatabaseName;
+                    if (binding.TertiarySettingName is not null)
+                        settings[binding.TertiarySettingName] = cosmos.ContainerName;
+                    break;
+                case FunctionAppResourceBindingKind.ServiceBusTrigger:
+                    ServiceBusConfig triggerBus = serviceProvider.GetRequiredService<ConfigStore<ServiceBusConfig>>().GetConfig(binding.ResourceIdentifier);
+                    settings[binding.PrimarySettingName] = DockerConnectionStringRewriter.RewriteServiceBusForSameNetworkContainer(triggerBus.ConnectionString);
+                    if (binding.SecondarySettingName is not null)
+                        settings[binding.SecondarySettingName] = triggerBus.TopicName ?? triggerBus.QueueName ?? throw new InvalidOperationException($"Service Bus identifier '{binding.ResourceIdentifier}' does not define a queue or topic name.");
+                    if (binding.TertiarySettingName is not null && triggerBus.SubscriptionName is not null)
+                        settings[binding.TertiarySettingName] = triggerBus.SubscriptionName;
+                    break;
+                case FunctionAppResourceBindingKind.ServiceBusReply:
+                    ServiceBusConfig replyBus = serviceProvider.GetRequiredService<ConfigStore<ServiceBusConfig>>().GetConfig(binding.ResourceIdentifier);
+                    settings[binding.PrimarySettingName] = DockerConnectionStringRewriter.RewriteServiceBusForSameNetworkContainer(replyBus.ConnectionString);
+                    if (binding.SecondarySettingName is not null)
+                        settings[binding.SecondarySettingName] = replyBus.TopicName ?? replyBus.QueueName ?? throw new InvalidOperationException($"Service Bus identifier '{binding.ResourceIdentifier}' does not define a queue or topic name.");
+                    break;
+            }
         }
 
         return settings;
-    }
-
-    private static string RewriteStorageConnectionString(string connectionString)
-    {
-        DbConnectionStringBuilder builder = CreateBuilder(connectionString);
-        builder["BlobEndpoint"] = RewriteEndpoint((string)builder["BlobEndpoint"], DockerAzureEnvironment.AzuriteNetworkAlias, 10000);
-        builder["QueueEndpoint"] = RewriteEndpoint((string)builder["QueueEndpoint"], DockerAzureEnvironment.AzuriteNetworkAlias, 10001);
-        builder["TableEndpoint"] = RewriteEndpoint((string)builder["TableEndpoint"], DockerAzureEnvironment.AzuriteNetworkAlias, 10002);
-        return builder.ConnectionString;
-    }
-
-    private static string RewriteCosmosConnectionString(string connectionString)
-    {
-        DbConnectionStringBuilder builder = CreateBuilder(connectionString);
-        builder["AccountEndpoint"] = RewriteEndpoint((string)builder["AccountEndpoint"], DockerAzureEnvironment.CosmosDbNetworkAlias, 8081);
-        return builder.ConnectionString;
-    }
-
-    private static string RewriteServiceBusConnectionString(string connectionString)
-    {
-        DbConnectionStringBuilder builder = CreateBuilder(connectionString);
-        builder["Endpoint"] = RewriteEndpoint((string)builder["Endpoint"], DockerAzureEnvironment.ServiceBusNetworkAlias, null);
-        return builder.ConnectionString;
-    }
-
-    private static DbConnectionStringBuilder CreateBuilder(string connectionString)
-    {
-        DbConnectionStringBuilder builder = new()
-        {
-            ConnectionString = connectionString,
-        };
-        return builder;
-    }
-
-    private static string RewriteEndpoint(string endpoint, string host, int? port)
-    {
-        UriBuilder uriBuilder = new(endpoint)
-        {
-            Host = host,
-        };
-
-        if (port.HasValue)
-            uriBuilder.Port = port.Value;
-
-        return uriBuilder.Uri.ToString();
     }
 
     private static async Task WaitForHttpReadyAsync(string baseUrl, CancellationToken cancellationToken)
@@ -228,6 +210,10 @@ internal sealed class FunctionAppEnvComponent : EnvComponent
                 using HttpResponseMessage response = await client.GetAsync(string.Empty, cancellationToken).ConfigureAwait(false);
                 if ((int)response.StatusCode >= 100)
                     return;
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
             }
             catch
             {
