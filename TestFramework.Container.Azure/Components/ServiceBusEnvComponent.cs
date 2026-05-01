@@ -11,7 +11,7 @@ using TestFramework.Core.Variables;
 
 namespace TestFramework.Container.Azure.Components;
 
-internal sealed class ServiceBusEnvComponent : EnvComponent
+internal sealed class ServiceBusEnvComponent : DockerAzureEnvComponent
 {
     public override EnvComponentIdentifier Id => DockerAzureEnvironment.ServiceBusComponentId;
 
@@ -19,7 +19,7 @@ internal sealed class ServiceBusEnvComponent : EnvComponent
 
     public override async Task<object?> CreateAsync(IEnvironmentProvider environment, IServiceProvider serviceProvider, VariableStore variableStore, ArtifactStore artifactStore, ScopedLogger logger, CancellationToken cancellationToken)
     {
-        DockerAzureEnvironment dockerEnvironment = (DockerAzureEnvironment)environment;
+        DockerAzureEnvironment dockerEnvironment = GetDockerEnvironment(environment);
         ConfigStore<ServiceBusConfig>? configStore = EnvComponentConfigStoreGuard.GetRequiredStore<ServiceBusConfig>(serviceProvider, dockerEnvironment.UsedServiceBusIdentifiers, "Service Bus environment setup");
         INetwork network = dockerEnvironment.GetRequiredRuntimeState<INetwork>(DockerAzureEnvironment.NetworkComponentId);
         MsSqlContainer msSqlContainer = dockerEnvironment.GetRequiredRuntimeState<MsSqlContainer>(DockerAzureEnvironment.MsSqlComponentId);

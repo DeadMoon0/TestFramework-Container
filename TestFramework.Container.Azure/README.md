@@ -31,6 +31,22 @@ The timeline itself still looks like a normal TestFramework timeline. The enviro
 - Service Bus scenarios need a valid topology file path
 - Cosmos scenarios often need emulator-specific client options such as certificate bypass
 
+The packaged file `example.local.testsettings.json` shows the expected placeholder shape for `StorageAccount`, `CosmosDb`, `ServiceBus`, and `SqlDatabase` sections. Those values are logical placeholders that `DockerAzureEnvironment` rewrites to mapped Docker endpoints during the run.
+
+## Migrate An Existing Azure Timeline
+
+If you already have a timeline that runs against real Azure, the migration path is intentionally small:
+
+1. Keep the timeline itself unchanged.
+2. Keep the same Azure identifier names in your config stores.
+3. Register placeholder config values for those identifiers.
+4. Add emulator-specific client options where required, especially Cosmos certificate bypass.
+5. Switch the run builder to `SetEnv(DockerAzureEnvironment.For<TRootDefinition>())`.
+
+In the normal case, the only runtime change is the `SetEnv(...)` call plus the definition class that describes the emulator-backed component graph.
+
+Cosmos is the main exception worth calling out explicitly: the emulator uses a development certificate, so tests usually need a `CosmosClientOptions` override with `DangerousAcceptAnyServerCertificateValidator`.
+
 ## Golden Sample
 
 ```csharp
@@ -228,6 +244,35 @@ public sealed class ReplyConsumerFunctionApp : DockerFunctionAppDefinition<Reply
 ```
 
 Contract binding happens before runtime startup, so ambiguous or missing providers fail during resolution instead of later during container startup.
+
+## Service Bus Topology Files
+
+Service Bus emulator runs need a topology file. The packaged default example lives at `Configurations/ServiceBus/config.json` and looks like this:
+
+```json
+{
+	"UserConfig": {
+		"Namespaces": [
+			{
+				"Name": "sbemulatorns",
+				"Queues": [
+					{ "Name": "default-queue" }
+				],
+				"Topics": [
+					{
+						"Name": "default-topic",
+						"Subscriptions": [
+							{ "Name": "default-subscription" }
+						]
+					}
+				]
+			}
+		]
+	}
+}
+```
+
+Point your definition at a topology file when you need specific queue, topic, or subscription names. If the topology is missing or invalid, the Service Bus component fails during environment startup before the main timeline steps run.
 
 ## Typical Pattern
 
