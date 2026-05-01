@@ -10,7 +10,7 @@ using TestFramework.Core.Variables;
 
 namespace TestFramework.Container.Azure.Components;
 
-internal sealed class AzuriteEnvComponent : EnvComponent
+internal sealed class AzuriteEnvComponent : DockerAzureEnvComponent
 {
     public override EnvComponentIdentifier Id => DockerAzureEnvironment.AzuriteComponentId;
 
@@ -18,7 +18,7 @@ internal sealed class AzuriteEnvComponent : EnvComponent
 
     public override async Task<object?> CreateAsync(IEnvironmentProvider environment, IServiceProvider serviceProvider, VariableStore variableStore, ArtifactStore artifactStore, ScopedLogger logger, CancellationToken cancellationToken)
     {
-        DockerAzureEnvironment dockerEnvironment = (DockerAzureEnvironment)environment;
+        DockerAzureEnvironment dockerEnvironment = GetDockerEnvironment(environment);
         ConfigStore<StorageAccountConfig>? configStore = EnvComponentConfigStoreGuard.GetRequiredStore<StorageAccountConfig>(serviceProvider, dockerEnvironment.UsedStorageIdentifiers, "Azurite environment setup");
         INetwork network = dockerEnvironment.GetRequiredRuntimeState<INetwork>(DockerAzureEnvironment.NetworkComponentId);
         IContainer container = new ContainerBuilder(dockerEnvironment.GetAzuriteImage())
