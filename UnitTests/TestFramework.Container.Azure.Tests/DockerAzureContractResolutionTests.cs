@@ -1,6 +1,6 @@
-using TestFramework.Azure.Contracts;
 using TestFramework.Azure.Identifier;
 using TestFramework.Container.Azure;
+using TestFramework.Container.Azure.Contracts;
 using TestFramework.Core.Environment;
 using TestFramework.Core.Steps;
 

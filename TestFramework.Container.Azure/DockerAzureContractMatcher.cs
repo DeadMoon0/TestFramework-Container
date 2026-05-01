@@ -1,4 +1,4 @@
-using TestFramework.Azure.Contracts;
+using TestFramework.Container.Azure.Contracts;
 using TestFramework.Core.Environment;
 
 namespace TestFramework.Container.Azure;
