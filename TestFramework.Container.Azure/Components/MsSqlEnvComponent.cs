@@ -22,8 +22,8 @@ internal sealed class MsSqlEnvComponent : EnvComponent
         DockerAzureEnvironment dockerEnvironment = (DockerAzureEnvironment)environment;
         ConfigStore<SqlDatabaseConfig>? configStore = EnvComponentConfigStoreGuard.GetRequiredStore<SqlDatabaseConfig>(serviceProvider, dockerEnvironment.UsedSqlIdentifiers, "SQL environment setup");
         INetwork network = dockerEnvironment.GetRequiredRuntimeState<INetwork>(DockerAzureEnvironment.NetworkComponentId);
-        MsSqlBuilder builder = new MsSqlBuilder(dockerEnvironment.Options.MsSqlImage)
-            .WithPassword(dockerEnvironment.Options.MsSqlPassword)
+        MsSqlBuilder builder = new MsSqlBuilder(dockerEnvironment.GetMsSqlImage())
+            .WithPassword(dockerEnvironment.GetMsSqlPassword())
             .WithNetwork(network)
             .WithNetworkAliases(ServiceBusBuilder.DatabaseNetworkAlias);
 

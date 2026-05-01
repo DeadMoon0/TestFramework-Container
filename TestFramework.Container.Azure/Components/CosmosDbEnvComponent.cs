@@ -26,14 +26,15 @@ internal sealed class CosmosDbEnvComponent : EnvComponent
         DockerAzureEnvironment dockerEnvironment = (DockerAzureEnvironment)environment;
         ConfigStore<CosmosContainerDbConfig>? configStore = EnvComponentConfigStoreGuard.GetRequiredStore<CosmosContainerDbConfig>(serviceProvider, dockerEnvironment.UsedCosmosIdentifiers, "Cosmos environment setup");
         INetwork network = dockerEnvironment.GetRequiredRuntimeState<INetwork>(DockerAzureEnvironment.NetworkComponentId);
-        ContainerBuilder builder = new ContainerBuilder(dockerEnvironment.Options.CosmosDbImage)
+        string cosmosImage = dockerEnvironment.GetCosmosDbImage();
+        ContainerBuilder builder = new ContainerBuilder(cosmosImage)
             .WithNetwork(network)
             .WithNetworkAliases(DockerAzureEnvironment.CosmosDbNetworkAlias)
             .WithPortBinding(8080, true)
             .WithPortBinding(8081, true)
             .WithPortBinding(1234, true);
 
-        if (dockerEnvironment.Options.CosmosDbImage.Contains("vnext-preview", StringComparison.OrdinalIgnoreCase))
+        if (cosmosImage.Contains("vnext-preview", StringComparison.OrdinalIgnoreCase))
             builder = builder.WithCommand("--protocol", "https");
 
         IContainer container = builder.Build();

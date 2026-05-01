@@ -23,8 +23,7 @@ public class DockerAzureEnvironment : EnvironmentProviderBase
     public const string ServiceBusNetworkAlias = "servicebus-emulator";
 
     private readonly Dictionary<EnvComponentIdentifier, object?> _runtimeStates = [];
-
-    public DockerAzureEnvironmentOptions Options { get; }
+    private readonly DockerAzureDefinitionState _definitionState = new();
     public HashSet<string> UsedStorageIdentifiers { get; } = [];
     public HashSet<string> UsedCosmosIdentifiers { get; } = [];
     public HashSet<string> UsedSqlIdentifiers { get; } = [];
@@ -32,10 +31,8 @@ public class DockerAzureEnvironment : EnvironmentProviderBase
     public HashSet<string> UsedFunctionAppIdentifiers { get; } = [];
     internal Dictionary<string, string> CosmosPartitionKeyPaths { get; } = [];
 
-    public DockerAzureEnvironment(DockerAzureEnvironmentOptions? options = null)
+    public DockerAzureEnvironment()
     {
-        Options = options ?? new DockerAzureEnvironmentOptions();
-
         AddComponent(new Components.DockerNetworkEnvComponent());
         AddComponent(new Components.FunctionAppEnvComponent());
         AddComponent(new Components.MsSqlEnvComponent());
@@ -55,6 +52,24 @@ public class DockerAzureEnvironment : EnvironmentProviderBase
         MapArtifact(typeof(SqlRowArtifactDescriber<>), MsSqlComponentId);
     }
 
+    public DockerAzureEnvironment Include<TDefinition>()
+        where TDefinition : DockerAzureDefinition, new()
+    {
+        return Include(new TDefinition());
+    }
+
+    public DockerAzureEnvironment Include(DockerAzureDefinition definition)
+    {
+        _definitionState.AddDefinition(definition);
+        return this;
+    }
+
+    public static DockerAzureEnvironment For<TDefinition>()
+        where TDefinition : DockerAzureDefinition, new()
+    {
+        return new DockerAzureEnvironment().Include<TDefinition>();
+    }
+
     public override IReadOnlyCollection<EnvComponentIdentifier> ResolveComponents(IEnumerable<ArtifactInstanceGeneric> artifacts, IEnumerable<EnvironmentRequirement> requirements)
     {
         UsedStorageIdentifiers.Clear();
@@ -64,22 +79,27 @@ public class DockerAzureEnvironment : EnvironmentProviderBase
         UsedFunctionAppIdentifiers.Clear();
         CosmosPartitionKeyPaths.Clear();
 
-        foreach (FunctionAppIdentifier identifier in Options.RequiredFunctionAppIdentifiers)
-            UsedFunctionAppIdentifiers.Add(identifier);
-        foreach (StorageAccountIdentifier identifier in Options.RequiredStorageIdentifiers)
-            UsedStorageIdentifiers.Add(identifier);
-        foreach (CosmosContainerIdentifier identifier in Options.RequiredCosmosIdentifiers)
-            UsedCosmosIdentifiers.Add(identifier);
-        foreach (SqlDatabaseIdentifier identifier in Options.RequiredSqlIdentifiers)
-            UsedSqlIdentifiers.Add(identifier);
-        foreach (ServiceBusIdentifier identifier in Options.RequiredServiceBusIdentifiers)
-            UsedServiceBusIdentifiers.Add(identifier);
-
         foreach (ArtifactInstanceGeneric artifact in artifacts)
             CaptureIdentifiers(artifact.Reference);
 
-        HashSet<EnvComponentIdentifier> resolved = [.. base.ResolveComponents(artifacts, requirements), .. Options.RequiredComponents];
-        CaptureFunctionAppDependencies();
+        IReadOnlyCollection<ComponentContractBinding> contractBindings = _definitionState.ValidateAndBindContracts(DockerAzureContractMatcher.IsMatch);
+        HashSet<EnvComponentIdentifier> resolved = [.. base.ResolveComponents(artifacts, requirements)];
+        CaptureActivatedDefinitionUsage(_definitionState.ExpandActivatedDefinitions(
+            UsedFunctionAppIdentifiers.Select(x => new FunctionAppIdentifier(x)),
+            UsedStorageIdentifiers.Select(x => new StorageAccountIdentifier(x)),
+            UsedCosmosIdentifiers.Select(x => new CosmosContainerIdentifier(x)),
+            UsedSqlIdentifiers.Select(x => new SqlDatabaseIdentifier(x)),
+            UsedServiceBusIdentifiers.Select(x => new ServiceBusIdentifier(x)),
+            contractBindings));
+
+        if (UsedFunctionAppIdentifiers.Count > 0)
+            resolved.Add(FunctionAppComponentId);
+        if (UsedStorageIdentifiers.Count > 0)
+            resolved.Add(AzuriteComponentId);
+        if (UsedCosmosIdentifiers.Count > 0)
+            resolved.Add(CosmosDbComponentId);
+        if (UsedSqlIdentifiers.Count > 0)
+            resolved.Add(MsSqlComponentId);
         if (UsedServiceBusIdentifiers.Count > 0)
             resolved.Add(ServiceBusComponentId);
 
@@ -99,6 +119,57 @@ public class DockerAzureEnvironment : EnvironmentProviderBase
             return typedState;
 
         throw new InvalidOperationException($"The runtime state for environment component '{identifier}' is not available.");
+    }
+
+    internal IReadOnlyCollection<DockerFunctionAppRegistration> GetFunctionAppRegistrations()
+    {
+        return [.. _definitionState.FunctionApps];
+    }
+
+    internal FunctionAppDefinitionDescriptor GetRequiredFunctionAppDescriptor(FunctionAppIdentifier identifier)
+    {
+        return _definitionState.GetRequiredFunctionAppDescriptor(identifier);
+    }
+
+    internal IReadOnlyCollection<ComponentContractBinding> GetContractBindings()
+    {
+        return _definitionState.LastContractBindings;
+    }
+
+    internal ServiceBusTopologySource GetServiceBusTopologySource()
+    {
+        return _definitionState.ServiceBusTopologySource ?? ServiceBusTopologySource.FromPath(DockerAzureDefaults.ServiceBusTopologyConfigPath);
+    }
+
+    internal string GetServiceBusTopologyConfigPath()
+    {
+        ServiceBusTopologySource source = GetServiceBusTopologySource();
+        return source.ConfigPath ?? throw new InvalidOperationException("The active Service Bus topology was configured fluently and does not have a backing file path.");
+    }
+
+    internal string GetAzuriteImage()
+    {
+        return _definitionState.AzuriteImage ?? DockerAzureDefaults.AzuriteImage;
+    }
+
+    internal string GetCosmosDbImage()
+    {
+        return _definitionState.CosmosDbImage ?? DockerAzureDefaults.CosmosDbImage;
+    }
+
+    internal string GetMsSqlImage()
+    {
+        return _definitionState.MsSqlImage ?? DockerAzureDefaults.MsSqlImage;
+    }
+
+    internal string GetServiceBusImage()
+    {
+        return _definitionState.ServiceBusImage ?? DockerAzureDefaults.ServiceBusImage;
+    }
+
+    internal string GetMsSqlPassword()
+    {
+        return _definitionState.MsSqlPassword ?? DockerAzureDefaults.MsSqlPassword;
     }
 
     private void CaptureIdentifiers(ArtifactReferenceGeneric reference)
@@ -130,33 +201,36 @@ public class DockerAzureEnvironment : EnvironmentProviderBase
         if (UsedFunctionAppIdentifiers.Count == 0)
             return;
 
-        HashSet<string> configuredIdentifiers = [.. Options.FunctionApps.Select(x => x.Identifier)];
+        HashSet<string> configuredIdentifiers = [.. GetFunctionAppRegistrations().Select(x => x.Identifier)];
         string[] missingIdentifiers = [.. UsedFunctionAppIdentifiers.Where(identifier => !configuredIdentifiers.Contains(identifier)).OrderBy(identifier => identifier, StringComparer.Ordinal)];
         if (missingIdentifiers.Length > 0)
             throw new InvalidOperationException($"No Docker Function App registration was configured for: {string.Join(", ", missingIdentifiers)}.");
     }
 
-    private void CaptureFunctionAppDependencies()
+    private void CaptureActivatedDefinitionUsage(IEnumerable<DockerAzureDefinitionMetadata> definitions)
     {
-        if (UsedFunctionAppIdentifiers.Count == 0)
-            return;
-
-        foreach (string identifier in UsedFunctionAppIdentifiers)
+        foreach (DockerAzureDefinitionMetadata metadata in definitions)
         {
-            DockerFunctionAppRegistration registration = Options.FunctionApps.FirstOrDefault(x => string.Equals(x.Identifier, identifier, StringComparison.Ordinal))
-                ?? throw new InvalidOperationException($"No Docker Function App registration was configured for identifier '{identifier}'.");
-
-            if (registration.StorageIdentifier is not null)
-                UsedStorageIdentifiers.Add(registration.StorageIdentifier);
-
-            if (registration.CosmosIdentifier is not null)
-                UsedCosmosIdentifiers.Add(registration.CosmosIdentifier);
-
-            if (registration.ServiceBusTriggerIdentifier is not null)
-                UsedServiceBusIdentifiers.Add(registration.ServiceBusTriggerIdentifier);
-
-            if (registration.ServiceBusReplyIdentifier is not null)
-                UsedServiceBusIdentifiers.Add(registration.ServiceBusReplyIdentifier);
+            switch (metadata.Definition)
+            {
+                case DockerStorageDefinition storage:
+                    UsedStorageIdentifiers.Add(storage.Identifier);
+                    break;
+                case DockerCosmosDefinition cosmos:
+                    UsedCosmosIdentifiers.Add(cosmos.Identifier);
+                    if (cosmos.ModelType is not null)
+                        RegisterCosmosSchema(cosmos.Identifier, cosmos.ModelType);
+                    break;
+                case DockerSqlDefinition sql:
+                    UsedSqlIdentifiers.Add(sql.Identifier);
+                    break;
+                case DockerServiceBusDefinition serviceBus:
+                    UsedServiceBusIdentifiers.Add(serviceBus.Identifier);
+                    break;
+                case DockerFunctionAppDefinition functionApp:
+                    UsedFunctionAppIdentifiers.Add(functionApp.Identifier);
+                    break;
+            }
         }
     }
 

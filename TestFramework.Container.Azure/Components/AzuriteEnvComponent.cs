@@ -21,7 +21,7 @@ internal sealed class AzuriteEnvComponent : EnvComponent
         DockerAzureEnvironment dockerEnvironment = (DockerAzureEnvironment)environment;
         ConfigStore<StorageAccountConfig>? configStore = EnvComponentConfigStoreGuard.GetRequiredStore<StorageAccountConfig>(serviceProvider, dockerEnvironment.UsedStorageIdentifiers, "Azurite environment setup");
         INetwork network = dockerEnvironment.GetRequiredRuntimeState<INetwork>(DockerAzureEnvironment.NetworkComponentId);
-        IContainer container = new ContainerBuilder(dockerEnvironment.Options.AzuriteImage)
+        IContainer container = new ContainerBuilder(dockerEnvironment.GetAzuriteImage())
             .WithNetwork(network)
             .WithNetworkAliases(DockerAzureEnvironment.AzuriteNetworkAlias)
             .WithPortBinding(10000, true)
