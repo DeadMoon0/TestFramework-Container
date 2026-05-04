@@ -332,13 +332,7 @@ public class DockerAzureEnvironmentSmokeTests
 
         services.AddSingleton(functionAppStore);
 
-        services.ConfigureCosmosClientOptions(_ => new CosmosClientOptions
-        {
-            HttpClientFactory = () => new HttpClient(new HttpClientHandler
-            {
-                ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator,
-            }),
-        });
+        services.ConfigureDockerAzureCosmosEmulator();
 
         services.AddDbContext<SmokeSqlDbContext>((serviceProvider, options) =>
         {

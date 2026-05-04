@@ -34,8 +34,9 @@ internal sealed class FunctionAppEnvComponent : DockerAzureEnvComponent
         if (dockerEnvironment.UsedFunctionAppIdentifiers.Count == 0)
             return Array.Empty<IContainer>();
 
-        ConfigStore<FunctionAppConfig>? functionStore = EnvComponentConfigStoreGuard.GetRequiredStore<FunctionAppConfig>(serviceProvider, dockerEnvironment.UsedFunctionAppIdentifiers, "Function App environment setup");
+        ConfigStore<FunctionAppConfig>? functionStore = EnvComponentConfigStoreGuard.GetRequiredStore<FunctionAppConfig>(dockerEnvironment, serviceProvider, dockerEnvironment.UsedFunctionAppIdentifiers, "Function App environment setup");
         INetwork network = dockerEnvironment.GetRequiredRuntimeState<INetwork>(DockerAzureEnvironment.NetworkComponentId);
+        DockerEndpointMap endpointMap = dockerEnvironment.GetEndpointMap();
         List<IContainer> containers = [];
 
         foreach (string identifier in dockerEnvironment.UsedFunctionAppIdentifiers)
@@ -44,7 +45,7 @@ internal sealed class FunctionAppEnvComponent : DockerAzureEnvComponent
             DockerFunctionAppRegistration registration = descriptor.Registration;
 
             FunctionAppLocation location = ResolveFunctionAppLocation(registration.FunctionType);
-            Dictionary<string, string> appSettings = BuildAppSettings(serviceProvider, descriptor, logger);
+            Dictionary<string, string> appSettings = BuildAppSettings(dockerEnvironment, serviceProvider, descriptor, logger);
             appSettings["AzureFunctionsJobHost__Logging__Console__IsEnabled"] = "true";
             appSettings["AzureWebJobsScriptRoot"] = FunctionAppRoot;
             appSettings["FUNCTIONS_WORKER_RUNTIME"] = "dotnet-isolated";
@@ -64,7 +65,7 @@ internal sealed class FunctionAppEnvComponent : DockerAzureEnvComponent
 
             await container.StartAsync(cancellationToken).ConfigureAwait(false);
 
-            string baseUrl = $"http://{container.Hostname}:{container.GetMappedPublicPort(80)}/";
+            string baseUrl = endpointMap.GetFunctionAppBaseUrl(container);
             await WaitForHttpReadyAsync(baseUrl, cancellationToken).ConfigureAwait(false);
 
             FunctionAppConfig current = functionStore!.GetConfig(identifier);
@@ -141,7 +142,7 @@ internal sealed class FunctionAppEnvComponent : DockerAzureEnvComponent
         throw new DirectoryNotFoundException($"Could not locate the project directory for Function App assembly '{assemblyName}'.");
     }
 
-    private static Dictionary<string, string> BuildAppSettings(IServiceProvider serviceProvider, FunctionAppDefinitionDescriptor descriptor, ScopedLogger? logger = null)
+    private static Dictionary<string, string> BuildAppSettings(DockerAzureEnvironment dockerEnvironment, IServiceProvider serviceProvider, FunctionAppDefinitionDescriptor descriptor, ScopedLogger? logger = null)
     {
         DockerFunctionAppRegistration registration = descriptor.Registration;
         Dictionary<string, string> settings = new(StringComparer.OrdinalIgnoreCase)
@@ -155,8 +156,8 @@ internal sealed class FunctionAppEnvComponent : DockerAzureEnvComponent
             switch (binding.Kind)
             {
                 case FunctionAppResourceBindingKind.Storage:
-                    StorageAccountConfig storage = serviceProvider.GetRequiredService<ConfigStore<StorageAccountConfig>>().GetConfig(binding.ResourceIdentifier);
-                    string rewrittenStorage = DockerConnectionStringRewriter.RewriteStorageForContainer(storage.ConnectionString);
+                    StorageAccountConfig storage = dockerEnvironment.GetOrCreateConfigStore<StorageAccountConfig>(serviceProvider, [binding.ResourceIdentifier], "Function App environment setup")!.GetConfig(binding.ResourceIdentifier);
+                    string rewrittenStorage = dockerEnvironment.GetEndpointMap().RewriteStorageForContainer(storage.ConnectionString);
                     settings[binding.PrimarySettingName] = rewrittenStorage;
                     if (binding.SecondarySettingName is not null)
                         settings[binding.SecondarySettingName] = rewrittenStorage;
@@ -169,24 +170,24 @@ internal sealed class FunctionAppEnvComponent : DockerAzureEnvComponent
                     }
                     break;
                 case FunctionAppResourceBindingKind.Cosmos:
-                    CosmosContainerDbConfig cosmos = serviceProvider.GetRequiredService<ConfigStore<CosmosContainerDbConfig>>().GetConfig(binding.ResourceIdentifier);
-                    settings[binding.PrimarySettingName] = DockerConnectionStringRewriter.RewriteCosmosForContainer(cosmos.ConnectionString);
+                    CosmosContainerDbConfig cosmos = dockerEnvironment.GetOrCreateConfigStore<CosmosContainerDbConfig>(serviceProvider, [binding.ResourceIdentifier], "Function App environment setup")!.GetConfig(binding.ResourceIdentifier);
+                    settings[binding.PrimarySettingName] = dockerEnvironment.GetEndpointMap().RewriteCosmosForContainer(cosmos.ConnectionString);
                     if (binding.SecondarySettingName is not null)
                         settings[binding.SecondarySettingName] = cosmos.DatabaseName;
                     if (binding.TertiarySettingName is not null)
                         settings[binding.TertiarySettingName] = cosmos.ContainerName;
                     break;
                 case FunctionAppResourceBindingKind.ServiceBusTrigger:
-                    ServiceBusConfig triggerBus = serviceProvider.GetRequiredService<ConfigStore<ServiceBusConfig>>().GetConfig(binding.ResourceIdentifier);
-                    settings[binding.PrimarySettingName] = DockerConnectionStringRewriter.RewriteServiceBusForSameNetworkContainer(triggerBus.ConnectionString);
+                    ServiceBusConfig triggerBus = dockerEnvironment.GetOrCreateConfigStore<ServiceBusConfig>(serviceProvider, [binding.ResourceIdentifier], "Function App environment setup")!.GetConfig(binding.ResourceIdentifier);
+                    settings[binding.PrimarySettingName] = dockerEnvironment.GetEndpointMap().RewriteServiceBusForContainer(triggerBus.ConnectionString);
                     if (binding.SecondarySettingName is not null)
                         settings[binding.SecondarySettingName] = triggerBus.TopicName ?? triggerBus.QueueName ?? throw new InvalidOperationException($"Service Bus identifier '{binding.ResourceIdentifier}' does not define a queue or topic name.");
                     if (binding.TertiarySettingName is not null && triggerBus.SubscriptionName is not null)
                         settings[binding.TertiarySettingName] = triggerBus.SubscriptionName;
                     break;
                 case FunctionAppResourceBindingKind.ServiceBusReply:
-                    ServiceBusConfig replyBus = serviceProvider.GetRequiredService<ConfigStore<ServiceBusConfig>>().GetConfig(binding.ResourceIdentifier);
-                    settings[binding.PrimarySettingName] = DockerConnectionStringRewriter.RewriteServiceBusForSameNetworkContainer(replyBus.ConnectionString);
+                    ServiceBusConfig replyBus = dockerEnvironment.GetOrCreateConfigStore<ServiceBusConfig>(serviceProvider, [binding.ResourceIdentifier], "Function App environment setup")!.GetConfig(binding.ResourceIdentifier);
+                    settings[binding.PrimarySettingName] = dockerEnvironment.GetEndpointMap().RewriteServiceBusForContainer(replyBus.ConnectionString);
                     if (binding.SecondarySettingName is not null)
                         settings[binding.SecondarySettingName] = replyBus.TopicName ?? replyBus.QueueName ?? throw new InvalidOperationException($"Service Bus identifier '{binding.ResourceIdentifier}' does not define a queue or topic name.");
                     break;

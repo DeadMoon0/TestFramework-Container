@@ -28,7 +28,7 @@ The timeline still reads like a normal TestFramework timeline. The environment i
 
 - Docker Desktop or another compatible Docker engine must be running
 - the test project must already reference the normal Azure config identifiers it uses in the timeline
-- Service Bus scenarios need a valid topology file path
+- Service Bus scenarios need a valid topology, preferably through `ConfigureServiceBusTopology(...)`
 
 ## Golden Sample
 
@@ -106,7 +106,7 @@ The current composition model is single-source-of-truth based:
 - Function App resource bindings are derived from the Function App definition
 - `Include<TDefinition>()` makes a definition available, but does not force activation on its own
 
-In shared test helpers, that usually means a small project-local base class that couples the definition to its placeholder config registration, for example a storage/cosmos/service-bus component that exposes a `Register(IServiceCollection ...)` helper next to its identifier and model shape.
+In shared test helpers, that usually means a small project-local base class that couples the definition to its default config, for example a storage/cosmos/service-bus component that overrides `CreateDefaultConfig()` next to its identifier and model shape.
 
 ## Function App Pattern
 

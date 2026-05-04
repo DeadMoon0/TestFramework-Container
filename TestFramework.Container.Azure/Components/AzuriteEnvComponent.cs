@@ -19,7 +19,7 @@ internal sealed class AzuriteEnvComponent : DockerAzureEnvComponent
     public override async Task<object?> CreateAsync(IEnvironmentProvider environment, IServiceProvider serviceProvider, VariableStore variableStore, ArtifactStore artifactStore, ScopedLogger logger, CancellationToken cancellationToken)
     {
         DockerAzureEnvironment dockerEnvironment = GetDockerEnvironment(environment);
-        ConfigStore<StorageAccountConfig>? configStore = EnvComponentConfigStoreGuard.GetRequiredStore<StorageAccountConfig>(serviceProvider, dockerEnvironment.UsedStorageIdentifiers, "Azurite environment setup");
+        ConfigStore<StorageAccountConfig>? configStore = EnvComponentConfigStoreGuard.GetRequiredStore<StorageAccountConfig>(dockerEnvironment, serviceProvider, dockerEnvironment.UsedStorageIdentifiers, "Azurite environment setup");
         INetwork network = dockerEnvironment.GetRequiredRuntimeState<INetwork>(DockerAzureEnvironment.NetworkComponentId);
         IContainer container = new ContainerBuilder(dockerEnvironment.GetAzuriteImage())
             .WithNetwork(network)
@@ -32,7 +32,7 @@ internal sealed class AzuriteEnvComponent : DockerAzureEnvComponent
 
         await container.StartAsync(cancellationToken).ConfigureAwait(false);
 
-        string connectionString = CreateConnectionString(container);
+        string connectionString = dockerEnvironment.GetEndpointMap().CreateAzuriteConnectionString(container);
         ConnectionStringGuards.EnsureAzurite(connectionString);
 
         if (configStore is not null)
@@ -53,10 +53,4 @@ internal sealed class AzuriteEnvComponent : DockerAzureEnvComponent
         if (state is IAsyncDisposable asyncDisposable)
             await asyncDisposable.DisposeAsync().ConfigureAwait(false);
     }
-
-    private static string CreateConnectionString(IContainer container)
-    {
-        return $"DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://{container.Hostname}:{container.GetMappedPublicPort(10000)}/devstoreaccount1;QueueEndpoint=http://{container.Hostname}:{container.GetMappedPublicPort(10001)}/devstoreaccount1;TableEndpoint=http://{container.Hostname}:{container.GetMappedPublicPort(10002)}/devstoreaccount1;";
-    }
-
 }

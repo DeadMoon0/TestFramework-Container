@@ -1,3 +1,4 @@
+using TestFramework.Azure.Configuration.SpecificConfigs;
 using TestFramework.Azure.Identifier;
 using TestFramework.Core.Environment;
 
@@ -70,6 +71,21 @@ public abstract class DockerAzureInfrastructureDefinition : DockerAzureDefinitio
 public abstract class DockerStorageDefinition : DockerAzureDefinition
 {
     public abstract StorageAccountIdentifier Identifier { get; }
+
+    protected virtual StorageAccountConfig? CreateDefaultConfig() => null;
+
+    internal bool TryCreateDefaultConfig(out StorageAccountConfig config)
+    {
+        StorageAccountConfig? created = CreateDefaultConfig();
+        if (created is null)
+        {
+            config = default!;
+            return false;
+        }
+
+        config = created;
+        return true;
+    }
 }
 
 public abstract class DockerCosmosDefinition : DockerAzureDefinition
@@ -77,6 +93,21 @@ public abstract class DockerCosmosDefinition : DockerAzureDefinition
     public abstract CosmosContainerIdentifier Identifier { get; }
 
     public virtual Type? ModelType => null;
+
+    protected virtual CosmosContainerDbConfig? CreateDefaultConfig() => null;
+
+    internal bool TryCreateDefaultConfig(out CosmosContainerDbConfig config)
+    {
+        CosmosContainerDbConfig? created = CreateDefaultConfig();
+        if (created is null)
+        {
+            config = default!;
+            return false;
+        }
+
+        config = created;
+        return true;
+    }
 }
 
 public abstract class DockerCosmosDefinition<TDocument> : DockerCosmosDefinition
@@ -87,6 +118,21 @@ public abstract class DockerCosmosDefinition<TDocument> : DockerCosmosDefinition
 public abstract class DockerSqlDefinition : DockerAzureDefinition
 {
     public abstract SqlDatabaseIdentifier Identifier { get; }
+
+    protected virtual SqlDatabaseConfig? CreateDefaultConfig() => null;
+
+    internal bool TryCreateDefaultConfig(out SqlDatabaseConfig config)
+    {
+        SqlDatabaseConfig? created = CreateDefaultConfig();
+        if (created is null)
+        {
+            config = default!;
+            return false;
+        }
+
+        config = created;
+        return true;
+    }
 }
 
 public abstract class DockerServiceBusDefinition : DockerAzureDefinition
@@ -95,8 +141,23 @@ public abstract class DockerServiceBusDefinition : DockerAzureDefinition
 
     public virtual string TopologyConfigPath => DockerAzureDefaults.ServiceBusTopologyConfigPath;
 
+    protected virtual ServiceBusConfig? CreateDefaultConfig() => null;
+
     protected virtual void ConfigureServiceBusTopology(DockerServiceBusTopologyBuilder builder)
     {
+    }
+
+    internal bool TryCreateDefaultConfig(out ServiceBusConfig config)
+    {
+        ServiceBusConfig? created = CreateDefaultConfig();
+        if (created is null)
+        {
+            config = default!;
+            return false;
+        }
+
+        config = created;
+        return true;
     }
 
     internal ServiceBusTopologySource GetTopologySource()
@@ -115,8 +176,23 @@ public abstract class DockerFunctionAppDefinition : DockerAzureDefinition
 
     public virtual string Image => DockerAzureDefaults.FunctionAppImage;
 
+    protected virtual FunctionAppConfig? CreateDefaultConfig() => null;
+
     protected virtual void Configure(DockerFunctionAppBuilder builder)
     {
+    }
+
+    internal bool TryCreateDefaultConfig(out FunctionAppConfig config)
+    {
+        FunctionAppConfig? created = CreateDefaultConfig();
+        if (created is null)
+        {
+            config = default!;
+            return false;
+        }
+
+        config = created;
+        return true;
     }
 
     internal FunctionAppDefinitionDescriptor CreateDescriptor()
@@ -294,7 +370,10 @@ public static class DockerAzureDefaults
     public const string FunctionAppImage = "mcr.microsoft.com/azure-functions/dotnet-isolated:4-dotnet-isolated8.0";
     public const string MsSqlImage = "mcr.microsoft.com/mssql/server:2022-CU14-ubuntu-22.04";
     public const string AzuriteImage = "mcr.microsoft.com/azure-storage/azurite:3.33.0";
+    public const string AzuriteAccountName = "devstoreaccount1";
+    public const string AzuriteAccountKey = "Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==";
     public const string CosmosDbImage = "mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview";
+    public const string CosmosDbEmulatorAccountKey = "C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==";
     public const string ServiceBusImage = "mcr.microsoft.com/azure-messaging/servicebus-emulator:latest";
     public const string MsSqlPassword = "TestFramework_Container1!";
     public static readonly string ServiceBusTopologyConfigPath = Path.Combine("Configurations", "ServiceBus", "config.json");
@@ -475,6 +554,37 @@ internal sealed class DockerAzureDefinitionState
         throw new InvalidOperationException($"No Docker Function App registration was configured for identifier '{identifier}'.");
     }
 
+    public bool TryGetDefaultConfig(Type configType, string identifier, out object? config)
+    {
+        if (!_definitionMetadataByIdentity.TryGetValue(GetRealizedIdentity(configType, identifier), out DockerAzureDefinitionMetadata? metadata))
+        {
+            config = null;
+            return false;
+        }
+
+        switch (metadata.Definition)
+        {
+            case DockerStorageDefinition storage when configType == typeof(StorageAccountConfig) && storage.TryCreateDefaultConfig(out StorageAccountConfig storageConfig):
+                config = storageConfig;
+                return true;
+            case DockerCosmosDefinition cosmos when configType == typeof(CosmosContainerDbConfig) && cosmos.TryCreateDefaultConfig(out CosmosContainerDbConfig cosmosConfig):
+                config = cosmosConfig;
+                return true;
+            case DockerSqlDefinition sql when configType == typeof(SqlDatabaseConfig) && sql.TryCreateDefaultConfig(out SqlDatabaseConfig sqlConfig):
+                config = sqlConfig;
+                return true;
+            case DockerServiceBusDefinition serviceBus when configType == typeof(ServiceBusConfig) && serviceBus.TryCreateDefaultConfig(out ServiceBusConfig serviceBusConfig):
+                config = serviceBusConfig;
+                return true;
+            case DockerFunctionAppDefinition functionApp when configType == typeof(FunctionAppConfig) && functionApp.TryCreateDefaultConfig(out FunctionAppConfig functionAppConfig):
+                config = functionAppConfig;
+                return true;
+            default:
+                config = null;
+                return false;
+        }
+    }
+
     private void AddFunctionAppDescriptor(FunctionAppIdentifier identifier, FunctionAppDefinitionDescriptor descriptor)
     {
         if (_functionAppDescriptors.TryGetValue(identifier, out FunctionAppDefinitionDescriptor? existing))
@@ -537,6 +647,22 @@ internal sealed class DockerAzureDefinitionState
     {
         if (_definitionMetadataByIdentity.ContainsKey(identity))
             pending.Enqueue(identity);
+    }
+
+    private static string GetRealizedIdentity(Type configType, string identifier)
+    {
+        if (configType == typeof(StorageAccountConfig))
+            return $"storage:{identifier}";
+        if (configType == typeof(CosmosContainerDbConfig))
+            return $"cosmos:{identifier}";
+        if (configType == typeof(SqlDatabaseConfig))
+            return $"sql:{identifier}";
+        if (configType == typeof(ServiceBusConfig))
+            return $"servicebus:{identifier}";
+        if (configType == typeof(FunctionAppConfig))
+            return $"functionapp:{identifier}";
+
+        throw new InvalidOperationException($"Unsupported config type '{configType.FullName}' for Docker Azure default config lookup.");
     }
 
     private static IReadOnlyCollection<ComponentDependency> MergeDependencies(

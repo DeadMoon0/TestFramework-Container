@@ -27,7 +27,7 @@
     Prefer logical defaults in the test code and let DockerAzureEnvironment replace the connection strings with mapped ports.
     Prefer DockerAzureDefinition classes plus DockerAzureEnvironment.For<TComponent>() and .Include<TComponent>() for new code.
     For Cosmos emulator clients that run through a mapped Docker port, prefer Gateway mode and certificate bypass in test-only code, and pin the client to the configured endpoint when the SDK would otherwise follow the emulator's advertised internal endpoint.
-    Keep Service Bus topology configuration explicit through ServiceBusTopologyConfigPath instead of burying it in helper code.
+    Keep Service Bus topology configuration explicit on the owning definition, preferably through ConfigureServiceBusTopology(...). Use ServiceBusTopologyConfigPath only when a shared external JSON file is genuinely the better fit.
     Prefer one project-level helper that wires config stores and DockerAzureEnvironment consistently.
     Prefer run assertions and environment assertions on TimelineRun over ad-hoc low-level debugging output.
 </best_practices>
@@ -61,7 +61,7 @@
     - Azurite is used for blob and table-backed storage artifacts.
     - CosmosDbEnvComponent starts the Linux Cosmos emulator, waits for gateway readiness, rewrites the Cosmos config store, and deploys database/container schema for the used Cosmos identifiers.
     - MsSqlEnvComponent starts SQL Server, waits for a successful query, then rewrites the SQL config store.
-    - ServiceBusEnvComponent depends on the Docker network and SQL Server, loads the topology config file, starts the Service Bus emulator, validates namespace availability, then rewrites the Service Bus config store.
+    - ServiceBusEnvComponent depends on the Docker network and SQL Server, materializes the configured Service Bus topology, starts the Service Bus emulator, validates namespace availability, then rewrites the Service Bus config store.
     - Environment component runtime state is kept in the environment context and deconstructed in cleanup.
     - Function App definitions contribute dependency edges and runtime bindings into the validated component graph early enough that emulator setup can happen before startup
 </runtime_behavior>
@@ -73,7 +73,7 @@
     - when the user asks for Function App hosting confidence, prefer the real smoke path over a purely mocked substitute
 
     Documentation is thinner than the runtime sophistication.
-    When helping users, explain prerequisites, topology-path requirements, and config-store expectations explicitly instead of assuming the README already did it.
+    When helping users, explain prerequisites, topology ownership, and config-store expectations explicitly instead of assuming the README already did it.
 </validation_guidance>
 
 <config_model>
@@ -82,7 +82,8 @@
     - Those initial config entries act as logical placeholders and identifier registrations.
     - During pre-setup, the environment replaces the placeholder connection strings with real mapped localhost endpoints from Docker.
     - ConnectionStringGuards enforce that the rewritten values point to local Docker endpoints.
-    - ServiceBusConfigLocator resolves the topology file either as an absolute path or relative to AppContext.BaseDirectory.
+    - ServiceBus topology can be supplied fluently through ConfigureServiceBusTopology(...) or via a file path for compatibility.
+    - ServiceBusConfigLocator resolves file-backed topology paths either as an absolute path or relative to AppContext.BaseDirectory.
     - Cosmos schema creation uses the model type to resolve the partition key path, so the user does not provide PartitionKeyPath manually.
 </config_model>
 
@@ -91,7 +92,7 @@
     - have Docker running and reachable from Testcontainers
     - register the normal Azure identifiers and typed config stores the timeline refers to
     - call SetEnv(...) with DockerAzureEnvironment on the run builder
-    - provide a valid Service Bus topology config path when Service Bus is involved
+    - provide a valid Service Bus topology when Service Bus is involved, preferably through ConfigureServiceBusTopology(...)
     - define Cosmos models with id and partitionKey semantics, by property name or JSON-mapped name
 
     When the user does not use DockerAzureEnvironment, they must:
@@ -130,7 +131,7 @@
 
     Service Bus emulator pattern:
     - register ServiceBusConfig entries as normal named configs
-    - prefer a DockerServiceBusDefinition or DockerAzureInfrastructureDefinition for topology-path ownership
+    - prefer ConfigureServiceBusTopology(...) on a DockerServiceBusDefinition or DockerAzureInfrastructureDefinition so the topology lives next to the definition that owns it
     - let the environment start SQL + Service Bus emulator and rewrite the connection strings
 
     Smoke-test pattern:
@@ -150,7 +151,7 @@
     - hardcoding mapped Docker ports into the test instead of letting the environment rewrite config stores
     - maintaining a separate manual Cosmos partition key path configuration alongside the model type
     - mixing container-backed setup and direct real-cloud connection strings in the same logical test scenario
-    - hiding the Service Bus topology file dependency so failures become mysterious FileNotFoundExceptions
+    - hiding Service Bus topology ownership so emulator startup requirements become unclear
     - assuming Docker is always available in CI or on developer machines; smoke tests should opt in when they require Docker
     - forgetting that Service Bus emulator depends on SQL Server and a Docker network
     - letting Cosmos SDK clients follow the emulator's advertised internal endpoint when the actual working endpoint is the mapped localhost port
@@ -164,13 +165,13 @@
     - MsSqlEnvComponent: Docker-backed SQL Server component
     - ServiceBusEnvComponent: Docker-backed Service Bus emulator component
     - ConnectionStringGuards: validation helpers that assert rewritten config targets local emulator endpoints
-    - ServiceBusConfigLocator: resolves the Service Bus topology config file path
+    - ServiceBusConfigLocator: resolves file-backed Service Bus topology config paths when the fluent builder is not used
 
     Discovery heuristics for the agent:
     - If users mention SetEnv, Docker, emulator, Azurite, Service Bus emulator, or Cosmos emulator, inspect TestFramework.Container first.
     - If users say the config looks local but the real port is dynamic, suspect config-store rewriting by DockerAzureEnvironment.
     - If a container-backed Cosmos test hangs after gateway readiness, inspect the client options and whether the SDK is following the emulator's advertised endpoint instead of the mapped endpoint.
-    - If Service Bus emulator creation fails, inspect SQL dependency and ServiceBusTopologyConfigPath resolution first.
+    - If Service Bus emulator creation fails, inspect SQL dependency and the resolved Service Bus topology source first.
 </important_type_map>
 
 <sources>

@@ -1,5 +1,7 @@
 using System.Reflection;
 using TestFramework.Azure;
+using TestFramework.Azure.Configuration;
+using TestFramework.Azure.Configuration.SpecificConfigs;
 using TestFramework.Azure.DB.CosmosDB;
 using TestFramework.Azure.DB.SqlServer;
 using TestFramework.Azure.Identifier;
@@ -10,7 +12,7 @@ using TestFramework.Core.Environment;
 
 namespace TestFramework.Container.Azure;
 
-public class DockerAzureEnvironment : EnvironmentProviderBase
+public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedServiceProviderFactory
 {
     public static readonly EnvComponentIdentifier NetworkComponentId = "docker-network";
     public static readonly EnvComponentIdentifier FunctionAppComponentId = "functionapp";
@@ -21,8 +23,10 @@ public class DockerAzureEnvironment : EnvironmentProviderBase
     public const string AzuriteNetworkAlias = "azurite";
     public const string CosmosDbNetworkAlias = "cosmos-emulator";
     public const string ServiceBusNetworkAlias = "servicebus-emulator";
+    private static readonly DockerEndpointMap EndpointMapInstance = new();
 
     private readonly Dictionary<EnvComponentIdentifier, object?> _runtimeStates = [];
+    private readonly Dictionary<Type, object> _synthesizedConfigStores = [];
     private readonly DockerAzureDefinitionState _definitionState = new();
     public HashSet<string> UsedStorageIdentifiers { get; } = [];
     public HashSet<string> UsedCosmosIdentifiers { get; } = [];
@@ -78,6 +82,7 @@ public class DockerAzureEnvironment : EnvironmentProviderBase
         UsedServiceBusIdentifiers.Clear();
         UsedFunctionAppIdentifiers.Clear();
         CosmosPartitionKeyPaths.Clear();
+        _synthesizedConfigStores.Clear();
 
         foreach (ArtifactInstanceGeneric artifact in artifacts)
             CaptureIdentifiers(artifact.Reference);
@@ -111,6 +116,11 @@ public class DockerAzureEnvironment : EnvironmentProviderBase
     internal void SetRuntimeState(EnvComponentIdentifier identifier, object? state)
     {
         _runtimeStates[identifier] = state;
+    }
+
+    internal DockerEndpointMap GetEndpointMap()
+    {
+        return EndpointMapInstance;
     }
 
     internal T GetRequiredRuntimeState<T>(EnvComponentIdentifier identifier)
@@ -170,6 +180,34 @@ public class DockerAzureEnvironment : EnvironmentProviderBase
     internal string GetMsSqlPassword()
     {
         return _definitionState.MsSqlPassword ?? DockerAzureDefaults.MsSqlPassword;
+    }
+
+    internal ConfigStore<TConfig>? GetOrCreateConfigStore<TConfig>(IServiceProvider serviceProvider, IReadOnlyCollection<string> identifiers, string componentName)
+    {
+        if (identifiers.Count == 0)
+            return null;
+
+        ConfigStore<TConfig>? store = serviceProvider.GetService(typeof(ConfigStore<TConfig>)) as ConfigStore<TConfig>;
+        if (store is null)
+        {
+            if (!_synthesizedConfigStores.TryGetValue(typeof(TConfig), out object? synthesizedStore))
+            {
+                synthesizedStore = new ConfigStore<TConfig>();
+                _synthesizedConfigStores[typeof(TConfig)] = synthesizedStore;
+            }
+
+            store = (ConfigStore<TConfig>)synthesizedStore;
+        }
+
+        foreach (string identifier in identifiers.OrderBy(x => x, StringComparer.Ordinal))
+            EnsureConfigPresent(store, identifier, componentName);
+
+        return store;
+    }
+
+    public IServiceProvider CreateRunScopedServiceProvider(IServiceProvider baseServiceProvider)
+    {
+        return new DockerAzureRunScopedServiceProvider(this, baseServiceProvider);
     }
 
     private void CaptureIdentifiers(ArtifactReferenceGeneric reference)
@@ -259,6 +297,36 @@ public class DockerAzureEnvironment : EnvironmentProviderBase
     private static bool MatchesGenericType(Type candidate, Type genericTypeDefinition)
     {
         return candidate.IsGenericType && candidate.GetGenericTypeDefinition() == genericTypeDefinition;
+    }
+
+    private void EnsureConfigPresent<TConfig>(ConfigStore<TConfig> store, string identifier, string componentName)
+    {
+        if (store.Snapshot().ContainsKey(identifier))
+            return;
+
+        if (_definitionState.TryGetDefaultConfig(typeof(TConfig), identifier, out object? defaultConfig) && defaultConfig is TConfig typedConfig)
+        {
+            store.AddConfig(identifier, typedConfig);
+            return;
+        }
+
+        throw new InvalidOperationException($"{componentName} requires ConfigStore<{typeof(TConfig).Name}> for identifier '{identifier}', and no component default config was defined for that identifier.");
+    }
+
+    internal IReadOnlyCollection<string> GetUsedIdentifiersFor(Type configType)
+    {
+        if (configType == typeof(StorageAccountConfig))
+            return UsedStorageIdentifiers;
+        if (configType == typeof(CosmosContainerDbConfig))
+            return UsedCosmosIdentifiers;
+        if (configType == typeof(SqlDatabaseConfig))
+            return UsedSqlIdentifiers;
+        if (configType == typeof(ServiceBusConfig))
+            return UsedServiceBusIdentifiers;
+        if (configType == typeof(FunctionAppConfig))
+            return UsedFunctionAppIdentifiers;
+
+        throw new InvalidOperationException($"Unsupported config type '{configType.FullName}' for Docker Azure store resolution.");
     }
 
     protected override void OnRequirementResolved(EnvironmentRequirement requirement)

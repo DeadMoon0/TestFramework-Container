@@ -1,0 +1,29 @@
+using System.Reflection;
+using TestFramework.Azure.Configuration;
+
+namespace TestFramework.Container.Azure;
+
+internal sealed class DockerAzureRunScopedServiceProvider(DockerAzureEnvironment environment, IServiceProvider baseServiceProvider) : IServiceProvider
+{
+    private static readonly MethodInfo GetOrCreateConfigStoreMethod = typeof(DockerAzureEnvironment)
+        .GetMethod(nameof(DockerAzureEnvironment.GetOrCreateConfigStore), BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+    public object? GetService(Type serviceType)
+    {
+        object? service = baseServiceProvider.GetService(serviceType);
+        if (service is not null)
+            return service;
+
+        if (!serviceType.IsGenericType || serviceType.GetGenericTypeDefinition() != typeof(ConfigStore<>))
+            return null;
+
+        Type configType = serviceType.GetGenericArguments()[0];
+        IReadOnlyCollection<string> identifiers = environment.GetUsedIdentifiersFor(configType);
+        if (identifiers.Count == 0)
+            return null;
+
+        return GetOrCreateConfigStoreMethod
+            .MakeGenericMethod(configType)
+            .Invoke(environment, [baseServiceProvider, identifiers, "Timeline run service resolution"]);
+    }
+}
