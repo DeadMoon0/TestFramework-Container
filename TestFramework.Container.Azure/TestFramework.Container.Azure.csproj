@@ -5,7 +5,7 @@
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
 		<Title>TestFramework Container Azure</Title>
-		<Version>0.1.2</Version>
+		<Version>0.1.3</Version>
 		<Authors>DeadMoon0</Authors>
 		<Product>TestFramework</Product>
 		<Description>Docker-backed environment providers for TestFramework timelines for Azure components.</Description>
@@ -17,7 +17,7 @@
 		<PackageTags>Test;UnitTest;IntegrationTest;Framework;Timeline;Docker;Azure</PackageTags>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<Copyright>Copyright (c) DeadMoon0 2026</Copyright>
-		<PackageReleaseNotes>Improved container environment guidance and strengthened environment guard coverage.</PackageReleaseNotes>
+		<PackageReleaseNotes>Enforce Component only Configs and add IPPort Mappings</PackageReleaseNotes>
 	</PropertyGroup>
 
 	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
@@ -44,7 +44,7 @@
 	<ItemGroup>
 		<PackageReference Include="Azure.Messaging.ServiceBus" Version="7.20.1" />
 		<PackageReference Include="Azure.Storage.Blobs" Version="12.26.0" />
-		<PackageReference Include="Microsoft.Azure.Cosmos" Version="3.57.1" />
+		<PackageReference Include="Microsoft.Azure.Cosmos" Version="3.59.0" />
 		<PackageReference Include="Microsoft.Data.SqlClient" Version="6.1.2" />
 		<PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
 		<PackageReference Include="Testcontainers" Version="4.11.0" />
@@ -52,12 +52,9 @@
 		<PackageReference Include="Testcontainers.CosmosDb" Version="4.11.0" />
 		<PackageReference Include="Testcontainers.MsSql" Version="4.11.0" />
 		<PackageReference Include="Testcontainers.ServiceBus" Version="4.11.0" />
-	</ItemGroup>
-
-	<ItemGroup>
-		<ProjectReference Include="..\..\TestFramework-Azure\TestFramework.Azure\TestFramework.Azure.csproj" />
-		<ProjectReference Include="..\..\TestFramework-Core\TestFramework.Config\TestFramework.Config.csproj" />
-		<ProjectReference Include="..\..\TestFramework-Core\TestFramework.Core\TestFramework.Core.csproj" />
+		<PackageReference Include="TestFramework.Azure" Version="0.1.8" />
+		<PackageReference Include="TestFramework.Config" Version="0.1.2" />
+		<PackageReference Include="TestFramework.Core" Version="0.1.4" />
 	</ItemGroup>
 
 	<ItemGroup>
