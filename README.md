@@ -1,3 +1,6 @@
+![Icon](https://raw.githubusercontent.com/DeadMoon0/TestFramework-Common/96ef4240c1e55ba95a20b99285219a61407c6355/Assets/Icon.svg)
+[![NuGet Version](https://img.shields.io/nuget/v/TestFramework.Container.Azure?label=nuget%20TestFramework.Container.Azure)](https://www.nuget.org/packages/TestFramework.Container.Azure)
+
 # TestFramework-Container
 
 `TestFramework.Container.Azure` lets a normal TestFramework timeline run against Docker-backed Azure emulators.
