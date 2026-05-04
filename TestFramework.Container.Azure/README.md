@@ -28,7 +28,7 @@ The timeline itself still looks like a normal TestFramework timeline. The enviro
 
 - Docker Desktop or another compatible Docker engine must be running
 - the test project must register the Azure identifiers that the timeline uses
-- Service Bus scenarios need a valid topology file path
+- Service Bus scenarios need a valid topology, preferably through `ConfigureServiceBusTopology(...)`
 - Cosmos scenarios often need emulator-specific client options such as certificate bypass
 
 The packaged file `example.local.testsettings.json` shows the expected placeholder shape for `StorageAccount`, `CosmosDb`, `ServiceBus`, and `SqlDatabase` sections. Those values are logical placeholders that `DockerAzureEnvironment` rewrites to mapped Docker endpoints during the run.
@@ -140,7 +140,12 @@ public sealed class MainDb : DockerCosmosDefinition<SampleDocument>
 public sealed class ProcessingReply : DockerServiceBusDefinition
 {
 	public override ServiceBusIdentifier Identifier => "ProcessingReply";
-	public override string TopologyConfigPath => Path.Combine("ShowroomAzure", "ServiceBus", "config.json");
+
+	protected override void ConfigureServiceBusTopology(DockerServiceBusTopologyBuilder builder)
+	{
+		builder.AddNamespace("sbemulatorns", ns => ns
+			.AddTopic("processing-reply", topic => topic.AddSubscription("Default")));
+	}
 }
 
 public sealed class DefaultFunctionApp : DockerFunctionAppDefinition<AnalysisProcessor>
@@ -163,7 +168,7 @@ TimelineRun run = await timeline
 ```
 
 In that example, including `DefaultFunctionApp` is enough because its `Configure(...)` method already declares `MainStorage`, `MainDb`, and `ProcessingReply` by component type.
-The component types are the contract: identifier, dependency graph, and, when useful for a shared setup, the placeholder config they register before the environment rewrites endpoints.
+The component types are the contract: identifier, dependency graph, and, when useful for a shared setup, the default config they own before the environment rewrites runtime endpoints.
 
 `.UseStorage<TStorage>()` now injects `StorageTableName` by default when the storage config defines `TableContainerName`.
 Override `tableNameSettingName` when your Function App uses a different setting name, or pass `null` to suppress table-name injection entirely.
@@ -173,17 +178,14 @@ At runtime, the Function App definition is compiled into a descriptor that carri
 - dependency edges for graph validation and activation
 - resource bindings used to derive the actual app settings inside the Function App container
 
-Shared test stacks often wrap that placeholder config into the component itself. A showroom-style helper can look like this:
+Shared test stacks often keep that default config on the definition itself. A showroom-style helper can look like this:
 
 ```csharp
 private abstract class SharedCosmosDefinition<TDocument> : DockerCosmosDefinition<TDocument>
 {
-	protected abstract CosmosContainerDbConfig CreateConfig();
+	protected sealed override CosmosContainerDbConfig? CreateDefaultConfig() => CreateConfig();
 
-	public void Register(IServiceCollection services)
-	{
-		services.AddSingleton(ConfigStore<CosmosContainerDbConfig>.Create(Identifier, CreateConfig()));
-	}
+	protected abstract CosmosContainerDbConfig CreateConfig();
 }
 
 private sealed class MainDb : SharedCosmosDefinition<SampleDocument>
@@ -197,12 +199,9 @@ private sealed class MainDb : SharedCosmosDefinition<SampleDocument>
 		ContainerName = "Profiles",
 	};
 }
-
-// During test setup:
-new MainDb().Register(services);
 ```
 
-That keeps the identifier, model shape, and placeholder config together in one type instead of splitting them across unrelated helper fields.
+That keeps the identifier, model shape, and default config together in one type instead of splitting them across unrelated helper fields or manual DI registration.
 
 ## Contracts And Explicit Reuse
 
@@ -245,34 +244,53 @@ public sealed class ReplyConsumerFunctionApp : DockerFunctionAppDefinition<Reply
 
 Contract binding happens before runtime startup, so ambiguous or missing providers fail during resolution instead of later during container startup.
 
-## Service Bus Topology Files
+## Service Bus Topology
 
-Service Bus emulator runs need a topology file. The packaged default example lives at `Configurations/ServiceBus/config.json` and looks like this:
+The preferred pattern is to describe Service Bus emulator topology fluently on the definition that owns it:
 
-```json
+```csharp
+public sealed class ProcessingReply : DockerServiceBusDefinition
 {
-	"UserConfig": {
-		"Namespaces": [
-			{
-				"Name": "sbemulatorns",
-				"Queues": [
-					{ "Name": "default-queue" }
-				],
-				"Topics": [
-					{
-						"Name": "default-topic",
-						"Subscriptions": [
-							{ "Name": "default-subscription" }
-						]
-					}
-				]
-			}
-		]
+	public override ServiceBusIdentifier Identifier => "ProcessingReply";
+
+	protected override void ConfigureServiceBusTopology(DockerServiceBusTopologyBuilder builder)
+	{
+		builder.AddNamespace("sbemulatorns", ns => ns
+			.AddTopic("processing-reply", topic => topic.AddSubscription("Default")));
 	}
 }
 ```
 
-Point your definition at a topology file when you need specific queue, topic, or subscription names. If the topology is missing or invalid, the Service Bus component fails during environment startup before the main timeline steps run.
+Use this when you want the sample to stay self-contained and the topology to live next to the identifier and config it belongs to. If the topology is invalid, the Service Bus component still fails during environment startup before the main timeline steps run.
+
+External JSON files are still supported for compatibility through `TopologyConfigPath` or `ServiceBusTopologyConfigPath`, but they are now the fallback option rather than the recommended sample style.
+
+### Queue, Topic, And Subscription Example
+
+Use one fluent topology when a sample or shared stack needs multiple entities at once:
+
+```csharp
+public sealed class SharedMessaging : DockerServiceBusDefinition
+{
+	public override ServiceBusIdentifier Identifier => "messaging";
+
+	protected override void ConfigureServiceBusTopology(DockerServiceBusTopologyBuilder builder)
+	{
+		builder.AddNamespace("sbemulatorns", ns => ns
+			.AddQueue("audit-trail")
+			.AddTopic("orders", topic => topic
+				.AddSubscription("processor")
+				.AddSubscription("dead-letter-review"))
+			.AddTopic("orders-reply", topic => topic
+				.AddSubscription("default")));
+	}
+}
+```
+
+Practical rule of thumb:
+- use `AddQueue(...)` for queue-backed send/receive flows
+- use `AddTopic(..., topic => topic.AddSubscription(...))` for pub/sub flows
+- keep the topology next to the `DockerServiceBusDefinition` or `DockerAzureInfrastructureDefinition` that owns the related identifiers
 
 ## Typical Pattern
 
@@ -295,7 +313,13 @@ public sealed class CustomInfrastructure : DockerAzureInfrastructureDefinition
 	public override string? MsSqlImage => "mcr.microsoft.com/mssql/server:2022-CU14-ubuntu-22.04";
 	public override string? ServiceBusImage => "mcr.microsoft.com/azure-messaging/servicebus-emulator:latest";
 	public override string? MsSqlPassword => "TestFramework_Container1!";
-	public override string? ServiceBusTopologyConfigPath => Path.Combine("ShowroomAzure", "ServiceBus", "config.json");
+
+	protected override void ConfigureServiceBusTopology(DockerServiceBusTopologyBuilder builder)
+	{
+		builder.AddNamespace("sbemulatorns", ns => ns
+			.AddQueue("processing-input")
+			.AddTopic("processing-reply", topic => topic.AddSubscription("Default")));
+	}
 }
 
 TimelineRun run = await timeline
@@ -305,11 +329,11 @@ TimelineRun run = await timeline
 ```
 
 Typical cases:
-- provide a Service Bus topology path or a fluent topology override
+- provide a fluent Service Bus topology override at infrastructure scope
 - pin emulator images for a shared test stack
 - override SQL credentials for a local test environment
 
-You can keep using a JSON file when you want an external emulator config, but Service Bus definitions can also describe the topology fluently:
+You can still keep using a JSON file when you want an external emulator config, but all new samples should prefer the fluent builder:
 
 ```csharp
 public sealed class OrdersBus : DockerServiceBusDefinition

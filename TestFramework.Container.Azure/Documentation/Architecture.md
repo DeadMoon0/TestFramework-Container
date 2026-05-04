@@ -205,16 +205,22 @@ This is the critical semantic rule of the new model:
 Definitions describe availability.
 Roots, traversal, and bindings decide actual activation.
 
-## Runtime Rewriting
+## Runtime Endpoint Mapping
 
 Users still register named Azure config entries through the normal config-store path.
 Those initial config values act as logical placeholders.
 
-When the environment resolves the activated graph, runtime components:
+When the environment resolves the activated graph, the runtime endpoint map becomes the single place that translates between:
+
+- host-visible endpoints used by the test runner
+- same-network endpoints used by Function App containers
+- logical identifiers kept stable in the config stores
+
+Runtime components then:
 
 - start the required Docker-backed emulators
 - discover mapped endpoints
-- rewrite the placeholder connection values to the container-backed endpoints
+- rewrite the placeholder connection values through the endpoint map
 - keep the logical identifier contract unchanged for the timeline code
 
 This lets timeline code stay close to the non-container Azure shape while the environment swaps in Docker-backed infrastructure underneath it.

@@ -204,7 +204,7 @@ public class DockerAzureEnvironmentTests
         Dictionary<string, string> settings = (Dictionary<string, string>)typeof(DockerAzureEnvironment).Assembly
             .GetType("TestFramework.Container.Azure.Components.FunctionAppEnvComponent")!
             .GetMethod("BuildAppSettings", BindingFlags.Static | BindingFlags.NonPublic)!
-            .Invoke(null, [serviceProvider, descriptor, null])!;
+            .Invoke(null, [environment, serviceProvider, descriptor, null])!;
 
         Assert.Contains(DockerAzureEnvironment.AzuriteNetworkAlias, settings["StorageAccountConnectionString"]);
         Assert.Equal(settings["StorageAccountConnectionString"], settings["AzureWebJobsStorage"]);
@@ -226,14 +226,62 @@ public class DockerAzureEnvironmentTests
     }
 
     [Fact]
-    public void DockerConnectionStringRewriter_StorageForContainer_RewritesEndpointsAndUnquotesAccountKey()
+    public void GetOrCreateConfigStore_SynthesizesDefinitionDefaults_WhenStoreWasNotRegistered()
+    {
+        DockerAzureEnvironment environment = DockerAzureEnvironment.For<DefaultedFunctionAppDefinition>();
+        Step<object?> functionStep = new IsLiveTrigger().FunctionApp("default-func");
+
+        environment.ResolveComponents([], ((IHasEnvironmentRequirements)functionStep).GetEnvironmentRequirements(null!));
+
+        ServiceProvider serviceProvider = new ServiceCollection().BuildServiceProvider();
+
+        ConfigStore<FunctionAppConfig> functionStore = (ConfigStore<FunctionAppConfig>)typeof(DockerAzureEnvironment)
+            .GetMethod("GetOrCreateConfigStore", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .MakeGenericMethod(typeof(FunctionAppConfig))
+            .Invoke(environment, [serviceProvider, environment.UsedFunctionAppIdentifiers, "Function App environment setup"])!;
+
+        FunctionAppConfig config = functionStore.GetConfig("default-func");
+        Assert.Equal("http://localhost/", config.BaseUrl);
+        Assert.Equal("unused", config.Code);
+        Assert.Equal("unused", config.AdminCode);
+    }
+
+    [Fact]
+    public void CreateRunScopedServiceProvider_ResolvesSynthesizedCosmosStore_ForActivatedIdentifiers()
+    {
+        DockerAzureEnvironment environment = DockerAzureEnvironment.For<DefaultedCosmosDefinition>();
+        ArtifactInstanceGeneric[] artifacts =
+        [
+            CreateArtifactInstance<CosmosDbItemArtifactDescriber<TestCosmosItem>, CosmosDbItemArtifactData<TestCosmosItem>, CosmosDbItemArtifactReference<TestCosmosItem>>(
+                new CosmosDbItemArtifactDescriber<TestCosmosItem>(),
+                "cosmos-artifact",
+                new CosmosDbItemArtifactReference<TestCosmosItem>("cosmos-default", Var.Const(new Microsoft.Azure.Cosmos.PartitionKey("tenant-1")), Var.Const("id")),
+                new CosmosDbItemArtifactData<TestCosmosItem>(new TestCosmosItem("id", "tenant-1")))
+        ];
+
+        environment.ResolveComponents(artifacts, []);
+
+        IServiceProvider runServiceProvider = ((IRunScopedServiceProviderFactory)environment)
+            .CreateRunScopedServiceProvider(new ServiceCollection().BuildServiceProvider());
+
+        ConfigStore<CosmosContainerDbConfig> cosmosStore = runServiceProvider.GetRequiredService<ConfigStore<CosmosContainerDbConfig>>();
+        CosmosContainerDbConfig config = cosmosStore.GetConfig("cosmos-default");
+
+        Assert.Equal("test-db", config.DatabaseName);
+        Assert.Equal("test-container", config.ContainerName);
+    }
+
+    [Fact]
+    public void DockerEndpointMap_StorageForContainer_RewritesEndpointsAndUnquotesAccountKey()
     {
         string connectionString = "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=key=;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;QueueEndpoint=http://127.0.0.1:10001/devstoreaccount1;TableEndpoint=http://127.0.0.1:10002/devstoreaccount1;";
 
-        string rewritten = typeof(DockerAzureEnvironment).Assembly
-            .GetType("TestFramework.Container.Azure.DockerConnectionStringRewriter")!
-            .GetMethod("RewriteStorageForContainer", BindingFlags.Static | BindingFlags.NonPublic)!
-            .Invoke(null, [connectionString])!
+        object endpointMap = Activator.CreateInstance(typeof(DockerAzureEnvironment).Assembly
+            .GetType("TestFramework.Container.Azure.DockerEndpointMap")!, nonPublic: true)!;
+
+        string rewritten = endpointMap.GetType()
+            .GetMethod("RewriteStorageForContainer", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(endpointMap, [connectionString])!
             .ToString()!;
 
         Assert.Contains($"blobendpoint=http://{DockerAzureEnvironment.AzuriteNetworkAlias}:10000", rewritten, StringComparison.OrdinalIgnoreCase);
@@ -243,14 +291,16 @@ public class DockerAzureEnvironmentTests
     }
 
     [Fact]
-    public void DockerConnectionStringRewriter_CosmosForContainer_RewritesEndpointAndUnquotesAccountKey()
+    public void DockerEndpointMap_CosmosForContainer_RewritesEndpointAndUnquotesAccountKey()
     {
         string connectionString = "AccountEndpoint=https://localhost:8081/;AccountKey=key=;";
 
-        string rewritten = typeof(DockerAzureEnvironment).Assembly
-            .GetType("TestFramework.Container.Azure.DockerConnectionStringRewriter")!
-            .GetMethod("RewriteCosmosForContainer", BindingFlags.Static | BindingFlags.NonPublic)!
-            .Invoke(null, [connectionString])!
+        object endpointMap = Activator.CreateInstance(typeof(DockerAzureEnvironment).Assembly
+            .GetType("TestFramework.Container.Azure.DockerEndpointMap")!, nonPublic: true)!;
+
+        string rewritten = endpointMap.GetType()
+            .GetMethod("RewriteCosmosForContainer", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(endpointMap, [connectionString])!
             .ToString()!;
 
         Assert.Contains($"accountendpoint=https://{DockerAzureEnvironment.CosmosDbNetworkAlias}:8081/", rewritten, StringComparison.OrdinalIgnoreCase);
@@ -258,14 +308,16 @@ public class DockerAzureEnvironmentTests
     }
 
     [Fact]
-    public void DockerConnectionStringRewriter_ServiceBusForSameNetworkContainer_UsesAliasAndContainerPort()
+    public void DockerEndpointMap_ServiceBusForContainer_UsesAliasAndContainerPort()
     {
         string connectionString = "Endpoint=sb://localhost:19123/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=key=;UseDevelopmentEmulator=true;";
 
-        string rewritten = typeof(DockerAzureEnvironment).Assembly
-            .GetType("TestFramework.Container.Azure.DockerConnectionStringRewriter")!
-            .GetMethod("RewriteServiceBusForSameNetworkContainer", BindingFlags.Static | BindingFlags.NonPublic)!
-            .Invoke(null, [connectionString])!
+        object endpointMap = Activator.CreateInstance(typeof(DockerAzureEnvironment).Assembly
+            .GetType("TestFramework.Container.Azure.DockerEndpointMap")!, nonPublic: true)!;
+
+        string rewritten = endpointMap.GetType()
+            .GetMethod("RewriteServiceBusForContainer", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(endpointMap, [connectionString])!
             .ToString()!;
 
         Assert.Contains($"endpoint=sb://{DockerAzureEnvironment.ServiceBusNetworkAlias}/", rewritten, StringComparison.OrdinalIgnoreCase);
@@ -475,6 +527,18 @@ public class DockerAzureEnvironmentTests
         public override CosmosContainerIdentifier Identifier => "cosmos";
     }
 
+    private sealed class DefaultedCosmosDefinition : DockerCosmosDefinition<TestCosmosItem>
+    {
+        public override CosmosContainerIdentifier Identifier => "cosmos-default";
+
+        protected override CosmosContainerDbConfig? CreateDefaultConfig() => new()
+        {
+            ConnectionString = "AccountEndpoint=https://localhost:8081/;AccountKey=key=;",
+            DatabaseName = "test-db",
+            ContainerName = "test-container"
+        };
+    }
+
     private sealed class TestServiceBusDefinition : DockerServiceBusDefinition
     {
         public override ServiceBusIdentifier Identifier => "bus";
@@ -517,6 +581,18 @@ public class DockerAzureEnvironmentTests
                 .UseServiceBusTrigger<TestServiceBusDefinition>()
                 .UseServiceBusReply<TestServiceBusDefinition>();
         }
+    }
+
+    private sealed class DefaultedFunctionAppDefinition : DockerFunctionAppDefinition<TestFunctionHost>
+    {
+        public override FunctionAppIdentifier Identifier => "default-func";
+
+        protected override FunctionAppConfig? CreateDefaultConfig() => new()
+        {
+            BaseUrl = "http://localhost/",
+            Code = "unused",
+            AdminCode = "unused",
+        };
     }
 
     private sealed class TestInfrastructureDefinition : DockerAzureInfrastructureDefinition

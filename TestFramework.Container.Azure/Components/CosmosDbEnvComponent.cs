@@ -24,7 +24,7 @@ internal sealed class CosmosDbEnvComponent : DockerAzureEnvComponent
     public override async Task<object?> CreateAsync(IEnvironmentProvider environment, IServiceProvider serviceProvider, VariableStore variableStore, ArtifactStore artifactStore, ScopedLogger logger, CancellationToken cancellationToken)
     {
         DockerAzureEnvironment dockerEnvironment = GetDockerEnvironment(environment);
-        ConfigStore<CosmosContainerDbConfig>? configStore = EnvComponentConfigStoreGuard.GetRequiredStore<CosmosContainerDbConfig>(serviceProvider, dockerEnvironment.UsedCosmosIdentifiers, "Cosmos environment setup");
+        ConfigStore<CosmosContainerDbConfig>? configStore = EnvComponentConfigStoreGuard.GetRequiredStore<CosmosContainerDbConfig>(dockerEnvironment, serviceProvider, dockerEnvironment.UsedCosmosIdentifiers, "Cosmos environment setup");
         INetwork network = dockerEnvironment.GetRequiredRuntimeState<INetwork>(DockerAzureEnvironment.NetworkComponentId);
         string cosmosImage = dockerEnvironment.GetCosmosDbImage();
         ContainerBuilder builder = new ContainerBuilder(cosmosImage)
@@ -41,7 +41,7 @@ internal sealed class CosmosDbEnvComponent : DockerAzureEnvComponent
 
         await container.StartAsync(cancellationToken).ConfigureAwait(false);
 
-        string connectionString = CreateConnectionString(container);
+        string connectionString = dockerEnvironment.GetEndpointMap().CreateCosmosConnectionString(container);
         ConnectionStringGuards.EnsureCosmos(connectionString);
 
         using CosmosClient client = new(connectionString, new CosmosClientOptions
@@ -86,12 +86,6 @@ internal sealed class CosmosDbEnvComponent : DockerAzureEnvComponent
         if (state is IAsyncDisposable asyncDisposable)
             await asyncDisposable.DisposeAsync().ConfigureAwait(false);
     }
-
-    private static string CreateConnectionString(IContainer container)
-    {
-        return $"AccountEndpoint=https://{container.Hostname}:{container.GetMappedPublicPort(8081)}/;AccountKey=C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==;";
-    }
-
     private static async Task WaitForGatewayAsync(CosmosClient client, ScopedLogger logger, CancellationToken cancellationToken)
     {
         DateTime deadline = DateTime.UtcNow.AddMinutes(2);
