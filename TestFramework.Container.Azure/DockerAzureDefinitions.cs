@@ -1,5 +1,6 @@
 using TestFramework.Azure.Configuration.SpecificConfigs;
 using TestFramework.Azure.Identifier;
+using TestFramework.Container.Azure.Contracts;
 using TestFramework.Core.Environment;
 
 namespace TestFramework.Container.Azure;
@@ -72,18 +73,29 @@ public abstract class DockerStorageDefinition : DockerAzureDefinition
 {
     public abstract StorageAccountIdentifier Identifier { get; }
 
-    protected virtual StorageAccountConfig? CreateDefaultConfig() => null;
+    protected virtual string? BlobContainerName => null;
+
+    protected virtual string? QueueContainerName => null;
+
+    protected virtual string? TableContainerName => null;
+
+    internal StorageAccountConfig BuildConfig(string connectionString) => new()
+    {
+        ConnectionString = connectionString,
+        BlobContainerName = BlobContainerName,
+        QueueContainerName = QueueContainerName,
+        TableContainerName = TableContainerName,
+    };
 
     internal bool TryCreateDefaultConfig(out StorageAccountConfig config)
     {
-        StorageAccountConfig? created = CreateDefaultConfig();
-        if (created is null)
+        if (BlobContainerName is null && QueueContainerName is null && TableContainerName is null)
         {
             config = default!;
             return false;
         }
 
-        config = created;
+        config = BuildConfig(DockerAzureDefaults.PlaceholderConnectionString);
         return true;
     }
 }
@@ -94,18 +106,26 @@ public abstract class DockerCosmosDefinition : DockerAzureDefinition
 
     public virtual Type? ModelType => null;
 
-    protected virtual CosmosContainerDbConfig? CreateDefaultConfig() => null;
+    protected virtual string? DatabaseName => null;
+
+    protected virtual string? ContainerName => null;
+
+    internal CosmosContainerDbConfig BuildConfig(string connectionString) => new()
+    {
+        ConnectionString = connectionString,
+        DatabaseName = DatabaseName ?? throw new InvalidOperationException($"Override '{nameof(DatabaseName)}' on '{GetType().Name}' to provide a Cosmos database name."),
+        ContainerName = ContainerName ?? throw new InvalidOperationException($"Override '{nameof(ContainerName)}' on '{GetType().Name}' to provide a Cosmos container name."),
+    };
 
     internal bool TryCreateDefaultConfig(out CosmosContainerDbConfig config)
     {
-        CosmosContainerDbConfig? created = CreateDefaultConfig();
-        if (created is null)
+        if (DatabaseName is null || ContainerName is null)
         {
             config = default!;
             return false;
         }
 
-        config = created;
+        config = BuildConfig(DockerAzureDefaults.PlaceholderConnectionString);
         return true;
     }
 }
@@ -119,20 +139,68 @@ public abstract class DockerSqlDefinition : DockerAzureDefinition
 {
     public abstract SqlDatabaseIdentifier Identifier { get; }
 
-    protected virtual SqlDatabaseConfig? CreateDefaultConfig() => null;
+    protected virtual string? DatabaseName => null;
+
+    protected virtual string? ContextType => null;
+
+    internal SqlDatabaseConfig BuildConfig(string connectionString) => new()
+    {
+        ConnectionString = connectionString,
+        DatabaseName = DatabaseName ?? throw new InvalidOperationException($"Override '{nameof(DatabaseName)}' on '{GetType().Name}' to provide a SQL database name."),
+        ContextType = ContextType,
+    };
 
     internal bool TryCreateDefaultConfig(out SqlDatabaseConfig config)
     {
-        SqlDatabaseConfig? created = CreateDefaultConfig();
-        if (created is null)
+        if (DatabaseName is null)
         {
             config = default!;
             return false;
         }
 
-        config = created;
+        config = BuildConfig(DockerAzureDefaults.PlaceholderConnectionString);
         return true;
     }
+}
+
+public sealed class DockerServiceBusEndpoint
+{
+    private DockerServiceBusEndpoint(ServiceBusEndpointKind kind, string entityName, string? subscriptionName)
+    {
+        if (string.IsNullOrWhiteSpace(entityName))
+            throw new ArgumentException("A Service Bus endpoint name is required.", nameof(entityName));
+
+        if (kind == ServiceBusEndpointKind.TopicSubscription && string.IsNullOrWhiteSpace(subscriptionName))
+            throw new ArgumentException("A topic subscription endpoint requires a subscription name.", nameof(subscriptionName));
+
+        if (kind != ServiceBusEndpointKind.TopicSubscription && subscriptionName is not null)
+            throw new ArgumentException("Only topic subscription endpoints may declare a subscription name.", nameof(subscriptionName));
+
+        Kind = kind;
+        EntityName = entityName;
+        SubscriptionName = subscriptionName;
+    }
+
+    public ServiceBusEndpointKind Kind { get; }
+
+    public string EntityName { get; }
+
+    public string? SubscriptionName { get; }
+
+    public static DockerServiceBusEndpoint Queue(string queueName) => new(ServiceBusEndpointKind.Queue, queueName, null);
+
+    public static DockerServiceBusEndpoint Topic(string topicName) => new(ServiceBusEndpointKind.Topic, topicName, null);
+
+    public static DockerServiceBusEndpoint TopicSubscription(string topicName, string subscriptionName) => new(ServiceBusEndpointKind.TopicSubscription, topicName, subscriptionName);
+
+    internal ServiceBusConfig CreateConfig(string connectionString, bool requiredSession) => new()
+    {
+        ConnectionString = connectionString,
+        QueueName = Kind == ServiceBusEndpointKind.Queue ? EntityName : null,
+        TopicName = Kind == ServiceBusEndpointKind.Queue ? null : EntityName,
+        SubscriptionName = SubscriptionName,
+        RequiredSession = requiredSession,
+    };
 }
 
 public abstract class DockerServiceBusDefinition : DockerAzureDefinition
@@ -141,7 +209,15 @@ public abstract class DockerServiceBusDefinition : DockerAzureDefinition
 
     public virtual string TopologyConfigPath => DockerAzureDefaults.ServiceBusTopologyConfigPath;
 
-    protected virtual ServiceBusConfig? CreateDefaultConfig() => null;
+    protected virtual DockerServiceBusEndpoint? Endpoint => null;
+
+    protected virtual bool RequiredSession => false;
+
+    internal ServiceBusConfig BuildConfig(string connectionString)
+    {
+        DockerServiceBusEndpoint endpoint = Endpoint ?? throw new InvalidOperationException($"Override '{nameof(Endpoint)}' on '{GetType().Name}' to provide a Service Bus endpoint.");
+        return endpoint.CreateConfig(connectionString, RequiredSession);
+    }
 
     protected virtual void ConfigureServiceBusTopology(DockerServiceBusTopologyBuilder builder)
     {
@@ -149,14 +225,13 @@ public abstract class DockerServiceBusDefinition : DockerAzureDefinition
 
     internal bool TryCreateDefaultConfig(out ServiceBusConfig config)
     {
-        ServiceBusConfig? created = CreateDefaultConfig();
-        if (created is null)
+        if (Endpoint is null)
         {
             config = default!;
             return false;
         }
 
-        config = created;
+        config = BuildConfig(DockerAzureDefaults.PlaceholderConnectionString);
         return true;
     }
 
@@ -368,6 +443,7 @@ public sealed class DockerFunctionAppBuilder
 public static class DockerAzureDefaults
 {
     public const string FunctionAppImage = "mcr.microsoft.com/azure-functions/dotnet-isolated:4-dotnet-isolated8.0";
+    public const string PlaceholderConnectionString = "placeholder://container-managed";
     public const string MsSqlImage = "mcr.microsoft.com/mssql/server:2022-CU14-ubuntu-22.04";
     public const string AzuriteImage = "mcr.microsoft.com/azure-storage/azurite:3.33.0";
     public const string AzuriteAccountName = "devstoreaccount1";
