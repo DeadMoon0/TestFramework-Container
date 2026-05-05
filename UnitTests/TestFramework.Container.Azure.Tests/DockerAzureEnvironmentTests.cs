@@ -531,12 +531,8 @@ public class DockerAzureEnvironmentTests
     {
         public override CosmosContainerIdentifier Identifier => "cosmos-default";
 
-        protected override CosmosContainerDbConfig? CreateDefaultConfig() => new()
-        {
-            ConnectionString = "AccountEndpoint=https://localhost:8081/;AccountKey=key=;",
-            DatabaseName = "test-db",
-            ContainerName = "test-container"
-        };
+            protected override string? DatabaseName => "test-db";
+            protected override string? ContainerName => "test-container";
     }
 
     private sealed class TestServiceBusDefinition : DockerServiceBusDefinition

@@ -181,7 +181,7 @@ internal sealed class FunctionAppEnvComponent : DockerAzureEnvComponent
                     ServiceBusConfig triggerBus = dockerEnvironment.GetOrCreateConfigStore<ServiceBusConfig>(serviceProvider, [binding.ResourceIdentifier], "Function App environment setup")!.GetConfig(binding.ResourceIdentifier);
                     settings[binding.PrimarySettingName] = dockerEnvironment.GetEndpointMap().RewriteServiceBusForContainer(triggerBus.ConnectionString);
                     if (binding.SecondarySettingName is not null)
-                        settings[binding.SecondarySettingName] = triggerBus.TopicName ?? triggerBus.QueueName ?? throw new InvalidOperationException($"Service Bus identifier '{binding.ResourceIdentifier}' does not define a queue or topic name.");
+                        settings[binding.SecondarySettingName] = triggerBus.EntityName;
                     if (binding.TertiarySettingName is not null && triggerBus.SubscriptionName is not null)
                         settings[binding.TertiarySettingName] = triggerBus.SubscriptionName;
                     break;
@@ -189,7 +189,7 @@ internal sealed class FunctionAppEnvComponent : DockerAzureEnvComponent
                     ServiceBusConfig replyBus = dockerEnvironment.GetOrCreateConfigStore<ServiceBusConfig>(serviceProvider, [binding.ResourceIdentifier], "Function App environment setup")!.GetConfig(binding.ResourceIdentifier);
                     settings[binding.PrimarySettingName] = dockerEnvironment.GetEndpointMap().RewriteServiceBusForContainer(replyBus.ConnectionString);
                     if (binding.SecondarySettingName is not null)
-                        settings[binding.SecondarySettingName] = replyBus.TopicName ?? replyBus.QueueName ?? throw new InvalidOperationException($"Service Bus identifier '{binding.ResourceIdentifier}' does not define a queue or topic name.");
+                        settings[binding.SecondarySettingName] = replyBus.EntityName;
                     break;
             }
         }

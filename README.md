@@ -106,7 +106,7 @@ The current composition model is single-source-of-truth based:
 - Function App resource bindings are derived from the Function App definition
 - `Include<TDefinition>()` makes a definition available, but does not force activation on its own
 
-In shared test helpers, that usually means a small project-local base class that couples the definition to its default config, for example a storage/cosmos/service-bus component that overrides `CreateDefaultConfig()` next to its identifier and model shape.
+In shared test helpers, that usually means a small project-local base class that couples the definition to its local defaults, for example a storage/cosmos component with fixed names or a Service Bus component that exposes one logical `Endpoint` next to its identifier and topology.
 
 ## Function App Pattern
 
@@ -126,6 +126,9 @@ public sealed class MainDb : DockerCosmosDefinition<SampleDocument>
 public sealed class ProcessingReply : DockerServiceBusDefinition
 {
 	public override ServiceBusIdentifier Identifier => "ProcessingReply";
+
+	protected override DockerServiceBusEndpoint? Endpoint
+		=> DockerServiceBusEndpoint.Topic("processing-reply");
 }
 
 public sealed class DefaultFunctionApp : DockerFunctionAppDefinition<AnalysisProcessor>
