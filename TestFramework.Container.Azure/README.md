@@ -2,7 +2,7 @@
 
 `TestFramework.Container.Azure` lets a normal TestFramework Azure timeline run against Docker-backed emulator infrastructure.
 
-Use it when you want to keep the normal `TestFramework.Azure` timeline shape, but you want Blob, Table, Cosmos, SQL Server, or Service Bus dependencies to come from local containers instead of a live Azure environment.
+Use it when you want to keep the normal `TestFramework.Azure` timeline shape, but you want Blob, Table, Cosmos, SQL Server, Service Bus, or Logic App dependencies to come from local containers instead of a live Azure environment.
 
 ## Install
 
@@ -19,10 +19,17 @@ That environment:
 - rewrites registered Azure config entries to the mapped local Docker endpoints
 - validates the resolved component graph and binds compatible contracts before startup
 - keeps the normal identifier-driven Azure config contract intact
+- can detect whether a Docker-hosted Logic App workflow is stateful or stateless when the workflow definition is available locally
 
 The placeholder config can still be registered explicitly by the test project, but definition classes can also own that registration when a shared test stack wants each component to describe its own shape. Those placeholders act as logical identifiers; the runtime endpoints come from the activated component graph.
 
 The timeline itself still looks like a normal TestFramework timeline. The environment is the switch that makes the run container-backed.
+
+For Logic Apps, keep the same split as the Azure package:
+- stateful workflows use `Call()` and can be followed by `RunCompleted(...)`
+- stateless workflows use `CallAndCapture()` and complete inline with the callback response
+
+When Docker can determine that a workflow is stateless from `workflow.json`, `RunCompleted(...)` fails fast with a message that points to `CallAndCapture()`.
 
 ## Prerequisites
 

@@ -123,11 +123,30 @@ internal sealed class FunctionAppEnvComponent : DockerAzureEnvComponent
 
         string assemblyName = functionType.Assembly.GetName().Name ?? throw new InvalidOperationException("The Function App assembly name could not be resolved.");
         string projectDirectory = ResolveProjectDirectory(assemblyName, outputDirectory);
-        string candidateOutputDirectory = Path.Combine(projectDirectory, "bin", "Debug", "net8.0");
-        if (File.Exists(Path.Combine(candidateOutputDirectory, "host.json")) && File.Exists(Path.Combine(candidateOutputDirectory, $"{assemblyName}.dll")))
-            outputDirectory = candidateOutputDirectory;
+        if (!LooksLikeFunctionAppOutput(outputDirectory, assemblyName))
+        {
+            string configuration = ResolveBuildConfiguration(outputDirectory);
+            string candidateOutputDirectory = Path.Combine(projectDirectory, "bin", configuration, "net8.0");
+            if (LooksLikeFunctionAppOutput(candidateOutputDirectory, assemblyName))
+                outputDirectory = candidateOutputDirectory;
+        }
 
         return new FunctionAppLocation(projectDirectory, outputDirectory);
+    }
+
+    private static bool LooksLikeFunctionAppOutput(string outputDirectory, string assemblyName)
+        => File.Exists(Path.Combine(outputDirectory, "host.json"))
+        && File.Exists(Path.Combine(outputDirectory, $"{assemblyName}.dll"));
+
+    private static string ResolveBuildConfiguration(string outputDirectory)
+    {
+        if (outputDirectory.Contains($"{Path.DirectorySeparatorChar}Release{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase))
+            return "Release";
+
+        if (outputDirectory.Contains($"{Path.DirectorySeparatorChar}Debug{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase))
+            return "Debug";
+
+        return "Debug";
     }
 
     private static string ResolveProjectDirectory(string assemblyName, string startDirectory)

@@ -1,5 +1,6 @@
 using System.Reflection;
 using TestFramework.Azure.Configuration;
+using TestFramework.Azure.LogicApp;
 
 namespace TestFramework.Container.Azure;
 
@@ -10,6 +11,12 @@ internal sealed class DockerAzureRunScopedServiceProvider(DockerAzureEnvironment
 
     public object? GetService(Type serviceType)
     {
+        if (serviceType == typeof(DockerAzureEnvironment)
+            || serviceType == typeof(ILogicAppWorkflowMetadataProvider))
+        {
+            return environment;
+        }
+
         object? service = baseServiceProvider.GetService(serviceType);
         if (service is not null)
             return service;

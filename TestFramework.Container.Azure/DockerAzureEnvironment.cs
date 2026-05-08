@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Text.Json;
 using TestFramework.Azure;
 using TestFramework.Azure.Configuration;
 using TestFramework.Azure.Configuration.SpecificConfigs;
@@ -7,15 +8,17 @@ using TestFramework.Azure.DB.SqlServer;
 using TestFramework.Azure.Identifier;
 using TestFramework.Azure.StorageAccount.Blob;
 using TestFramework.Azure.StorageAccount.Table;
+using TestFramework.Azure.LogicApp;
 using TestFramework.Core.Artifacts;
 using TestFramework.Core.Environment;
 
 namespace TestFramework.Container.Azure;
 
-public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedServiceProviderFactory
+public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedServiceProviderFactory, ILogicAppWorkflowMetadataProvider
 {
     public static readonly EnvComponentIdentifier NetworkComponentId = "docker-network";
     public static readonly EnvComponentIdentifier FunctionAppComponentId = "functionapp";
+    public static readonly EnvComponentIdentifier LogicAppComponentId = "logicapp";
     public static readonly EnvComponentIdentifier MsSqlComponentId = "mssql";
     public static readonly EnvComponentIdentifier AzuriteComponentId = "azurite";
     public static readonly EnvComponentIdentifier CosmosDbComponentId = "cosmos-emulator";
@@ -27,24 +30,28 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
 
     private readonly Dictionary<EnvComponentIdentifier, object?> _runtimeStates = [];
     private readonly Dictionary<Type, object> _synthesizedConfigStores = [];
+    private readonly Dictionary<(string Identifier, string WorkflowName), LogicAppWorkflowMode> _logicAppWorkflowModes = new();
     private readonly DockerAzureDefinitionState _definitionState = new();
     public HashSet<string> UsedStorageIdentifiers { get; } = [];
     public HashSet<string> UsedCosmosIdentifiers { get; } = [];
     public HashSet<string> UsedSqlIdentifiers { get; } = [];
     public HashSet<string> UsedServiceBusIdentifiers { get; } = [];
     public HashSet<string> UsedFunctionAppIdentifiers { get; } = [];
+    public HashSet<string> UsedLogicAppIdentifiers { get; } = [];
     internal Dictionary<string, string> CosmosPartitionKeyPaths { get; } = [];
 
     public DockerAzureEnvironment()
     {
         AddComponent(new Components.DockerNetworkEnvComponent());
         AddComponent(new Components.FunctionAppEnvComponent());
+        AddComponent(new Components.LogicAppEnvComponent());
         AddComponent(new Components.MsSqlEnvComponent());
         AddComponent(new Components.AzuriteEnvComponent());
         AddComponent(new Components.CosmosDbEnvComponent());
         AddComponent(new Components.ServiceBusEnvComponent());
 
         MapResourceKind(AzureEnvironmentResourceKinds.FunctionApp, FunctionAppComponentId);
+        MapResourceKind(AzureEnvironmentResourceKinds.LogicApp, LogicAppComponentId);
         MapResourceKind(AzureEnvironmentResourceKinds.Storage, AzuriteComponentId);
         MapResourceKind(AzureEnvironmentResourceKinds.Cosmos, CosmosDbComponentId);
         MapResourceKind(AzureEnvironmentResourceKinds.Sql, MsSqlComponentId);
@@ -81,6 +88,7 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
         UsedSqlIdentifiers.Clear();
         UsedServiceBusIdentifiers.Clear();
         UsedFunctionAppIdentifiers.Clear();
+        UsedLogicAppIdentifiers.Clear();
         CosmosPartitionKeyPaths.Clear();
         _synthesizedConfigStores.Clear();
 
@@ -91,6 +99,7 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
         HashSet<EnvComponentIdentifier> resolved = [.. base.ResolveComponents(artifacts, requirements)];
         CaptureActivatedDefinitionUsage(_definitionState.ExpandActivatedDefinitions(
             UsedFunctionAppIdentifiers.Select(x => new FunctionAppIdentifier(x)),
+            UsedLogicAppIdentifiers.Select(x => new LogicAppIdentifier(x)),
             UsedStorageIdentifiers.Select(x => new StorageAccountIdentifier(x)),
             UsedCosmosIdentifiers.Select(x => new CosmosContainerIdentifier(x)),
             UsedSqlIdentifiers.Select(x => new SqlDatabaseIdentifier(x)),
@@ -99,6 +108,8 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
 
         if (UsedFunctionAppIdentifiers.Count > 0)
             resolved.Add(FunctionAppComponentId);
+        if (UsedLogicAppIdentifiers.Count > 0)
+            resolved.Add(LogicAppComponentId);
         if (UsedStorageIdentifiers.Count > 0)
             resolved.Add(AzuriteComponentId);
         if (UsedCosmosIdentifiers.Count > 0)
@@ -109,6 +120,7 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
             resolved.Add(ServiceBusComponentId);
 
         ValidateFunctionAppRegistrations();
+        ValidateLogicAppRegistrations();
 
         return [.. resolved];
     }
@@ -139,6 +151,11 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
     internal FunctionAppDefinitionDescriptor GetRequiredFunctionAppDescriptor(FunctionAppIdentifier identifier)
     {
         return _definitionState.GetRequiredFunctionAppDescriptor(identifier);
+    }
+
+    internal LogicAppDefinitionDescriptor GetRequiredLogicAppDescriptor(LogicAppIdentifier identifier)
+    {
+        return _definitionState.GetRequiredLogicAppDescriptor(identifier);
     }
 
     internal IReadOnlyCollection<ComponentContractBinding> GetContractBindings()
@@ -210,6 +227,41 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
         return new DockerAzureRunScopedServiceProvider(this, baseServiceProvider);
     }
 
+    public bool TryGetWorkflowMode(LogicAppIdentifier identifier, string workflowName, out LogicAppWorkflowMode mode)
+    {
+        (string Identifier, string WorkflowName) cacheKey = (identifier.Identifier, workflowName);
+        if (_logicAppWorkflowModes.TryGetValue(cacheKey, out mode))
+            return true;
+
+        LogicAppDefinitionDescriptor descriptor;
+        try
+        {
+            descriptor = GetRequiredLogicAppDescriptor(identifier);
+        }
+        catch (InvalidOperationException)
+        {
+            mode = LogicAppWorkflowMode.Unknown;
+            return false;
+        }
+
+        string logicAppPath;
+        try
+        {
+            logicAppPath = LogicAppPathLocator.Resolve(descriptor.Path);
+        }
+        catch (DirectoryNotFoundException)
+        {
+            mode = LogicAppWorkflowMode.Unknown;
+            return false;
+        }
+
+        if (!TryReadWorkflowMode(logicAppPath, workflowName, out mode))
+            return false;
+
+        _logicAppWorkflowModes[cacheKey] = mode;
+        return true;
+    }
+
     private void CaptureIdentifiers(ArtifactReferenceGeneric reference)
     {
         Type referenceType = reference.GetType();
@@ -245,6 +297,43 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
             throw new InvalidOperationException($"No Docker Function App registration was configured for: {string.Join(", ", missingIdentifiers)}.");
     }
 
+    private static bool TryReadWorkflowMode(string logicAppPath, string workflowName, out LogicAppWorkflowMode mode)
+    {
+        string workflowPath = Path.Combine(logicAppPath, workflowName, "workflow.json");
+        if (!File.Exists(workflowPath))
+        {
+            mode = LogicAppWorkflowMode.Unknown;
+            return false;
+        }
+
+        using FileStream stream = File.OpenRead(workflowPath);
+        using JsonDocument document = JsonDocument.Parse(stream);
+        string? kind = document.RootElement.TryGetProperty("kind", out JsonElement kindElement)
+            ? kindElement.GetString()
+            : null;
+
+        mode = kind?.Trim().ToLowerInvariant() switch
+        {
+            "stateful" => LogicAppWorkflowMode.Stateful,
+            "stateless" => LogicAppWorkflowMode.Stateless,
+            _ => LogicAppWorkflowMode.Unknown,
+        };
+
+        return mode != LogicAppWorkflowMode.Unknown;
+    }
+
+    private void ValidateLogicAppRegistrations()
+    {
+        if (UsedLogicAppIdentifiers.Count == 0)
+            return;
+
+        string[] missingIdentifiers = [.. UsedLogicAppIdentifiers
+            .Where(identifier => !_definitionState.HasLogicAppDescriptor(identifier))
+            .OrderBy(identifier => identifier, StringComparer.Ordinal)];
+        if (missingIdentifiers.Length > 0)
+            throw new InvalidOperationException($"No Docker Logic App registration was configured for: {string.Join(", ", missingIdentifiers)}.");
+    }
+
     private void CaptureActivatedDefinitionUsage(IEnumerable<DockerAzureDefinitionMetadata> definitions)
     {
         foreach (DockerAzureDefinitionMetadata metadata in definitions)
@@ -267,6 +356,9 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
                     break;
                 case DockerFunctionAppDefinition functionApp:
                     UsedFunctionAppIdentifiers.Add(functionApp.Identifier);
+                    break;
+                case DockerLogicAppDefinition logicApp:
+                    UsedLogicAppIdentifiers.Add(logicApp.Identifier);
                     break;
             }
         }
@@ -325,6 +417,8 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
             return UsedServiceBusIdentifiers;
         if (configType == typeof(FunctionAppConfig))
             return UsedFunctionAppIdentifiers;
+        if (configType == typeof(LogicAppConfig))
+            return UsedLogicAppIdentifiers;
 
         throw new InvalidOperationException($"Unsupported config type '{configType.FullName}' for Docker Azure store resolution.");
     }
@@ -347,6 +441,9 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
                 break;
             case AzureEnvironmentResourceKinds.FunctionApp:
                 UsedFunctionAppIdentifiers.Add(requirement.ResourceIdentifier);
+                break;
+            case AzureEnvironmentResourceKinds.LogicApp:
+                UsedLogicAppIdentifiers.Add(requirement.ResourceIdentifier);
                 break;
         }
     }

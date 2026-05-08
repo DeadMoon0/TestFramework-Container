@@ -50,7 +50,13 @@ internal sealed class AzuriteEnvComponent : DockerAzureEnvComponent
 
     public override async Task DeconstructAsync(object? state, IEnvironmentProvider environment, IServiceProvider serviceProvider, VariableStore variableStore, ArtifactStore artifactStore, ScopedLogger logger, CancellationToken cancellationToken)
     {
-        if (state is IAsyncDisposable asyncDisposable)
+        if (state is IContainer container)
+        {
+            await ForceRemoveContainerAsync(container, cancellationToken).ConfigureAwait(false);
+        }
+        else if (state is IAsyncDisposable asyncDisposable)
+        {
             await asyncDisposable.DisposeAsync().ConfigureAwait(false);
+        }
     }
 }
