@@ -5,6 +5,21 @@ namespace TestFramework.Container.Azure;
 
 internal sealed class DockerEndpointMap
 {
+    private static readonly IReadOnlyDictionary<string, string> CanonicalConnectionStringKeys = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["DefaultEndpointsProtocol"] = "DefaultEndpointsProtocol",
+        ["AccountName"] = "AccountName",
+        ["AccountKey"] = "AccountKey",
+        ["BlobEndpoint"] = "BlobEndpoint",
+        ["QueueEndpoint"] = "QueueEndpoint",
+        ["TableEndpoint"] = "TableEndpoint",
+        ["AccountEndpoint"] = "AccountEndpoint",
+        ["Endpoint"] = "Endpoint",
+        ["SharedAccessKeyName"] = "SharedAccessKeyName",
+        ["SharedAccessKey"] = "SharedAccessKey",
+        ["UseDevelopmentEmulator"] = "UseDevelopmentEmulator",
+    };
+
     internal string GetFunctionAppBaseUrl(IContainer container)
     {
         return BuildHostEndpoint(container, 80, "http").ToString();
@@ -79,8 +94,15 @@ internal sealed class DockerEndpointMap
         List<string> parts = [];
 
         foreach (string key in builder.Keys.Cast<string>())
-            parts.Add($"{key}={builder[key]}");
+            parts.Add($"{GetCanonicalConnectionStringKey(key)}={builder[key]}");
 
         return string.Join(';', parts) + ";";
+    }
+
+    private static string GetCanonicalConnectionStringKey(string key)
+    {
+        return CanonicalConnectionStringKeys.TryGetValue(key, out string? canonicalKey)
+            ? canonicalKey
+            : key;
     }
 }

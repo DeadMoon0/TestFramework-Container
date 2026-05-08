@@ -1,0 +1,33 @@
+{
+  "definition": {
+    "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+    "actions": {
+      "Response": {
+        "type": "Response",
+        "kind": "http",
+        "runAfter": {},
+        "inputs": {
+          "statusCode": 202,
+          "body": {
+            "message": "logic-smoke-processed",
+            "received": "@triggerBody()"
+          }
+        }
+      }
+    },
+    "contentVersion": "1.0.0.0",
+    "outputs": {},
+    "triggers": {
+      "manual": {
+        "type": "Request",
+        "kind": "Http",
+        "inputs": {
+          "schema": {
+            "type": "object"
+          }
+        }
+      }
+    }
+  },
+  "kind": "Stateful"
+}

@@ -298,6 +298,41 @@ public abstract class DockerFunctionAppDefinition<TFunctionApp> : DockerFunction
     internal sealed override Type FunctionType => typeof(TFunctionApp);
 }
 
+public abstract class DockerLogicAppDefinition : DockerAzureDefinition
+{
+    public abstract LogicAppIdentifier Identifier { get; }
+
+    public abstract string Path { get; }
+
+    public virtual string Image => DockerAzureDefaults.LogicAppImage;
+
+    protected virtual LogicAppConfig? CreateDefaultConfig() => null;
+
+    protected virtual void Configure(DockerLogicAppBuilder builder)
+    {
+    }
+
+    internal bool TryCreateDefaultConfig(out LogicAppConfig config)
+    {
+        LogicAppConfig? created = CreateDefaultConfig();
+        if (created is null)
+        {
+            config = default!;
+            return false;
+        }
+
+        config = created;
+        return true;
+    }
+
+    internal LogicAppDefinitionDescriptor CreateDescriptor()
+    {
+        DockerLogicAppBuilder builder = new();
+        Configure(builder);
+        return new LogicAppDefinitionDescriptor(Identifier, Path, Image, builder.AdditionalSettings);
+    }
+}
+
 public sealed class DockerAzureDependencyBuilder
 {
     private readonly Dictionary<Type, ComponentDependency> _dependencies = [];
@@ -440,9 +475,21 @@ public sealed class DockerFunctionAppBuilder
     }
 }
 
+public sealed class DockerLogicAppBuilder
+{
+    internal Dictionary<string, string> AdditionalSettings { get; } = [];
+
+    public DockerLogicAppBuilder WithAppSetting(string key, string value)
+    {
+        AdditionalSettings[key] = value;
+        return this;
+    }
+}
+
 public static class DockerAzureDefaults
 {
     public const string FunctionAppImage = "mcr.microsoft.com/azure-functions/dotnet-isolated:4-dotnet-isolated8.0";
+    public const string LogicAppImage = "mcr.microsoft.com/azure-functions/dotnet:4";
     public const string PlaceholderConnectionString = "placeholder://container-managed";
     public const string MsSqlImage = "mcr.microsoft.com/mssql/server:2022-CU14-ubuntu-22.04";
     public const string AzuriteImage = "mcr.microsoft.com/azure-storage/azurite:3.33.0";
@@ -453,6 +500,7 @@ public static class DockerAzureDefaults
     public const string ServiceBusImage = "mcr.microsoft.com/azure-messaging/servicebus-emulator:latest";
     public const string MsSqlPassword = "TestFramework_Container1!";
     public static readonly string ServiceBusTopologyConfigPath = Path.Combine("Configurations", "ServiceBus", "config.json");
+    public static readonly string DefaultAzuriteConnectionString = $"DefaultEndpointsProtocol=http;AccountName={AzuriteAccountName};AccountKey={AzuriteAccountKey};BlobEndpoint=http://127.0.0.1:10000/{AzuriteAccountName};QueueEndpoint=http://127.0.0.1:10001/{AzuriteAccountName};TableEndpoint=http://127.0.0.1:10002/{AzuriteAccountName};";
 }
 
 internal sealed record FunctionAppDefinitionDescriptor(
@@ -460,6 +508,12 @@ internal sealed record FunctionAppDefinitionDescriptor(
     IReadOnlyCollection<ServiceBusTopologySource> ServiceBusTopologySources,
     IReadOnlyCollection<ComponentDependency> Dependencies,
     IReadOnlyCollection<FunctionAppResourceBinding> ResourceBindings);
+
+internal sealed record LogicAppDefinitionDescriptor(
+    LogicAppIdentifier Identifier,
+    string Path,
+    string Image,
+    IReadOnlyDictionary<string, string> AdditionalSettings);
 
 internal enum FunctionAppResourceBindingKind
 {
@@ -482,6 +536,7 @@ internal sealed class DockerAzureDefinitionState
     private readonly Dictionary<Type, DockerAzureDefinitionMetadata> _definitionMetadata = [];
     private readonly Dictionary<string, DockerAzureDefinitionMetadata> _definitionMetadataByIdentity = new(StringComparer.Ordinal);
     private readonly Dictionary<FunctionAppIdentifier, FunctionAppDefinitionDescriptor> _functionAppDescriptors = [];
+    private readonly Dictionary<LogicAppIdentifier, LogicAppDefinitionDescriptor> _logicAppDescriptors = [];
 
     public List<DockerFunctionAppRegistration> FunctionApps { get; } = [];
     public ServiceBusTopologySource? ServiceBusTopologySource { get; private set; }
@@ -548,6 +603,9 @@ internal sealed class DockerAzureDefinitionState
                 foreach (ServiceBusTopologySource source in descriptor.ServiceBusTopologySources)
                     SetServiceBusTopologySource(source);
                 break;
+            case DockerLogicAppDefinition logicApp:
+                AddLogicAppDescriptor(logicApp.Identifier, logicApp.CreateDescriptor());
+                break;
             default:
                 throw new InvalidOperationException($"Unsupported Docker Azure definition type '{definition.GetType().FullName}'.");
         }
@@ -577,6 +635,7 @@ internal sealed class DockerAzureDefinitionState
 
     public IReadOnlyCollection<DockerAzureDefinitionMetadata> ExpandActivatedDefinitions(
         IEnumerable<FunctionAppIdentifier> functionAppIdentifiers,
+        IEnumerable<LogicAppIdentifier> logicAppIdentifiers,
         IEnumerable<StorageAccountIdentifier> storageIdentifiers,
         IEnumerable<CosmosContainerIdentifier> cosmosIdentifiers,
         IEnumerable<SqlDatabaseIdentifier> sqlIdentifiers,
@@ -590,6 +649,8 @@ internal sealed class DockerAzureDefinitionState
         Queue<string> pending = new();
         foreach (FunctionAppIdentifier identifier in functionAppIdentifiers)
             EnqueueKnownIdentity(pending, $"functionapp:{identifier}");
+        foreach (LogicAppIdentifier identifier in logicAppIdentifiers)
+            EnqueueKnownIdentity(pending, $"logicapp:{identifier}");
         foreach (StorageAccountIdentifier identifier in storageIdentifiers)
             EnqueueKnownIdentity(pending, $"storage:{identifier}");
         foreach (CosmosContainerIdentifier identifier in cosmosIdentifiers)
@@ -630,6 +691,19 @@ internal sealed class DockerAzureDefinitionState
         throw new InvalidOperationException($"No Docker Function App registration was configured for identifier '{identifier}'.");
     }
 
+    public LogicAppDefinitionDescriptor GetRequiredLogicAppDescriptor(LogicAppIdentifier identifier)
+    {
+        if (_logicAppDescriptors.TryGetValue(identifier, out LogicAppDefinitionDescriptor? descriptor))
+            return descriptor;
+
+        throw new InvalidOperationException($"No Docker Logic App registration was configured for identifier '{identifier}'.");
+    }
+
+    public bool HasLogicAppDescriptor(string identifier)
+    {
+        return _logicAppDescriptors.ContainsKey(new LogicAppIdentifier(identifier));
+    }
+
     public bool TryGetDefaultConfig(Type configType, string identifier, out object? config)
     {
         if (!_definitionMetadataByIdentity.TryGetValue(GetRealizedIdentity(configType, identifier), out DockerAzureDefinitionMetadata? metadata))
@@ -654,6 +728,9 @@ internal sealed class DockerAzureDefinitionState
                 return true;
             case DockerFunctionAppDefinition functionApp when configType == typeof(FunctionAppConfig) && functionApp.TryCreateDefaultConfig(out FunctionAppConfig functionAppConfig):
                 config = functionAppConfig;
+                return true;
+            case DockerLogicAppDefinition logicApp when configType == typeof(LogicAppConfig) && logicApp.TryCreateDefaultConfig(out LogicAppConfig logicAppConfig):
+                config = logicAppConfig;
                 return true;
             default:
                 config = null;
@@ -737,8 +814,23 @@ internal sealed class DockerAzureDefinitionState
             return $"servicebus:{identifier}";
         if (configType == typeof(FunctionAppConfig))
             return $"functionapp:{identifier}";
+        if (configType == typeof(LogicAppConfig))
+            return $"logicapp:{identifier}";
 
         throw new InvalidOperationException($"Unsupported config type '{configType.FullName}' for Docker Azure default config lookup.");
+    }
+
+    private void AddLogicAppDescriptor(LogicAppIdentifier identifier, LogicAppDefinitionDescriptor descriptor)
+    {
+        if (_logicAppDescriptors.TryGetValue(identifier, out LogicAppDefinitionDescriptor? existing))
+        {
+            if (!string.Equals(existing.Path, descriptor.Path, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException($"Docker Logic App identifier '{identifier}' was configured for multiple Logic App paths.");
+
+            return;
+        }
+
+        _logicAppDescriptors[identifier] = descriptor;
     }
 
     private static IReadOnlyCollection<ComponentDependency> MergeDependencies(
@@ -768,6 +860,7 @@ internal sealed class DockerAzureDefinitionState
             DockerSqlDefinition sql => $"sql:{sql.Identifier}",
             DockerServiceBusDefinition serviceBus => $"servicebus:{serviceBus.Identifier}",
             DockerFunctionAppDefinition functionApp => $"functionapp:{functionApp.Identifier}",
+            DockerLogicAppDefinition logicApp => $"logicapp:{logicApp.Identifier}",
             DockerAzureInfrastructureDefinition infrastructure => $"infrastructure:{infrastructure.GetType().FullName}",
             _ => $"definition:{definition.GetType().FullName}"
         };

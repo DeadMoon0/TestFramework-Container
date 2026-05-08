@@ -7,7 +7,7 @@ using TestFramework.Core.Variables;
 
 namespace TestFramework.Container.Azure.Components;
 
-internal sealed class DockerNetworkEnvComponent : EnvComponent
+internal sealed class DockerNetworkEnvComponent : DockerAzureEnvComponent
 {
     public override EnvComponentIdentifier Id => DockerAzureEnvironment.NetworkComponentId;
 
@@ -28,8 +28,14 @@ internal sealed class DockerNetworkEnvComponent : EnvComponent
 
     public override async Task DeconstructAsync(object? state, IEnvironmentProvider environment, IServiceProvider serviceProvider, VariableStore variableStore, ArtifactStore artifactStore, ScopedLogger logger, CancellationToken cancellationToken)
     {
-        if (state is IAsyncDisposable asyncDisposable)
+        if (state is INetwork network)
+        {
+            await ForceRemoveNetworkAsync(network, cancellationToken).ConfigureAwait(false);
+        }
+        else if (state is IAsyncDisposable asyncDisposable)
+        {
             await asyncDisposable.DisposeAsync().ConfigureAwait(false);
+        }
         else if (state is IDisposable disposable)
             disposable.Dispose();
     }

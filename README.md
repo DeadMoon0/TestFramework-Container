@@ -4,6 +4,8 @@
 
 Use it when you want the Azure timeline shape from `TestFramework.Azure`, but you want the backing services to come from local containers instead of a live cloud environment.
 
+That includes Logic App workflows as well as the emulator-backed storage, messaging, database, and function-host surfaces.
+
 ## Install
 
 ```bash
@@ -19,10 +21,17 @@ That environment:
 - rewrites the configured Azure connection settings to the mapped local Docker endpoints
 - validates the resolved component graph and binds compatible contracts before startup
 - keeps the normal identifier-driven Azure config contract intact
+- can inspect Docker-hosted Logic App definitions to distinguish stateful workflows from stateless ones
 
 Those placeholder config entries can be registered directly by the test project, or owned by shared component classes when a reusable test stack wants each component to describe itself completely. The environment treats those configs as identifier registrations plus logical placeholders, then rewrites the runtime endpoints from the activated component graph.
 
 The timeline still reads like a normal TestFramework timeline. The environment is the switch that makes the run container-backed.
+
+For Logic Apps, follow the same rule as the Azure package:
+- stateful workflows use `Call()` and may be paired with `RunCompleted(...)`
+- stateless workflows use `CallAndCapture()` and assert against the direct callback result
+
+If Docker knows a workflow is stateless from its `workflow.json`, `RunCompleted(...)` fails fast instead of polling a run-history path that will never exist.
 
 ## Prerequisites
 

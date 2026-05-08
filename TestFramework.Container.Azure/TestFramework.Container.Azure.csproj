@@ -52,9 +52,12 @@
 		<PackageReference Include="Testcontainers.CosmosDb" Version="4.11.0" />
 		<PackageReference Include="Testcontainers.MsSql" Version="4.11.0" />
 		<PackageReference Include="Testcontainers.ServiceBus" Version="4.11.0" />
-		<PackageReference Include="TestFramework.Azure" Version="0.1.8" />
 		<PackageReference Include="TestFramework.Config" Version="0.1.2" />
-		<PackageReference Include="TestFramework.Core" Version="0.1.4" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\..\TestFramework-Core\TestFramework.Core\TestFramework.Core.csproj" />
+		<ProjectReference Include="..\..\TestFramework-Azure\TestFramework.Azure\TestFramework.Azure.csproj" />
 	</ItemGroup>
 
 	<ItemGroup>
