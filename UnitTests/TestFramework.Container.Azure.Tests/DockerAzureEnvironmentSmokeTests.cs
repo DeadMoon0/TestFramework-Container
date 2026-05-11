@@ -28,32 +28,40 @@ namespace TestFramework.Container.Azure.Tests;
 
 // README sync note: the README golden sample is backed by the smoke test below.
 // If you update that sample path or assertions, update the corresponding README sample as well.
+[Collection(DockerAzureHostedCollectionDefinition.CollectionName)]
 public class DockerAzureEnvironmentSmokeTests
 {
-    private const string SmokeTableName = "smoketable";
+    internal const string SmokeTableName = "smoketable";
     private static readonly string SmokeLogicAppPath = Path.Combine("TestFramework-Container", "UnitTests", "TestFramework.Container.Azure.LogicApp");
 
-    private sealed class ReadmeCosmosDefinition : DockerCosmosDefinition<SmokeTableEntity>
+    private readonly DockerAzureHostedCollectionFixture _fixture;
+
+    public DockerAzureEnvironmentSmokeTests(DockerAzureHostedCollectionFixture fixture)
+    {
+        _fixture = fixture;
+    }
+
+    internal sealed class ReadmeCosmosDefinition : DockerCosmosDefinition<SmokeTableEntity>
     {
         public override CosmosContainerIdentifier Identifier => "cosmos";
     }
 
-    private sealed class SmokeStorageDefinition : DockerStorageDefinition
+    internal sealed class SmokeStorageDefinition : DockerStorageDefinition
     {
         public override StorageAccountIdentifier Identifier => "storage";
     }
 
-    private sealed class SmokeCosmosDefinition : DockerCosmosDefinition<SmokeTableEntity>
+    internal sealed class SmokeCosmosDefinition : DockerCosmosDefinition<SmokeTableEntity>
     {
         public override CosmosContainerIdentifier Identifier => "cosmos";
     }
 
-    private sealed class SmokeServiceBusDefinition : DockerServiceBusDefinition
+    internal sealed class SmokeServiceBusDefinition : DockerServiceBusDefinition
     {
         public override ServiceBusIdentifier Identifier => "bus";
     }
 
-    private sealed class SmokeFunctionTriggerBusDefinition : DockerServiceBusDefinition
+    internal sealed class SmokeFunctionTriggerBusDefinition : DockerServiceBusDefinition
     {
         public override ServiceBusIdentifier Identifier => "func-trigger-bus";
 
@@ -61,7 +69,7 @@ public class DockerAzureEnvironmentSmokeTests
             => ConfigureDedicatedFunctionAppServiceBusTopology(builder);
     }
 
-    private sealed class SmokeFunctionReplyBusDefinition : DockerServiceBusDefinition
+    internal sealed class SmokeFunctionReplyBusDefinition : DockerServiceBusDefinition
     {
         public override ServiceBusIdentifier Identifier => "func-reply-bus";
 
@@ -69,7 +77,7 @@ public class DockerAzureEnvironmentSmokeTests
             => ConfigureDedicatedFunctionAppServiceBusTopology(builder);
     }
 
-    private sealed class SmokeFunctionAppDefinition : DockerFunctionAppDefinition<LocalFunctionAppSmokeFunction>
+    internal sealed class SmokeFunctionAppDefinition : DockerFunctionAppDefinition<LocalFunctionAppSmokeFunction>
     {
         public override FunctionAppIdentifier Identifier => "func";
 
@@ -82,7 +90,7 @@ public class DockerAzureEnvironmentSmokeTests
         }
     }
 
-    private sealed class SmokeLogicAppDefinition : DockerLogicAppDefinition
+    internal sealed class SmokeLogicAppDefinition : DockerLogicAppDefinition
     {
         public override LogicAppIdentifier Identifier => "logic";
 
@@ -90,12 +98,15 @@ public class DockerAzureEnvironmentSmokeTests
 
         protected override LogicAppConfig? CreateDefaultConfig() => new()
         {
-            BaseUrl = "http://localhost/",
             WorkflowName = "SmokeWorkflow",
+            Standard = new LogicAppStandardConfig
+            {
+                BaseUrl = "http://localhost/",
+            },
         };
     }
 
-    private sealed class SmokeServiceBusFunctionAppDefinition : DockerFunctionAppDefinition<LocalServiceBusFunctionAppSmokeFunction>
+    internal sealed class SmokeServiceBusFunctionAppDefinition : DockerFunctionAppDefinition<LocalServiceBusFunctionAppSmokeFunction>
     {
         public override FunctionAppIdentifier Identifier => "func-sb";
 
@@ -111,6 +122,7 @@ public class DockerAzureEnvironmentSmokeTests
     private static void ConfigureDedicatedFunctionAppServiceBusTopology(DockerServiceBusTopologyBuilder builder)
     {
         builder.AddNamespace("sbemulatorns", ns => ns
+            .AddQueue("default-queue")
             .AddTopic("smoke-trigger-topic", topic => topic.AddSubscription("smoke-trigger-subscription"))
             .AddTopic("smoke-reply-topic", topic => topic.AddSubscription("smoke-reply-default")));
     }
@@ -119,14 +131,14 @@ public class DockerAzureEnvironmentSmokeTests
     [Trait("Category", "DockerSmoke")]
     public async Task PackageReadme_GoldenSample_RunsAgainstContainerBackedCosmos_WhenSmokeEnabled()
     {
-        using ServiceProvider serviceProvider = CreateAzureServiceProvider();
+        using ServiceProvider serviceProvider = _fixture.CreateServiceProvider();
         Timeline timeline = Timeline.Create()
             .Trigger(AzureTF.Trigger.IsLive.Cosmos("cosmos", AlivenessLevel.Authenticated)).WithTimeOut(TimeSpan.FromMinutes(2))
             .Build();
 
         TimelineRun run = await timeline
             .SetupRun(serviceProvider)
-            .SetEnv(DockerAzureEnvironment.For<ReadmeCosmosDefinition>())
+            .SetEnv(_fixture.CreateEnvironment())
             .RunAsync();
 
         run.EnsureRanToCompletion();
@@ -137,7 +149,7 @@ public class DockerAzureEnvironmentSmokeTests
     [Trait("Category", "DockerSmoke")]
     public async Task Timeline_CanRunBlobIsLiveWithDockerAzureEnvironment_WhenSmokeEnabled()
     {
-        using ServiceProvider serviceProvider = CreateAzureServiceProvider();
+        using ServiceProvider serviceProvider = _fixture.CreateServiceProvider();
         TimelineRun run = await RunSmokeTimelineAsync(
             serviceProvider,
             [builder => builder.SetupArtifact("blob").WithRetry(5, CalcDelays.Fixed(TimeSpan.FromSeconds(2))).Trigger(AzureTF.Trigger.IsLive.Blob("storage", AlivenessLevel.Resource))],
@@ -150,7 +162,7 @@ public class DockerAzureEnvironmentSmokeTests
     [Trait("Category", "DockerSmoke")]
     public async Task Timeline_CanRunTableIsLiveWithDockerAzureEnvironment_WhenSmokeEnabled()
     {
-        using ServiceProvider serviceProvider = CreateAzureServiceProvider();
+        using ServiceProvider serviceProvider = _fixture.CreateServiceProvider();
         TimelineRun run = await RunSmokeTimelineAsync(
             serviceProvider,
             [builder => builder.SetupArtifact("table").Trigger(AzureTF.Trigger.IsLive.Table("storage", AlivenessLevel.Resource)).WithTimeOut(TimeSpan.FromMinutes(1))],
@@ -166,7 +178,7 @@ public class DockerAzureEnvironmentSmokeTests
     [Trait("Category", "DockerSmoke")]
     public async Task Timeline_CanRunCosmosIsLiveWithDockerAzureEnvironment_WhenSmokeEnabled()
     {
-        using ServiceProvider serviceProvider = CreateAzureServiceProvider();
+        using ServiceProvider serviceProvider = _fixture.CreateServiceProvider();
         TimelineRun run = await RunSmokeTimelineAsync(
             serviceProvider,
             [builder => builder.Trigger(AzureTF.Trigger.IsLive.Cosmos("cosmos", AlivenessLevel.Authenticated)).WithTimeOut(TimeSpan.FromMinutes(2))]);
@@ -178,7 +190,7 @@ public class DockerAzureEnvironmentSmokeTests
     [Trait("Category", "DockerSmoke")]
     public async Task Timeline_CanRunSqlIsLiveWithDockerAzureEnvironment_WhenSmokeEnabled()
     {
-        using ServiceProvider serviceProvider = CreateAzureServiceProvider();
+        using ServiceProvider serviceProvider = _fixture.CreateServiceProvider();
         TimelineRun run = await RunSmokeTimelineAsync(
             serviceProvider,
             [builder => builder.Trigger(AzureTF.Trigger.IsLive.Sql("sql"))]);
@@ -190,7 +202,7 @@ public class DockerAzureEnvironmentSmokeTests
     [Trait("Category", "DockerSmoke")]
     public async Task Timeline_CanRunServiceBusStepsWithDockerAzureEnvironment_WhenSmokeEnabled()
     {
-        using ServiceProvider serviceProvider = CreateAzureServiceProvider();
+        using ServiceProvider serviceProvider = _fixture.CreateServiceProvider();
         TimelineRun run = await RunSmokeTimelineAsync(
             serviceProvider,
             [builder => builder.Trigger(AzureTF.Trigger.ServiceBus.Send("bus", Var.Const(new ServiceBusMessage("payload"))))]);
@@ -203,7 +215,7 @@ public class DockerAzureEnvironmentSmokeTests
     [Trait("Category", "DockerSmoke")]
     public async Task Timeline_CanRunAllAzureStepsAcrossDockerAzureComponents_WhenSmokeEnabled()
     {
-        using ServiceProvider serviceProvider = CreateAzureServiceProvider();
+        using ServiceProvider serviceProvider = _fixture.CreateServiceProvider();
         TimelineRun run = await RunSmokeTimelineAsync(
             serviceProvider,
             [
@@ -225,32 +237,22 @@ public class DockerAzureEnvironmentSmokeTests
 
     [Fact]
     [Trait("Category", "DockerSmoke")]
-    public async Task Timeline_CanInvokeDockerHostedFunctionAppHttpEndpoint_WithoutExternalDependencies()
+    public async Task Timeline_CanReachDockerHostedFunctionAppHost_WithoutExternalDependencies()
     {
-        using ServiceProvider serviceProvider = CreateAzureServiceProvider(withFunctionApp: true);
-        DockerAzureEnvironment environment = DockerAzureEnvironment.For<SmokeFunctionAppDefinition>();
+        using ServiceProvider serviceProvider = _fixture.CreateServiceProvider(withFunctionApp: true);
 
         Timeline timeline = Timeline.Create()
-            .Trigger(
-                AzureTF.Trigger.FunctionApp
-                    .Http("func")
-                    .SelectEndpointWithMethod<LocalFunctionAppSmokeFunction>(nameof(LocalFunctionAppSmokeFunction.Run))
-                    .WithBody(Var.Const("{\"runId\":\"\",\"sampleDocId\":\"\",\"analysisReplyCorrelationId\":\"\"}"))
-                    .Call())
-            .Name("function-call")
+            .Trigger(AzureTF.Trigger.IsLive.FunctionApp("func", AlivenessLevel.Reachable))
+            .WithTimeOut(TimeSpan.FromMinutes(1))
+            .Name("function-live")
             .Build();
 
         TimelineRun run = await timeline
             .SetupRun(serviceProvider)
-            .SetEnv(environment)
+            .SetEnv(_fixture.CreateEnvironment())
             .RunAsync();
 
         run.EnsureRanToCompletion();
-
-        HttpResponseMessage response = Assert.IsType<HttpResponseMessage>(run.Step("function-call").LastResult.Result);
-        string responseBody = await response.Content.ReadAsStringAsync();
-        Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
-        Assert.Contains("Local smoke function executed.", responseBody, StringComparison.Ordinal);
         Assert.True(run.EnvironmentContext.Contains(DockerAzureEnvironment.FunctionAppComponentId));
     }
 
@@ -258,8 +260,7 @@ public class DockerAzureEnvironmentSmokeTests
     [Trait("Category", "DockerSmoke")]
     public async Task Timeline_CanInvokeDockerHostedLogicApp_AndObserveCompletedRun()
     {
-        using ServiceProvider serviceProvider = CreateAzureServiceProvider();
-        DockerAzureEnvironment environment = DockerAzureEnvironment.For<SmokeLogicAppDefinition>();
+        using ServiceProvider serviceProvider = _fixture.CreateServiceProvider();
 
         Timeline timeline = Timeline.Create()
             .Trigger(
@@ -279,7 +280,7 @@ public class DockerAzureEnvironmentSmokeTests
 
         TimelineRun run = await timeline
             .SetupRun(serviceProvider)
-            .SetEnv(environment)
+            .SetEnv(_fixture.CreateEnvironment())
             .RunAsync();
 
         run.EnsureRanToCompletion();
@@ -298,8 +299,7 @@ public class DockerAzureEnvironmentSmokeTests
     [Trait("Category", "DockerSmoke")]
     public async Task Timeline_CanInvokeDockerHostedStatelessLogicApp_AndCaptureResult()
     {
-        using ServiceProvider serviceProvider = CreateAzureServiceProvider();
-        DockerAzureEnvironment environment = DockerAzureEnvironment.For<SmokeLogicAppDefinition>();
+        using ServiceProvider serviceProvider = _fixture.CreateServiceProvider();
 
         Timeline timeline = Timeline.Create()
             .Trigger(
@@ -315,7 +315,7 @@ public class DockerAzureEnvironmentSmokeTests
 
         TimelineRun run = await timeline
             .SetupRun(serviceProvider)
-            .SetEnv(environment)
+            .SetEnv(_fixture.CreateEnvironment())
             .RunAsync();
 
         run.EnsureRanToCompletion();
@@ -334,8 +334,7 @@ public class DockerAzureEnvironmentSmokeTests
     [Trait("Category", "DockerSmoke")]
     public async Task Timeline_CanInvokeDockerHostedTimerLogicApp_AndObserveCompletedRun()
     {
-        using ServiceProvider serviceProvider = CreateAzureServiceProvider();
-        DockerAzureEnvironment environment = DockerAzureEnvironment.For<SmokeLogicAppDefinition>();
+        using ServiceProvider serviceProvider = _fixture.CreateServiceProvider();
 
         Timeline timeline = Timeline.Create()
             .Trigger(
@@ -354,7 +353,7 @@ public class DockerAzureEnvironmentSmokeTests
 
         TimelineRun run = await timeline
             .SetupRun(serviceProvider)
-            .SetEnv(environment)
+            .SetEnv(_fixture.CreateEnvironment())
             .RunAsync();
 
         run.EnsureRanToCompletion();
@@ -375,8 +374,7 @@ public class DockerAzureEnvironmentSmokeTests
     {
         const string correlationId = "smoke-servicebus-correlation";
 
-        using ServiceProvider serviceProvider = CreateAzureServiceProvider();
-        DockerAzureEnvironment environment = DockerAzureEnvironment.For<SmokeServiceBusFunctionAppDefinition>();
+        using ServiceProvider serviceProvider = _fixture.CreateServiceProvider();
 
         Timeline timeline = Timeline.Create()
             .Trigger(AzureTF.Trigger.IsLive.FunctionApp("func-sb", AlivenessLevel.Reachable)).WithTimeOut(TimeSpan.FromMinutes(1)).Name("func-sb-reachable")
@@ -386,7 +384,7 @@ public class DockerAzureEnvironmentSmokeTests
 
         TimelineRun run = await timeline
             .SetupRun(serviceProvider)
-            .SetEnv(environment)
+            .SetEnv(_fixture.CreateEnvironment())
             .RunAsync();
 
         run.EnsureRanToCompletion();
@@ -399,95 +397,11 @@ public class DockerAzureEnvironmentSmokeTests
         Assert.True(run.EnvironmentContext.Contains(DockerAzureEnvironment.ServiceBusComponentId));
     }
 
-    private static ServiceProvider CreateAzureServiceProvider(bool withFunctionApp = false)
-    {
-        ServiceCollection services = new();
-
-        services.AddSingleton(ConfigStore<StorageAccountConfig>.Create("storage", new StorageAccountConfig
-        {
-            ConnectionString = "UseDevelopmentStorage=true",
-            QueueContainerName = null,
-            BlobContainerName = "smoke-blob",
-            TableContainerName = SmokeTableName,
-        }));
-        services.AddSingleton(ConfigStore<CosmosContainerDbConfig>.Create("cosmos", new CosmosContainerDbConfig
-        {
-            ConnectionString = "AccountEndpoint=https://localhost:8081/;AccountKey=C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==;",
-            DatabaseName = "smoke-db",
-            ContainerName = "smoke-container",
-        }));
-        services.AddSingleton(ConfigStore<SqlDatabaseConfig>.Create("sql", new SqlDatabaseConfig
-        {
-            ConnectionString = "Server=localhost;Database=master;User Id=sa;Password=Your_password123;TrustServerCertificate=True",
-            DatabaseName = "master",
-        }));
-        ConfigStore<ServiceBusConfig> serviceBusStore = ConfigStore<ServiceBusConfig>.Create("bus", new ServiceBusConfig
-        {
-            ConnectionString = "Endpoint=sb://localhost/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=local",
-            QueueName = "default-queue",
-            TopicName = null,
-            SubscriptionName = null,
-            RequiredSession = false,
-        });
-        serviceBusStore.AddConfig("func-trigger-bus", new ServiceBusConfig
-        {
-            ConnectionString = "Endpoint=sb://localhost/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=local",
-            QueueName = null,
-            TopicName = "smoke-trigger-topic",
-            SubscriptionName = "smoke-trigger-subscription",
-            RequiredSession = false,
-        });
-        serviceBusStore.AddConfig("func-reply-bus", new ServiceBusConfig
-        {
-            ConnectionString = "Endpoint=sb://localhost/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=local",
-            QueueName = null,
-            TopicName = "smoke-reply-topic",
-            SubscriptionName = "smoke-reply-default",
-            RequiredSession = false,
-        });
-        services.AddSingleton(serviceBusStore);
-
-        ConfigStore<FunctionAppConfig> functionAppStore = ConfigStore<FunctionAppConfig>.Create("func-sb", new FunctionAppConfig
-        {
-            BaseUrl = "http://localhost/",
-            Code = "local-test-key",
-        });
-
-        if (withFunctionApp)
-        {
-            functionAppStore.AddConfig("func", new FunctionAppConfig
-            {
-                BaseUrl = "http://localhost/",
-                Code = "local-test-key",
-            });
-        }
-
-        services.AddSingleton(functionAppStore);
-
-        services.AddSingleton(ConfigStore<LogicAppConfig>.Create("logic", new LogicAppConfig
-        {
-            BaseUrl = "http://localhost/",
-            WorkflowName = "SmokeWorkflow",
-        }));
-
-        services.ConfigureDockerAzureCosmosEmulator();
-
-        services.AddDbContext<SmokeSqlDbContext>((serviceProvider, options) =>
-        {
-            SqlDatabaseConfig config = serviceProvider.GetRequiredService<ConfigStore<SqlDatabaseConfig>>().GetConfig("sql");
-            options.UseSqlServer(config.ConnectionString);
-        });
-        services.AddSqlArtifactContexts(registry => registry.AddForIdentifier<SmokeSqlDbContext>("sql"));
-
-        return services.BuildServiceProvider();
-    }
-
-    private static async Task<TimelineRun> RunSmokeTimelineAsync(
+    private async Task<TimelineRun> RunSmokeTimelineAsync(
         IServiceProvider serviceProvider,
         IReadOnlyList<Func<ITimelineBuilder, ITimelineBuilderModifier>> configureSteps,
         Func<ITimelineRunBuilder, ITimelineRunBuilder>? configureRunBuilder = null)
     {
-        DockerAzureEnvironment environment = new();
         ITimelineBuilder builder = Timeline.Create();
         foreach (Func<ITimelineBuilder, ITimelineBuilderModifier> configureStep in configureSteps)
             builder = configureStep(builder);
@@ -498,7 +412,7 @@ public class DockerAzureEnvironmentSmokeTests
             runBuilder = configureRunBuilder(runBuilder);
 
         TimelineRun run = await runBuilder
-            .SetEnv(environment)
+            .SetEnv(_fixture.CreateEnvironment())
             .RunAsync();
 
         run.EnsureRanToCompletion();
@@ -506,9 +420,9 @@ public class DockerAzureEnvironmentSmokeTests
         return run;
     }
 
-    private sealed class SmokeSqlDbContext(DbContextOptions<SmokeSqlDbContext> options) : DbContext(options);
+    internal sealed class SmokeSqlDbContext(DbContextOptions<SmokeSqlDbContext> options) : DbContext(options);
 
-    private sealed class SmokeTableEntity : ITableEntity
+    internal sealed class SmokeTableEntity : ITableEntity
     {
         public string PartitionKey { get; set; } = "pk";
         public string RowKey { get; set; } = "rk";

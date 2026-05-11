@@ -4,7 +4,7 @@ using TestFramework.Azure.LogicApp;
 
 namespace TestFramework.Container.Azure;
 
-internal sealed class DockerAzureRunScopedServiceProvider(DockerAzureEnvironment environment, IServiceProvider baseServiceProvider) : IServiceProvider
+internal sealed class DockerAzureRunScopedServiceProvider(DockerAzureEnvironment environment, IServiceProvider baseServiceProvider, IServiceProvider? fallbackConfigServiceProvider = null) : IServiceProvider
 {
     private static readonly MethodInfo GetOrCreateConfigStoreMethod = typeof(DockerAzureEnvironment)
         .GetMethod(nameof(DockerAzureEnvironment.GetOrCreateConfigStore), BindingFlags.Instance | BindingFlags.NonPublic)!;
@@ -29,8 +29,20 @@ internal sealed class DockerAzureRunScopedServiceProvider(DockerAzureEnvironment
         if (identifiers.Count == 0)
             return null;
 
+        IServiceProvider storeProvider = fallbackConfigServiceProvider is null
+            ? baseServiceProvider
+            : new ConfigStoreFallbackServiceProvider(baseServiceProvider, fallbackConfigServiceProvider);
+
         return GetOrCreateConfigStoreMethod
             .MakeGenericMethod(configType)
-            .Invoke(environment, [baseServiceProvider, identifiers, "Timeline run service resolution"]);
+            .Invoke(environment, [storeProvider, identifiers, "Timeline run service resolution"]);
+    }
+
+    private sealed class ConfigStoreFallbackServiceProvider(IServiceProvider primary, IServiceProvider fallback) : IServiceProvider
+    {
+        public object? GetService(Type serviceType)
+        {
+            return primary.GetService(serviceType) ?? fallback.GetService(serviceType);
+        }
     }
 }

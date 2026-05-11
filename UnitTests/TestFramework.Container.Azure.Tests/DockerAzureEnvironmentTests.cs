@@ -294,10 +294,10 @@ public class DockerAzureEnvironmentTests
             .Invoke(environment, [serviceProvider, environment.UsedLogicAppIdentifiers, "Logic App environment setup"])!;
 
         LogicAppConfig config = logicAppStore.GetConfig("logic-default");
-        Assert.Equal("http://localhost/", config.BaseUrl);
+        Assert.Equal("http://localhost/", config.Standard.BaseUrl);
         Assert.Equal("Orders", config.WorkflowName);
-        Assert.Equal("unused", config.Code);
-        Assert.Equal("unused", config.AdminCode);
+        Assert.Equal("unused", config.Standard.Code);
+        Assert.Equal("unused", config.Standard.AdminCode);
     }
 
     [Fact]
@@ -692,10 +692,13 @@ public class DockerAzureEnvironmentTests
 
         protected override LogicAppConfig? CreateDefaultConfig() => new()
         {
-            BaseUrl = "http://localhost/",
             WorkflowName = "Orders",
-            Code = "unused",
-            AdminCode = "unused",
+            Standard = new LogicAppStandardConfig
+            {
+                BaseUrl = "http://localhost/",
+                Code = "unused",
+                AdminCode = "unused",
+            },
         };
     }
 
