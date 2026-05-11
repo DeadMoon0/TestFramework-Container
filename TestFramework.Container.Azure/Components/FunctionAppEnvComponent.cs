@@ -227,8 +227,8 @@ internal sealed class FunctionAppEnvComponent : DockerAzureEnvComponent
 
             try
             {
-                using HttpResponseMessage response = await client.GetAsync(string.Empty, cancellationToken).ConfigureAwait(false);
-                if ((int)response.StatusCode >= 100)
+                using HttpResponseMessage response = await client.GetAsync("admin/host/status", cancellationToken).ConfigureAwait(false);
+                if (response.StatusCode is System.Net.HttpStatusCode.OK or System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden)
                     return;
             }
             catch (OperationCanceledException)

@@ -31,7 +31,11 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
     private readonly Dictionary<EnvComponentIdentifier, object?> _runtimeStates = [];
     private readonly Dictionary<Type, object> _synthesizedConfigStores = [];
     private readonly Dictionary<(string Identifier, string WorkflowName), LogicAppWorkflowMode> _logicAppWorkflowModes = new();
+    private readonly object _runtimeStateGate = new();
+    private readonly object _configStoreGate = new();
+    private readonly object _workflowModeGate = new();
     private readonly DockerAzureDefinitionState _definitionState = new();
+    private readonly Dictionary<Type, DockerAzureDefinition> _includedDefinitions = [];
     public HashSet<string> UsedStorageIdentifiers { get; } = [];
     public HashSet<string> UsedCosmosIdentifiers { get; } = [];
     public HashSet<string> UsedSqlIdentifiers { get; } = [];
@@ -69,8 +73,11 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
         return Include(new TDefinition());
     }
 
+    public override bool SupportsParallelComponentCreation => true;
+
     public DockerAzureEnvironment Include(DockerAzureDefinition definition)
     {
+        _includedDefinitions.TryAdd(definition.GetType(), definition);
         _definitionState.AddDefinition(definition);
         return this;
     }
@@ -127,7 +134,8 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
 
     internal void SetRuntimeState(EnvComponentIdentifier identifier, object? state)
     {
-        _runtimeStates[identifier] = state;
+        lock (_runtimeStateGate)
+            _runtimeStates[identifier] = state;
     }
 
     internal DockerEndpointMap GetEndpointMap()
@@ -137,8 +145,11 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
 
     internal T GetRequiredRuntimeState<T>(EnvComponentIdentifier identifier)
     {
-        if (_runtimeStates.TryGetValue(identifier, out object? state) && state is T typedState)
-            return typedState;
+        lock (_runtimeStateGate)
+        {
+            if (_runtimeStates.TryGetValue(identifier, out object? state) && state is T typedState)
+                return typedState;
+        }
 
         throw new InvalidOperationException($"The runtime state for environment component '{identifier}' is not available.");
     }
@@ -205,19 +216,22 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
             return null;
 
         ConfigStore<TConfig>? store = serviceProvider.GetService(typeof(ConfigStore<TConfig>)) as ConfigStore<TConfig>;
-        if (store is null)
+        lock (_configStoreGate)
         {
-            if (!_synthesizedConfigStores.TryGetValue(typeof(TConfig), out object? synthesizedStore))
+            if (store is null)
             {
-                synthesizedStore = new ConfigStore<TConfig>();
-                _synthesizedConfigStores[typeof(TConfig)] = synthesizedStore;
+                if (!_synthesizedConfigStores.TryGetValue(typeof(TConfig), out object? synthesizedStore))
+                {
+                    synthesizedStore = new ConfigStore<TConfig>();
+                    _synthesizedConfigStores[typeof(TConfig)] = synthesizedStore;
+                }
+
+                store = (ConfigStore<TConfig>)synthesizedStore;
             }
 
-            store = (ConfigStore<TConfig>)synthesizedStore;
+            foreach (string identifier in identifiers.OrderBy(x => x, StringComparer.Ordinal))
+                EnsureConfigPresent(store, identifier, componentName);
         }
-
-        foreach (string identifier in identifiers.OrderBy(x => x, StringComparer.Ordinal))
-            EnsureConfigPresent(store, identifier, componentName);
 
         return store;
     }
@@ -230,8 +244,11 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
     public bool TryGetWorkflowMode(LogicAppIdentifier identifier, string workflowName, out LogicAppWorkflowMode mode)
     {
         (string Identifier, string WorkflowName) cacheKey = (identifier.Identifier, workflowName);
-        if (_logicAppWorkflowModes.TryGetValue(cacheKey, out mode))
-            return true;
+        lock (_workflowModeGate)
+        {
+            if (_logicAppWorkflowModes.TryGetValue(cacheKey, out mode))
+                return true;
+        }
 
         LogicAppDefinitionDescriptor descriptor;
         try
@@ -258,7 +275,9 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
         if (!TryReadWorkflowMode(logicAppPath, workflowName, out mode))
             return false;
 
-        _logicAppWorkflowModes[cacheKey] = mode;
+        lock (_workflowModeGate)
+            _logicAppWorkflowModes[cacheKey] = mode;
+
         return true;
     }
 
@@ -446,5 +465,14 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
                 UsedLogicAppIdentifiers.Add(requirement.ResourceIdentifier);
                 break;
         }
+    }
+
+    internal DockerAzureEnvironment CloneDefinitions()
+    {
+        DockerAzureEnvironment clone = new();
+        foreach (DockerAzureDefinition definition in _includedDefinitions.Values)
+            clone.Include(definition);
+
+        return clone;
     }
 }

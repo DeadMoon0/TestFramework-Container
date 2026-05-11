@@ -1,17 +1,19 @@
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
-using Microsoft.Azure.Functions.Worker.Http;
 using System.Net;
 
 namespace TestFramework.Container.Azure.FunctionApp;
 
 public sealed class LocalFunctionAppSmokeFunction
 {
-    [Function(nameof(Run))]
-    public HttpResponseData Run(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "post")] HttpRequestData request)
+    [Function("SmokeHttp")]
+    public IActionResult Run(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post")] HttpRequest request)
     {
-        HttpResponseData response = request.CreateResponse(HttpStatusCode.InternalServerError);
-        response.WriteString("Local smoke function executed.");
-        return response;
+        return new ObjectResult("Local smoke function executed.")
+        {
+            StatusCode = StatusCodes.Status500InternalServerError,
+        };
     }
 }
