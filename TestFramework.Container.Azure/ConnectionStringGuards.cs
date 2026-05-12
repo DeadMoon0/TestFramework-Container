@@ -1,4 +1,5 @@
 using Microsoft.Data.SqlClient;
+using System;
 using System.Data.Common;
 
 namespace TestFramework.Container.Azure;

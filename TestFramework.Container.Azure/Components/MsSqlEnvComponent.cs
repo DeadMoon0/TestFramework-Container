@@ -1,5 +1,9 @@
 using DotNet.Testcontainers.Networks;
 using Microsoft.Data.SqlClient;
+using System;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using Testcontainers.MsSql;
 using Testcontainers.ServiceBus;
 using TestFramework.Azure.Configuration;
@@ -14,6 +18,8 @@ namespace TestFramework.Container.Azure.Components;
 internal sealed class MsSqlEnvComponent : DockerAzureEnvComponent
 {
     public override EnvComponentIdentifier Id => DockerAzureEnvironment.MsSqlComponentId;
+
+    public override EnvComponentReuseMode ReuseMode => EnvComponentReuseMode.PersistentContext;
 
     public override IReadOnlyList<EnvComponentIdentifier> Dependencies => [DockerAzureEnvironment.NetworkComponentId];
 

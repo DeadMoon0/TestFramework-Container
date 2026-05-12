@@ -9,52 +9,60 @@ using TestFramework.Config;
 using TestFramework.Config.Builder.InstanceBuilder;
 using TestFramework.Core.Artifacts;
 using TestFramework.Core.Environment;
+using Xunit;
 
 namespace TestFramework.Container.Azure;
 
-/// <summary>
-/// Boots a configured Docker Azure environment once and reuses the hosted runtime state across multiple timeline runs.
-/// </summary>
-public sealed class DockerAzureHostedEnvironment : IAsyncDisposable
+public interface IDockerAzureHostedFixtureState
 {
-    private readonly PersistentEnvironmentContext<DockerAzurePersistentSetup> _persistentContext;
-    private readonly ConfigInstance _persistentConfig;
-    private readonly IServiceProvider _bootstrapServiceProvider;
+    IReadOnlyList<EnvironmentRequirement> PersistentRequirements { get; }
 
-    private DockerAzureHostedEnvironment(PersistentEnvironmentContext<DockerAzurePersistentSetup> persistentContext, ConfigInstance persistentConfig, IServiceProvider bootstrapServiceProvider)
+    DockerAzureEnvironment CreateEnvironment();
+
+    ConfigInstance CreatePersistentConfig();
+}
+
+public class DockerAzureHostedCollectionFixture<TState> : IAsyncLifetime
+    where TState : IDockerAzureHostedFixtureState, new()
+{
+    private readonly TState _state = new();
+    private PersistentEnvironmentContext<DockerAzurePersistentSetup>? _persistentContext;
+    private ConfigInstance? _persistentConfig;
+    private IServiceProvider? _persistentServiceProvider;
+
+    public async Task InitializeAsync()
     {
-        _persistentContext = persistentContext;
+        ConfigInstance persistentConfig = _state.CreatePersistentConfig();
+        IServiceProvider persistentServiceProvider = persistentConfig.BuildServiceProvider();
+        DockerAzurePersistentSetup setup = new(_state.CreateEnvironment(), persistentConfig, _state.PersistentRequirements);
+
         _persistentConfig = persistentConfig;
-        _bootstrapServiceProvider = bootstrapServiceProvider;
+        _persistentServiceProvider = persistentServiceProvider;
+        _persistentContext = new PersistentEnvironmentContext<DockerAzurePersistentSetup>(
+            setup,
+            persistentServiceProvider,
+            disposePersistentServiceProvider: true);
+
+        await Task.CompletedTask.ConfigureAwait(false);
     }
 
-    /// <summary>
-    /// Starts a hosted Docker Azure environment that can be reused across multiple runs.
-    /// </summary>
-    public static Task<DockerAzureHostedEnvironment> StartAsync(
-        DockerAzureEnvironment environment,
-        ConfigInstance persistentConfig,
-        IReadOnlyCollection<EnvironmentRequirement> persistentRequirements,
-        CancellationToken cancellationToken = default)
+    public async Task DisposeAsync()
     {
-        ArgumentNullException.ThrowIfNull(environment);
-        ArgumentNullException.ThrowIfNull(persistentConfig);
-        ArgumentNullException.ThrowIfNull(persistentRequirements);
-
-        cancellationToken.ThrowIfCancellationRequested();
-
-        IServiceProvider bootstrapServiceProvider = persistentConfig.BuildServiceProvider();
-        DockerAzurePersistentSetup setup = new(environment, persistentConfig, persistentRequirements);
-        PersistentEnvironmentContext<DockerAzurePersistentSetup> persistentContext = new(setup, bootstrapServiceProvider, disposePersistentServiceProvider: true);
-        return Task.FromResult(new DockerAzureHostedEnvironment(persistentContext, persistentConfig, bootstrapServiceProvider));
+        if (_persistentContext is not null)
+            await _persistentContext.DisposeAsync().ConfigureAwait(false);
     }
 
-    /// <summary>
-    /// Creates a run configuration layered on top of the persistent Docker Azure configuration snapshot.
-    /// </summary>
-    public ConfigInstance CreateRunConfig(Action<IConfigInstanceBuilder>? configure = null)
+    public IEnvironmentProvider GetEnv(Action<IConfigInstanceBuilder>? configure = null)
     {
-        IConfigInstanceBuilder builder = _persistentConfig.SetupSubInstance();
+        PersistentEnvironmentContext<DockerAzurePersistentSetup> persistentContext = _persistentContext ?? throw new InvalidOperationException("The hosted Docker Azure fixture has not finished initialization.");
+        IServiceProvider configServiceProvider = CreateRunConfig(configure).BuildServiceProvider();
+        return new HostedEnvironmentProvider(persistentContext.CreateEnvironment(), configServiceProvider);
+    }
+
+    private ConfigInstance CreateRunConfig(Action<IConfigInstanceBuilder>? configure = null)
+    {
+        ConfigInstance persistentConfig = _persistentConfig ?? throw new InvalidOperationException("The hosted Docker Azure fixture has not finished initialization.");
+        IConfigInstanceBuilder builder = persistentConfig.SetupSubInstance();
         builder.AddService(services =>
         {
             services.AddSingleton(CloneStore(GetRequiredStore<StorageAccountConfig>()));
@@ -68,22 +76,27 @@ public sealed class DockerAzureHostedEnvironment : IAsyncDisposable
         return builder.Build();
     }
 
-    /// <summary>
-    /// Creates a fresh environment provider for a single timeline run while reusing the hosted Docker runtime state.
-    /// </summary>
-    public IEnvironmentProvider CreateEnvironment(Action<IConfigInstanceBuilder>? configure = null)
+    private ConfigStore<TConfig> GetRequiredStore<TConfig>() where TConfig : class
     {
-        IServiceProvider configServiceProvider = CreateRunConfig(configure).BuildServiceProvider();
-        return new HostedEnvironmentProvider(_persistentContext.CreateEnvironment(), configServiceProvider);
+        IServiceProvider persistentServiceProvider = _persistentServiceProvider ?? throw new InvalidOperationException("The hosted Docker Azure fixture has not finished initialization.");
+        return persistentServiceProvider.GetRequiredService<ConfigStore<TConfig>>();
     }
 
-    /// <inheritdoc />
-    public ValueTask DisposeAsync()
+    private static ConfigStore<TConfig> CloneStore<TConfig>(ConfigStore<TConfig> source)
     {
-        return _persistentContext.DisposeAsync();
+        IReadOnlyDictionary<string, TConfig> snapshot = source.Snapshot();
+        using IEnumerator<KeyValuePair<string, TConfig>> enumerator = snapshot.GetEnumerator();
+        if (!enumerator.MoveNext())
+            return new ConfigStore<TConfig>();
+
+        ConfigStore<TConfig> store = ConfigStore<TConfig>.Create(enumerator.Current.Key, enumerator.Current.Value);
+        while (enumerator.MoveNext())
+            store.AddConfig(enumerator.Current.Key, enumerator.Current.Value);
+
+        return store;
     }
 
-    internal sealed class DockerAzurePersistentSetup : IConfigPersistentEnvironmentSetup
+    private sealed class DockerAzurePersistentSetup : IConfigPersistentEnvironmentSetup
     {
         private readonly DockerAzureEnvironment _environment;
         private readonly ConfigInstance _persistentConfig;
@@ -118,25 +131,6 @@ public sealed class DockerAzureHostedEnvironment : IAsyncDisposable
             DockerAzureEnvironment.MsSqlComponentId,
             DockerAzureEnvironment.ServiceBusComponentId,
         ];
-    }
-
-    private ConfigStore<TConfig> GetRequiredStore<TConfig>() where TConfig : class
-    {
-        return _bootstrapServiceProvider.GetRequiredService<ConfigStore<TConfig>>();
-    }
-
-    private static ConfigStore<TConfig> CloneStore<TConfig>(ConfigStore<TConfig> source)
-    {
-        IReadOnlyDictionary<string, TConfig> snapshot = source.Snapshot();
-        using IEnumerator<KeyValuePair<string, TConfig>> enumerator = snapshot.GetEnumerator();
-        if (!enumerator.MoveNext())
-            return new ConfigStore<TConfig>();
-
-        ConfigStore<TConfig> store = ConfigStore<TConfig>.Create(enumerator.Current.Key, enumerator.Current.Value);
-        while (enumerator.MoveNext())
-            store.AddConfig(enumerator.Current.Key, enumerator.Current.Value);
-
-        return store;
     }
 
     private sealed class HostedEnvironmentProvider(IEnvironmentProvider inner, IServiceProvider configServiceProvider) : IEnvironmentProviderProxy, IRunScopedServiceProviderFactory, IAsyncDisposable, IDisposable

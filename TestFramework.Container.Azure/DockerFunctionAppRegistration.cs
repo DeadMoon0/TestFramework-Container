@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 namespace TestFramework.Container.Azure;
 
 public sealed class DockerFunctionAppRegistration

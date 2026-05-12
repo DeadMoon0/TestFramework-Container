@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using TestFramework.Azure.Configuration;
 
 namespace TestFramework.Container.Azure.Components;

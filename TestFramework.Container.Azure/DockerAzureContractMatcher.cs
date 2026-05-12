@@ -1,3 +1,4 @@
+using System;
 using TestFramework.Container.Azure.Contracts;
 using TestFramework.Core.Environment;
 

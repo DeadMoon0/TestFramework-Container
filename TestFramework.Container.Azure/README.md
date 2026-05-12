@@ -308,6 +308,75 @@ Practical rule of thumb:
 5. Let artifacts, environment requirements, dependency traversal, and contract bindings decide which concrete resources activate for the run.
 6. Assert on `TimelineRun`, artifacts, and `EnvironmentContext`.
 
+## Scaling Up A Test Suite
+
+The beginner path above is optimized for one readable test.
+When a suite grows and repeated container startup becomes the bottleneck, switch from per-run environment construction to a hosted environment that boots once and hands out fresh run environments.
+
+The package already exposes that path through `DockerAzureHostedCollectionFixture<TState>`:
+
+```csharp
+using TestFramework.Azure;
+using TestFramework.Azure.Configuration;
+using TestFramework.Azure.Configuration.SpecificConfigs;
+using TestFramework.Container.Azure;
+using TestFramework.Core.Environment;
+using Xunit;
+
+[CollectionDefinition(CollectionName, DisableParallelization = true)]
+public sealed class DockerAzureHostedCollectionDefinition : ICollectionFixture<DockerAzureHostedFixture>
+{
+	public const string CollectionName = "DockerAzureHosted";
+}
+
+public sealed class DockerAzureHostedFixtureState : IDockerAzureHostedFixtureState
+{
+	public IReadOnlyList<EnvironmentRequirement> PersistentRequirements =>
+	[
+		new(AzureEnvironmentResourceKinds.Storage, "storage"),
+		new(AzureEnvironmentResourceKinds.Cosmos, "cosmos"),
+		new(AzureEnvironmentResourceKinds.FunctionApp, "func"),
+	];
+
+	public DockerAzureEnvironment CreateEnvironment()
+		=> DockerAzureEnvironment
+			.For<DefaultFunctionApp>()
+			.Include<CustomInfrastructure>();
+
+	public ConfigInstance CreatePersistentConfig()
+		=> BuildPersistentConfig();
+}
+
+public sealed class DockerAzureHostedFixture : DockerAzureHostedCollectionFixture<DockerAzureHostedFixtureState>;
+
+[Collection(DockerAzureHostedCollectionDefinition.CollectionName)]
+public sealed class HostedSuite(DockerAzureHostedFixture fixture)
+{
+	[Fact]
+	public async Task Uses_a_fresh_run_environment_on_top_of_one_persistent_stack()
+	{
+		TimelineRun run = await timeline
+			.SetupRun()
+			.SetEnv(fixture.GetEnv())
+			.RunAsync();
+
+		run.EnsureRanToCompletion();
+	}
+}
+```
+
+`TState` describes the complete environment shape and the configuration snapshot used for the hosted stack.
+Only the components selected by `PersistentRequirements` are realized once up front.
+Each later `GetEnv(...)` call still creates a fresh run environment and may add run-local config on top of the persistent snapshot.
+
+Use this path when:
+- smoke tests share the same environment shape across many test methods or classes
+- container startup dominates test runtime
+- you want one project-level helper that centralizes Docker Azure policy instead of rebuilding it in each test
+
+Keep the per-run `SetEnv(DockerAzureEnvironment.For<...>())` shape for simple tests and examples.
+Move to `DockerAzureHostedCollectionFixture<TState>` only when suite scale or runtime cost justifies it.
+
 ## Infrastructure Overrides
 
 Use an infrastructure definition when you need explicit emulator-level overrides.
