@@ -1,6 +1,10 @@
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
 using DotNet.Testcontainers.Networks;
+using System;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using TestFramework.Azure.Configuration;
 using TestFramework.Azure.Configuration.SpecificConfigs;
 using TestFramework.Core.Artifacts;
@@ -13,6 +17,8 @@ namespace TestFramework.Container.Azure.Components;
 internal sealed class AzuriteEnvComponent : DockerAzureEnvComponent
 {
     public override EnvComponentIdentifier Id => DockerAzureEnvironment.AzuriteComponentId;
+
+    public override EnvComponentReuseMode ReuseMode => EnvComponentReuseMode.PersistentContext;
 
     public override IReadOnlyList<EnvComponentIdentifier> Dependencies => [DockerAzureEnvironment.NetworkComponentId];
 

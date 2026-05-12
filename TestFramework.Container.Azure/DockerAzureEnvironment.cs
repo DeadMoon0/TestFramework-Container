@@ -1,3 +1,7 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Text.Json;
 using TestFramework.Azure;
@@ -14,7 +18,7 @@ using TestFramework.Core.Environment;
 
 namespace TestFramework.Container.Azure;
 
-public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedServiceProviderFactory, ILogicAppWorkflowMetadataProvider
+public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedServiceProviderFactory, ILogicAppWorkflowMetadataProvider, IPersistentEnvironmentStateSink
 {
     public static readonly EnvComponentIdentifier NetworkComponentId = "docker-network";
     public static readonly EnvComponentIdentifier FunctionAppComponentId = "functionapp";
@@ -136,6 +140,11 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
     {
         lock (_runtimeStateGate)
             _runtimeStates[identifier] = state;
+    }
+
+    public void SetPersistentState(EnvComponentIdentifier identifier, object? state)
+    {
+        SetRuntimeState(identifier, state);
     }
 
     internal DockerEndpointMap GetEndpointMap()

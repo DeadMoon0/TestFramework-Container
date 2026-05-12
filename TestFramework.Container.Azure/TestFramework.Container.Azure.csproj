@@ -2,9 +2,9 @@
 
 	<PropertyGroup>
 		<TargetFramework>net8.0</TargetFramework>
-		<ImplicitUsings>enable</ImplicitUsings>
+		<ImplicitUsings>disable</ImplicitUsings>
 		<Nullable>enable</Nullable>
-		<Title>TestFramework Container Azure</Title>
+		<Title>TestFramework.Container.Azure</Title>
 		<Version>0.1.3</Version>
 		<Authors>DeadMoon0</Authors>
 		<Product>TestFramework</Product>
@@ -52,11 +52,12 @@
 		<PackageReference Include="Testcontainers.CosmosDb" Version="4.11.0" />
 		<PackageReference Include="Testcontainers.MsSql" Version="4.11.0" />
 		<PackageReference Include="Testcontainers.ServiceBus" Version="4.11.0" />
-		<PackageReference Include="TestFramework.Config" Version="0.1.2" />
+		<PackageReference Include="xunit" Version="2.5.3" />
 	</ItemGroup>
 
 	<ItemGroup>
 		<ProjectReference Include="..\..\TestFramework-Core\TestFramework.Core\TestFramework.Core.csproj" />
+		<ProjectReference Include="..\..\TestFramework-Core\TestFramework.Config\TestFramework.Config.csproj" />
 		<ProjectReference Include="..\..\TestFramework-Azure\TestFramework.Azure\TestFramework.Azure.csproj" />
 	</ItemGroup>
 

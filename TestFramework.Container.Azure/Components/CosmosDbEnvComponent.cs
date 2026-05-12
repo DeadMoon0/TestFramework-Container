@@ -2,7 +2,13 @@ using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
 using DotNet.Testcontainers.Networks;
 using Microsoft.Azure.Cosmos;
+using System;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
+using System.Net.Http;
+using System.Threading;
+using System.Threading.Tasks;
 using TestFramework.Azure.Configuration;
 using TestFramework.Azure.Configuration.SpecificConfigs;
 using TestFramework.Azure.DB.CosmosDB;
@@ -18,6 +24,8 @@ internal sealed class CosmosDbEnvComponent : DockerAzureEnvComponent
     private static readonly string DebugLogPath = Path.Combine(AppContext.BaseDirectory, "cosmos-env-debug.log");
 
     public override EnvComponentIdentifier Id => DockerAzureEnvironment.CosmosDbComponentId;
+
+    public override EnvComponentReuseMode ReuseMode => EnvComponentReuseMode.PersistentContext;
 
     public override IReadOnlyList<EnvComponentIdentifier> Dependencies => [DockerAzureEnvironment.NetworkComponentId];
 

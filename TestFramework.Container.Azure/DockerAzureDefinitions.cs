@@ -1,3 +1,7 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using TestFramework.Azure.Configuration.SpecificConfigs;
 using TestFramework.Azure.Identifier;
 using TestFramework.Container.Azure.Contracts;

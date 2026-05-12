@@ -1,5 +1,6 @@
 using Microsoft.Azure.Cosmos;
 using Microsoft.Extensions.DependencyInjection;
+using System.Net.Http;
 using TestFramework.Azure.Configuration;
 using TestFramework.Azure.Extensions;
 using TestFramework.Config.Builder.InstanceBuilder;

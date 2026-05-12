@@ -1,5 +1,8 @@
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Networks;
+using System;
+using System.Threading;
+using System.Threading.Tasks;
 using TestFramework.Core.Artifacts;
 using TestFramework.Core.Environment;
 using TestFramework.Core.Logging;
@@ -10,6 +13,8 @@ namespace TestFramework.Container.Azure.Components;
 internal sealed class DockerNetworkEnvComponent : DockerAzureEnvComponent
 {
     public override EnvComponentIdentifier Id => DockerAzureEnvironment.NetworkComponentId;
+
+    public override EnvComponentReuseMode ReuseMode => EnvComponentReuseMode.PersistentContext;
 
     public override async Task<object?> CreateAsync(IEnvironmentProvider environment, IServiceProvider serviceProvider, VariableStore variableStore, ArtifactStore artifactStore, ScopedLogger logger, CancellationToken cancellationToken)
     {

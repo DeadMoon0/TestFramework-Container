@@ -1,6 +1,10 @@
 using DotNet.Testcontainers.Containers;
 using DotNet.Testcontainers.Networks;
+using System;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
 using TestFramework.Core.Environment;
 
 namespace TestFramework.Container.Azure.Components;
@@ -9,8 +13,13 @@ internal abstract class DockerAzureEnvComponent : EnvComponent
 {
     protected DockerAzureEnvironment GetDockerEnvironment(IEnvironmentProvider environment)
     {
-        return environment as DockerAzureEnvironment
-            ?? throw new InvalidOperationException($"Environment component '{Id}' requires {nameof(DockerAzureEnvironment)}.");
+        if (environment is DockerAzureEnvironment dockerEnvironment)
+            return dockerEnvironment;
+
+        if (environment is IEnvironmentProviderProxy proxy)
+            return GetDockerEnvironment(proxy.InnerEnvironment);
+
+        throw new InvalidOperationException($"Environment component '{Id}' requires {nameof(DockerAzureEnvironment)}.");
     }
 
     protected static async Task ForceRemoveContainerAsync(IContainer container, CancellationToken cancellationToken)
