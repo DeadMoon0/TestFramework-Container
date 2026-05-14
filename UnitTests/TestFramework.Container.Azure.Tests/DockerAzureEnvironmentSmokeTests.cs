@@ -11,6 +11,7 @@ using TestFramework.Azure.Extensions;
 using TestFramework.Azure.Identifier;
 using TestFramework.Azure.LogicApp;
 using TestFramework.Azure.LogicApp.Trigger;
+using TestFramework.Azure.ServiceBus;
 using TestFramework.Azure.StorageAccount.Blob;
 using TestFramework.Azure.StorageAccount.Table;
 using TestFramework.Container.Azure;
@@ -19,6 +20,7 @@ using TestFramework.Container.Azure.ServiceBusFunctionApp;
 using TestFramework.Config.Builder.InstanceBuilder;
 using TestFramework.Core.Environment;
 using TestFramework.Core.Exceptions;
+using TestFramework.Core.Steps;
 using TestFramework.Core.Steps.Options;
 using TestFramework.Core.Timelines;
 using TestFramework.Core.Timelines.Builder.TimelineBuilder;
@@ -134,7 +136,7 @@ public class DockerAzureEnvironmentSmokeTests
     public async Task PackageReadme_GoldenSample_RunsAgainstContainerBackedCosmos_WhenSmokeEnabled()
     {
         Timeline timeline = Timeline.Create()
-            .Trigger(AzureTF.Trigger.IsLive.Cosmos("cosmos", AlivenessLevel.Authenticated)).WithTimeOut(TimeSpan.FromMinutes(2))
+            .Trigger(AzureExt.Trigger.IsLive.Cosmos("cosmos", AlivenessLevel.Authenticated)).WithTimeOut(TimeSpan.FromMinutes(2))
             .Build();
 
         TimelineRun run = await timeline.SetupRun().SetEnv(_fixture.GetEnv()).RunAsync();
@@ -148,7 +150,7 @@ public class DockerAzureEnvironmentSmokeTests
     public async Task Timeline_CanRunBlobIsLiveWithDockerAzureEnvironment_WhenSmokeEnabled()
     {
         TimelineRun run = await RunSmokeTimelineAsync(
-            [builder => builder.SetupArtifact("blob").WithRetry(5, CalcDelays.Fixed(TimeSpan.FromSeconds(2))).Trigger(AzureTF.Trigger.IsLive.Blob("storage", AlivenessLevel.Resource))],
+            [builder => builder.SetupArtifact("blob").WithRetry(5, CalcDelays.Fixed(TimeSpan.FromSeconds(2))).Trigger(AzureExt.Trigger.IsLive.Blob("storage", AlivenessLevel.Resource))],
             runBuilder => runBuilder.AddArtifact("blob", new StorageAccountBlobArtifactReference("storage", Var.Const("smoke-blob.txt")), new StorageAccountBlobArtifactData([1, 2, 3], new Dictionary<string, string>())));
 
         Assert.True(run.EnvironmentContext.Contains(DockerAzureEnvironment.AzuriteComponentId));
@@ -159,7 +161,7 @@ public class DockerAzureEnvironmentSmokeTests
     public async Task Timeline_CanRunTableIsLiveWithDockerAzureEnvironment_WhenSmokeEnabled()
     {
         TimelineRun run = await RunSmokeTimelineAsync(
-            [builder => builder.SetupArtifact("table").Trigger(AzureTF.Trigger.IsLive.Table("storage", AlivenessLevel.Resource)).WithTimeOut(TimeSpan.FromMinutes(1))],
+            [builder => builder.SetupArtifact("table").Trigger(AzureExt.Trigger.IsLive.Table("storage", AlivenessLevel.Resource)).WithTimeOut(TimeSpan.FromMinutes(1))],
             runBuilder => runBuilder.AddArtifact(
                 "table",
                     new TableStorageEntityArtifactReference<SmokeTableEntity>("storage", Var.Const(SmokeTableName), Var.Const("pk"), Var.Const("rk")),
@@ -173,7 +175,7 @@ public class DockerAzureEnvironmentSmokeTests
     public async Task Timeline_CanRunCosmosIsLiveWithDockerAzureEnvironment_WhenSmokeEnabled()
     {
         TimelineRun run = await RunSmokeTimelineAsync(
-            [builder => builder.Trigger(AzureTF.Trigger.IsLive.Cosmos("cosmos", AlivenessLevel.Authenticated)).WithTimeOut(TimeSpan.FromMinutes(2))]);
+            [builder => builder.Trigger(AzureExt.Trigger.IsLive.Cosmos("cosmos", AlivenessLevel.Authenticated)).WithTimeOut(TimeSpan.FromMinutes(2))]);
 
         Assert.True(run.EnvironmentContext.Contains(DockerAzureEnvironment.CosmosDbComponentId));
     }
@@ -183,7 +185,7 @@ public class DockerAzureEnvironmentSmokeTests
     public async Task Timeline_CanRunSqlIsLiveWithDockerAzureEnvironment_WhenSmokeEnabled()
     {
         TimelineRun run = await RunSmokeTimelineAsync(
-            [builder => builder.Trigger(AzureTF.Trigger.IsLive.Sql("sql"))]);
+            [builder => builder.Trigger(AzureExt.Trigger.IsLive.Sql("sql"))]);
 
         Assert.True(run.EnvironmentContext.Contains(DockerAzureEnvironment.MsSqlComponentId));
     }
@@ -193,7 +195,7 @@ public class DockerAzureEnvironmentSmokeTests
     public async Task Timeline_CanRunServiceBusStepsWithDockerAzureEnvironment_WhenSmokeEnabled()
     {
         TimelineRun run = await RunSmokeTimelineAsync(
-            [builder => builder.Trigger(AzureTF.Trigger.ServiceBus.Send("bus", Var.Const(new ServiceBusMessage("payload"))))]);
+            [builder => builder.Trigger(AzureExt.Trigger.ServiceBus.Send("bus", Var.Const(new ServiceBusMessage("payload"))))]);
 
         Assert.True(run.EnvironmentContext.Contains(DockerAzureEnvironment.ServiceBusComponentId));
         Assert.True(run.EnvironmentContext.Contains(DockerAzureEnvironment.MsSqlComponentId));
@@ -205,11 +207,11 @@ public class DockerAzureEnvironmentSmokeTests
     {
         TimelineRun run = await RunSmokeTimelineAsync(
             [
-                builder => builder.SetupArtifact("blob").WithRetry(5, CalcDelays.Fixed(TimeSpan.FromSeconds(2))).Trigger(AzureTF.Trigger.IsLive.Blob("storage", AlivenessLevel.Resource)),
-                builder => builder.SetupArtifact("table").Trigger(AzureTF.Trigger.IsLive.Table("storage", AlivenessLevel.Resource)).WithTimeOut(TimeSpan.FromMinutes(1)),
-                builder => builder.Trigger(AzureTF.Trigger.IsLive.Cosmos("cosmos", AlivenessLevel.Authenticated)).WithTimeOut(TimeSpan.FromMinutes(2)),
-                builder => builder.Trigger(AzureTF.Trigger.IsLive.Sql("sql")),
-                builder => builder.Trigger(AzureTF.Trigger.ServiceBus.Send("bus", Var.Const(new ServiceBusMessage("payload"))))
+                builder => builder.SetupArtifact("blob").WithRetry(5, CalcDelays.Fixed(TimeSpan.FromSeconds(2))).Trigger(AzureExt.Trigger.IsLive.Blob("storage", AlivenessLevel.Resource)),
+                builder => builder.SetupArtifact("table").Trigger(AzureExt.Trigger.IsLive.Table("storage", AlivenessLevel.Resource)).WithTimeOut(TimeSpan.FromMinutes(1)),
+                builder => builder.Trigger(AzureExt.Trigger.IsLive.Cosmos("cosmos", AlivenessLevel.Authenticated)).WithTimeOut(TimeSpan.FromMinutes(2)),
+                builder => builder.Trigger(AzureExt.Trigger.IsLive.Sql("sql")),
+                builder => builder.Trigger(AzureExt.Trigger.ServiceBus.Send("bus", Var.Const(new ServiceBusMessage("payload"))))
             ],
             runBuilder => runBuilder
                 .AddArtifact("blob", new StorageAccountBlobArtifactReference("storage", Var.Const("smoke-blob.txt")), new StorageAccountBlobArtifactData([1, 2, 3], new Dictionary<string, string>()))
@@ -226,7 +228,7 @@ public class DockerAzureEnvironmentSmokeTests
     public async Task Timeline_CanReachDockerHostedFunctionAppHost_WithoutExternalDependencies()
     {
         Timeline timeline = Timeline.Create()
-            .Trigger(AzureTF.Trigger.IsLive.FunctionApp("func", AlivenessLevel.Reachable))
+            .Trigger(AzureExt.Trigger.IsLive.FunctionApp("func", AlivenessLevel.Reachable))
             .WithTimeOut(TimeSpan.FromMinutes(1))
             .Name("function-live")
             .Build();
@@ -242,11 +244,11 @@ public class DockerAzureEnvironmentSmokeTests
     public async Task Timeline_ReusesPersistentInfrastructureAcrossMultipleRuns()
     {
         TimelineRun firstRun = await RunSmokeTimelineAsync(
-            [builder => builder.SetupArtifact("blob").WithRetry(5, CalcDelays.Fixed(TimeSpan.FromSeconds(2))).Trigger(AzureTF.Trigger.IsLive.Blob("storage", AlivenessLevel.Resource))],
+            [builder => builder.SetupArtifact("blob").WithRetry(5, CalcDelays.Fixed(TimeSpan.FromSeconds(2))).Trigger(AzureExt.Trigger.IsLive.Blob("storage", AlivenessLevel.Resource))],
             runBuilder => runBuilder.AddArtifact("blob", new StorageAccountBlobArtifactReference("storage", Var.Const("reuse-first.txt")), new StorageAccountBlobArtifactData([1, 2, 3], new Dictionary<string, string>())));
 
         TimelineRun secondRun = await RunSmokeTimelineAsync(
-            [builder => builder.SetupArtifact("blob").WithRetry(5, CalcDelays.Fixed(TimeSpan.FromSeconds(2))).Trigger(AzureTF.Trigger.IsLive.Blob("storage", AlivenessLevel.Resource))],
+            [builder => builder.SetupArtifact("blob").WithRetry(5, CalcDelays.Fixed(TimeSpan.FromSeconds(2))).Trigger(AzureExt.Trigger.IsLive.Blob("storage", AlivenessLevel.Resource))],
             runBuilder => runBuilder.AddArtifact("blob", new StorageAccountBlobArtifactReference("storage", Var.Const("reuse-second.txt")), new StorageAccountBlobArtifactData([1, 2, 3], new Dictionary<string, string>())));
 
         Assert.Same(
@@ -283,7 +285,7 @@ public class DockerAzureEnvironmentSmokeTests
 
         run.EnsureRanToCompletion();
 
-        Assert.Equal("run-override-queue", Assert.IsType<string>(run.Step("inspect-servicebus-config").LastResult.Result));
+        Assert.Equal("run-override-queue", Assert.IsType<InspectServiceBusConfigResult>(run.Step("inspect-servicebus-config").LastResult.Result).QueueName);
         Assert.True(run.EnvironmentContext.Contains(DockerAzureEnvironment.ServiceBusComponentId));
     }
 
@@ -293,7 +295,7 @@ public class DockerAzureEnvironmentSmokeTests
     {
         Timeline timeline = Timeline.Create()
             .Trigger(
-                AzureTF.Trigger.LogicApp
+                AzureExt.Trigger.LogicApp
                     .Http("logic")
                     .Workflow("SmokeWorkflow")
                     .Manual()
@@ -301,8 +303,8 @@ public class DockerAzureEnvironmentSmokeTests
                     .CallForRunContext())
             .WithTimeOut(TimeSpan.FromMinutes(2))
             .Name("logic-call")
-            .CaptureResultAs("logicRun")
-            .WaitForEvent(AzureTF.Event.LogicApp.RunCompleted("logic", Var.Ref<LogicAppRunContext>("logicRun")))
+                    .GetRunContext("logicRun")
+            .WaitForEvent(AzureExt.Event.LogicApp.RunCompleted("logic", Var.Ref<LogicAppRunContext>("logicRun")))
             .WithTimeOut(TimeSpan.FromMinutes(2))
             .Name("logic-run-completed")
             .Build();
@@ -327,7 +329,7 @@ public class DockerAzureEnvironmentSmokeTests
     {
         Timeline timeline = Timeline.Create()
             .Trigger(
-                AzureTF.Trigger.LogicApp
+                AzureExt.Trigger.LogicApp
                     .Http("logic")
                     .Workflow("SmokeStatelessWorkflow")
                     .Manual()
@@ -357,15 +359,15 @@ public class DockerAzureEnvironmentSmokeTests
     {
         Timeline timeline = Timeline.Create()
             .Trigger(
-                AzureTF.Trigger.LogicApp
+                AzureExt.Trigger.LogicApp
                     .Http("logic")
                     .Workflow("SmokeTimerWorkflow")
                     .Timer()
                     .CallForRunContext())
             .WithTimeOut(TimeSpan.FromMinutes(2))
             .Name("logic-timer-call")
-            .CaptureResultAs("logicTimerRun")
-            .WaitForEvent(AzureTF.Event.LogicApp.RunCompleted("logic", Var.Ref<LogicAppRunContext>("logicTimerRun")))
+                    .GetRunContext("logicTimerRun")
+            .WaitForEvent(AzureExt.Event.LogicApp.RunCompleted("logic", Var.Ref<LogicAppRunContext>("logicTimerRun")))
             .WithTimeOut(TimeSpan.FromMinutes(2))
             .Name("logic-timer-run-completed")
             .Build();
@@ -391,30 +393,30 @@ public class DockerAzureEnvironmentSmokeTests
         const string correlationId = "smoke-servicebus-correlation";
 
         Timeline timeline = Timeline.Create()
-            .Trigger(AzureTF.Trigger.IsLive.FunctionApp("func-sb", AlivenessLevel.Reachable)).WithTimeOut(TimeSpan.FromMinutes(1)).Name("func-sb-reachable")
-            .Trigger(AzureTF.Trigger.ServiceBus.Send("func-trigger-bus", Var.Const(new ServiceBusMessage(correlationId) { CorrelationId = correlationId })))
-            .WaitForEvent(AzureTF.Event.ServiceBus.MessageReceived("func-reply-bus", correlationId: Var.Const(correlationId), completeMessage: Var.Const(true))).WithTimeOut(TimeSpan.FromMinutes(1)).Name("reply-received")
+            .Trigger(AzureExt.Trigger.IsLive.FunctionApp("func-sb", AlivenessLevel.Reachable)).WithTimeOut(TimeSpan.FromMinutes(1)).Name("func-sb-reachable")
+            .Trigger(AzureExt.Trigger.ServiceBus.Send("func-trigger-bus", Var.Const(new ServiceBusMessage(correlationId) { CorrelationId = correlationId })))
+            .WaitForEvent(AzureExt.Event.ServiceBus.MessageReceived("func-reply-bus", correlationId: Var.Const(correlationId), completeMessage: Var.Const(true))).WithTimeOut(TimeSpan.FromMinutes(1)).Name("reply-received")
             .Build();
 
         TimelineRun run = await timeline.SetupRun().SetEnv(_fixture.GetEnv()).RunAsync();
 
         run.EnsureRanToCompletion();
 
-        ServiceBusReceivedMessage message = Assert.IsType<ServiceBusReceivedMessage>(run.Step("reply-received").LastResult.Result);
-        Assert.Equal(correlationId, message.CorrelationId);
-        Assert.Equal("servicebus-smoke-processed", message.Subject);
-        Assert.Equal($"processed:{correlationId}", message.Body.ToString());
+        ServiceBusReceivedMessageContext result = Assert.IsType<ServiceBusReceivedMessageContext>(run.Step("reply-received").LastResult.Result);
+        Assert.Equal(correlationId, result.Message.CorrelationId);
+        Assert.Equal("servicebus-smoke-processed", result.Message.Subject);
+        Assert.Equal($"processed:{correlationId}", result.Message.Body.ToString());
         Assert.True(run.EnvironmentContext.Contains(DockerAzureEnvironment.FunctionAppComponentId));
         Assert.True(run.EnvironmentContext.Contains(DockerAzureEnvironment.ServiceBusComponentId));
     }
 
     private async Task<TimelineRun> RunSmokeTimelineAsync(
-        IReadOnlyList<Func<ITimelineBuilder, ITimelineBuilderModifier>> configureSteps,
+        IReadOnlyList<Func<ITimelineBuilder, ITimelineBuilder>> configureSteps,
         Func<ITimelineRunBuilder, ITimelineRunBuilder>? configureRunBuilder = null,
         Action<IConfigInstanceBuilder>? configureConfig = null)
     {
         ITimelineBuilder builder = Timeline.Create();
-        foreach (Func<ITimelineBuilder, ITimelineBuilderModifier> configureStep in configureSteps)
+        foreach (Func<ITimelineBuilder, ITimelineBuilder> configureStep in configureSteps)
             builder = configureStep(builder);
 
         Timeline timeline = builder.Build();
@@ -439,7 +441,7 @@ public class DockerAzureEnvironmentSmokeTests
         public global::Azure.ETag ETag { get; set; }
     }
 
-    private sealed class InspectServiceBusConfigStep : TestFramework.Core.Steps.Step<object?>, IHasEnvironmentRequirements
+    private sealed class InspectServiceBusConfigStep : TestFramework.Core.Steps.Step<InspectServiceBusConfigResult>, IHasEnvironmentRequirements
     {
         public override string Name => "inspect-servicebus-config";
 
@@ -450,19 +452,21 @@ public class DockerAzureEnvironmentSmokeTests
         public IReadOnlyCollection<EnvironmentRequirement> GetEnvironmentRequirements(VariableStore variableStore)
             => [new(AzureEnvironmentResourceKinds.ServiceBus, "bus")];
 
-        public override Task<object?> Execute(IServiceProvider serviceProvider, VariableStore variableStore, TestFramework.Core.Artifacts.ArtifactStore artifactStore, TestFramework.Core.Logging.ScopedLogger logger, CancellationToken cancellationToken)
+        public override Task<InspectServiceBusConfigResult?> Execute(IServiceProvider serviceProvider, VariableStore variableStore, TestFramework.Core.Artifacts.ArtifactStore artifactStore, TestFramework.Core.Logging.ScopedLogger logger, CancellationToken cancellationToken)
         {
             ServiceBusConfig config = ((ConfigStore<ServiceBusConfig>)serviceProvider.GetService(typeof(ConfigStore<ServiceBusConfig>))!).GetConfig("bus");
-            return Task.FromResult((object?)config.QueueName);
+            return Task.FromResult<InspectServiceBusConfigResult?>(new(config.QueueName ?? throw new InvalidOperationException("Service Bus queue name was not configured.")));
         }
 
-        public override TestFramework.Core.Steps.Step<object?> Clone() => new InspectServiceBusConfigStep().WithClonedOptions(this);
+        public override TestFramework.Core.Steps.Step<InspectServiceBusConfigResult> Clone() => new InspectServiceBusConfigStep().WithClonedOptions(this);
 
         public override void DeclareIO(TestFramework.Core.Steps.Options.StepIOContract contract)
         {
         }
 
-        public override TestFramework.Core.Steps.StepInstance<TestFramework.Core.Steps.Step<object?>, object?> GetInstance()
+        public override TestFramework.Core.Steps.StepInstance<TestFramework.Core.Steps.Step<InspectServiceBusConfigResult>, InspectServiceBusConfigResult> GetInstance()
             => new(this);
     }
+
+    private sealed record InspectServiceBusConfigResult(string QueueName) : StepResultContext;
 }

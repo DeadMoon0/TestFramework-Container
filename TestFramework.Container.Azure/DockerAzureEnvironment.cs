@@ -209,6 +209,11 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
         return _definitionState.MsSqlImage ?? DockerAzureDefaults.MsSqlImage;
     }
 
+    internal int GetMsSqlMemoryLimitMb()
+    {
+        return _definitionState.MsSqlMemoryLimitMb ?? DockerAzureDefaults.MsSqlMemoryLimitMb;
+    }
+
     internal string GetServiceBusImage()
     {
         return _definitionState.ServiceBusImage ?? DockerAzureDefaults.ServiceBusImage;

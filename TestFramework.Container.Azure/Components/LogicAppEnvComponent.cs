@@ -65,19 +65,18 @@ internal sealed class LogicAppEnvComponent : DockerAzureEnvComponent
             foreach ((string key, string value) in appSettings)
                 builder = builder.WithEnvironment(key, value);
 
-            IContainer container = builder.Build();
-            await container.StartAsync(cancellationToken).ConfigureAwait(false);
+            IContainer container = await StartLogicAppContainerAsync(
+                builder,
+                endpointMap,
+                identifier,
+                workflowName,
+                materializedHost,
+                current,
+                containerImage,
+                logger,
+                cancellationToken).ConfigureAwait(false);
 
             string baseUrl = endpointMap.GetFunctionAppBaseUrl(container);
-            try
-            {
-                await WaitForWorkflowReadyAsync(baseUrl, materializedHost, workflowName, current, cancellationToken).ConfigureAwait(false);
-            }
-            catch (Exception exception) when (exception is not OperationCanceledException)
-            {
-                string containerLogs = await TryGetContainerLogsAsync(container, cancellationToken).ConfigureAwait(false);
-                throw CreateStartupFailure(identifier, workflowName, baseUrl, containerImage, containerLogs, exception);
-            }
 
             logicAppStore.AddConfig(identifier, current with
             {
@@ -90,6 +89,50 @@ internal sealed class LogicAppEnvComponent : DockerAzureEnvComponent
         }
 
         return runtimes;
+    }
+
+    private static async Task<IContainer> StartLogicAppContainerAsync(
+        ContainerBuilder builder,
+        DockerEndpointMap endpointMap,
+        string identifier,
+        string workflowName,
+        MaterializedLogicAppHost materializedHost,
+        LogicAppConfig config,
+        string containerImage,
+        ScopedLogger logger,
+        CancellationToken cancellationToken)
+    {
+        for (int attempt = 1; attempt <= 2; attempt++)
+        {
+            IContainer container = builder.Build();
+
+            try
+            {
+                await container.StartAsync(cancellationToken).ConfigureAwait(false);
+
+                string baseUrl = endpointMap.GetFunctionAppBaseUrl(container);
+                await WaitForWorkflowReadyAsync(baseUrl, materializedHost, workflowName, config, cancellationToken).ConfigureAwait(false);
+                return container;
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                string baseUrl = endpointMap.GetFunctionAppBaseUrl(container);
+                string containerLogs = await TryGetContainerLogsAsync(container, cancellationToken).ConfigureAwait(false);
+
+                await ForceRemoveContainerAsync(container, cancellationToken).ConfigureAwait(false);
+
+                if (attempt < 2 && LooksLikeTransientWorkflowBundleDownloadFailure(containerLogs))
+                {
+                    logger.LogWarning(
+                        $"Logic App '{identifier}' failed to bootstrap workflow extensions on attempt {attempt}. Retrying once because the host logs indicate a transient extension bundle download failure.");
+                    continue;
+                }
+
+                throw CreateStartupFailure(identifier, workflowName, baseUrl, containerImage, containerLogs, exception);
+            }
+        }
+
+        throw new UnreachableException();
     }
 
     public override async Task DeconstructAsync(object? state, IEnvironmentProvider environment, IServiceProvider serviceProvider, VariableStore variableStore, ArtifactStore artifactStore, ScopedLogger logger, CancellationToken cancellationToken)
@@ -239,6 +282,15 @@ internal sealed class LogicAppEnvComponent : DockerAzureEnvComponent
     {
         return containerLogs.Contains("Loaded extension 'WorkflowExtension'", StringComparison.Ordinal)
             && containerLogs.Contains("Could not load type 'System.Runtime.InteropServices.OSPlatform'", StringComparison.Ordinal);
+    }
+
+    private static bool LooksLikeTransientWorkflowBundleDownloadFailure(string containerLogs)
+    {
+        return containerLogs.Contains("Microsoft.Azure.Functions.ExtensionBundle.Workflows", StringComparison.Ordinal)
+            && containerLogs.Contains("Downloading extension bundle", StringComparison.Ordinal)
+            && (containerLogs.Contains("Received an unexpected EOF", StringComparison.Ordinal)
+                || containerLogs.Contains("Error while copying content to a stream", StringComparison.Ordinal)
+                || containerLogs.Contains("Error building configuration in an external startup class", StringComparison.Ordinal));
     }
 
     private static string ResolveContainerImage(string configuredImage, ScopedLogger logger, CancellationToken cancellationToken)
