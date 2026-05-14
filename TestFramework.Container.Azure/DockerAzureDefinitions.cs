@@ -49,6 +49,8 @@ public abstract class DockerAzureInfrastructureDefinition : DockerAzureDefinitio
 
     public virtual string? MsSqlImage => null;
 
+    public virtual int? MsSqlMemoryLimitMb => null;
+
     public virtual string? ServiceBusImage => null;
 
     public virtual string? MsSqlPassword => null;
@@ -251,11 +253,19 @@ public abstract class DockerServiceBusDefinition : DockerAzureDefinition
 
 public abstract class DockerFunctionAppDefinition : DockerAzureDefinition
 {
+    private const string SynthesizedBaseUrl = "http://localhost/";
+    private const string SynthesizedHostKey = "unused";
+
     public abstract FunctionAppIdentifier Identifier { get; }
 
     public virtual string Image => DockerAzureDefaults.FunctionAppImage;
 
-    protected virtual FunctionAppConfig? CreateDefaultConfig() => null;
+    protected virtual FunctionAppConfig? CreateDefaultConfig() => new()
+    {
+        BaseUrl = SynthesizedBaseUrl,
+        Code = SynthesizedHostKey,
+        AdminCode = SynthesizedHostKey,
+    };
 
     protected virtual void Configure(DockerFunctionAppBuilder builder)
     {
@@ -304,13 +314,25 @@ public abstract class DockerFunctionAppDefinition<TFunctionApp> : DockerFunction
 
 public abstract class DockerLogicAppDefinition : DockerAzureDefinition
 {
+    private const string SynthesizedBaseUrl = "http://localhost/";
+    private const string SynthesizedHostKey = "unused";
+
     public abstract LogicAppIdentifier Identifier { get; }
 
     public abstract string Path { get; }
 
     public virtual string Image => DockerAzureDefaults.LogicAppImage;
 
-    protected virtual LogicAppConfig? CreateDefaultConfig() => null;
+    protected virtual LogicAppConfig? CreateDefaultConfig() => new()
+    {
+        WorkflowName = ResolveDefaultWorkflowName() ?? Identifier.Identifier,
+        Standard = new LogicAppStandardConfig
+        {
+            BaseUrl = SynthesizedBaseUrl,
+            Code = SynthesizedHostKey,
+            AdminCode = SynthesizedHostKey,
+        },
+    };
 
     protected virtual void Configure(DockerLogicAppBuilder builder)
     {
@@ -334,6 +356,25 @@ public abstract class DockerLogicAppDefinition : DockerAzureDefinition
         DockerLogicAppBuilder builder = new();
         Configure(builder);
         return new LogicAppDefinitionDescriptor(Identifier, Path, Image, builder.AdditionalSettings);
+    }
+
+    private string? ResolveDefaultWorkflowName()
+    {
+        try
+        {
+            string resolvedPath = LogicAppPathLocator.Resolve(Path);
+            string[] workflowDirectories = Directory.GetDirectories(resolvedPath)
+                .Where(path => File.Exists(System.IO.Path.Combine(path, "workflow.json")))
+                .ToArray();
+
+            return workflowDirectories.Length == 1
+                ? new DirectoryInfo(workflowDirectories[0]).Name
+                : null;
+        }
+        catch (DirectoryNotFoundException)
+        {
+            return null;
+        }
     }
 }
 
@@ -496,6 +537,7 @@ public static class DockerAzureDefaults
     public const string LogicAppImage = "mcr.microsoft.com/azure-functions/dotnet:4";
     public const string PlaceholderConnectionString = "placeholder://container-managed";
     public const string MsSqlImage = "mcr.microsoft.com/mssql/server:2022-CU14-ubuntu-22.04";
+    public const int MsSqlMemoryLimitMb = 1536;
     public const string AzuriteImage = "mcr.microsoft.com/azure-storage/azurite:3.33.0";
     public const string AzuriteAccountName = "devstoreaccount1";
     public const string AzuriteAccountKey = "Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==";
@@ -547,6 +589,7 @@ internal sealed class DockerAzureDefinitionState
     public string? AzuriteImage { get; private set; }
     public string? CosmosDbImage { get; private set; }
     public string? MsSqlImage { get; private set; }
+    public int? MsSqlMemoryLimitMb { get; private set; }
     public string? ServiceBusImage { get; private set; }
     public string? MsSqlPassword { get; private set; }
     public IReadOnlyCollection<ComponentContractBinding> LastContractBindings { get; private set; } = [];
@@ -576,6 +619,7 @@ internal sealed class DockerAzureDefinitionState
                 AzuriteImage = ResolveOverride(AzuriteImage, infrastructure.AzuriteImage, nameof(DockerAzureInfrastructureDefinition.AzuriteImage));
                 CosmosDbImage = ResolveOverride(CosmosDbImage, infrastructure.CosmosDbImage, nameof(DockerAzureInfrastructureDefinition.CosmosDbImage));
                 MsSqlImage = ResolveOverride(MsSqlImage, infrastructure.MsSqlImage, nameof(DockerAzureInfrastructureDefinition.MsSqlImage));
+                MsSqlMemoryLimitMb = ResolveOverride(MsSqlMemoryLimitMb, infrastructure.MsSqlMemoryLimitMb, nameof(DockerAzureInfrastructureDefinition.MsSqlMemoryLimitMb));
                 ServiceBusImage = ResolveOverride(ServiceBusImage, infrastructure.ServiceBusImage, nameof(DockerAzureInfrastructureDefinition.ServiceBusImage));
                 MsSqlPassword = ResolveOverride(MsSqlPassword, infrastructure.MsSqlPassword, nameof(DockerAzureInfrastructureDefinition.MsSqlPassword));
                 if (infrastructure.GetServiceBusTopologySource() is ServiceBusTopologySource infrastructureTopologySource)
@@ -779,6 +823,20 @@ internal sealed class DockerAzureDefinitionState
             return value;
 
         if (!string.Equals(current, value, StringComparison.Ordinal))
+            throw new InvalidOperationException($"Multiple values were configured for {propertyName}: '{current}' and '{value}'.");
+
+        return current;
+    }
+
+    private static int? ResolveOverride(int? current, int? value, string propertyName)
+    {
+        if (value is null)
+            return current;
+
+        if (current is null)
+            return value;
+
+        if (current != value)
             throw new InvalidOperationException($"Multiple values were configured for {propertyName}: '{current}' and '{value}'.");
 
         return current;

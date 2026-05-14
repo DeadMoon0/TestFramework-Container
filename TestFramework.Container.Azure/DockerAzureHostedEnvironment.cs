@@ -35,6 +35,7 @@ public sealed class DockerAzureHostedEnvironment : IAsyncDisposable
         DockerAzureEnvironment environment,
         ConfigInstance persistentConfig,
         IReadOnlyCollection<EnvironmentRequirement> persistentRequirements,
+        TimeSpan? persistentSetupTimeout = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(environment);
@@ -44,7 +45,7 @@ public sealed class DockerAzureHostedEnvironment : IAsyncDisposable
         cancellationToken.ThrowIfCancellationRequested();
 
         IServiceProvider bootstrapServiceProvider = persistentConfig.BuildServiceProvider();
-        DockerAzurePersistentSetup setup = new(environment, persistentConfig, persistentRequirements);
+        DockerAzurePersistentSetup setup = new(environment, persistentConfig, persistentRequirements, persistentSetupTimeout ?? TimeSpan.FromMinutes(2));
         PersistentEnvironmentContext<DockerAzurePersistentSetup> persistentContext = new(setup, bootstrapServiceProvider, disposePersistentServiceProvider: true);
         return Task.FromResult(new DockerAzureHostedEnvironment(persistentContext, persistentConfig, bootstrapServiceProvider));
     }
@@ -88,17 +89,19 @@ public sealed class DockerAzureHostedEnvironment : IAsyncDisposable
         private readonly DockerAzureEnvironment _environment;
         private readonly ConfigInstance _persistentConfig;
         private readonly IReadOnlyCollection<EnvironmentRequirement> _persistentRequirements;
+        private readonly TimeSpan _persistentSetupTimeout;
 
         public DockerAzurePersistentSetup()
-            : this(new DockerAzureEnvironment(), ConfigInstance.Create().LoadDockerAzureConfig().Build(), Array.Empty<EnvironmentRequirement>())
+            : this(new DockerAzureEnvironment(), ConfigInstance.Create().LoadDockerAzureConfig().Build(), Array.Empty<EnvironmentRequirement>(), TimeSpan.FromMinutes(2))
         {
         }
 
-        public DockerAzurePersistentSetup(DockerAzureEnvironment environment, ConfigInstance persistentConfig, IReadOnlyCollection<EnvironmentRequirement> persistentRequirements)
+        public DockerAzurePersistentSetup(DockerAzureEnvironment environment, ConfigInstance persistentConfig, IReadOnlyCollection<EnvironmentRequirement> persistentRequirements, TimeSpan persistentSetupTimeout)
         {
             _environment = environment.CloneDefinitions();
             _persistentConfig = persistentConfig;
             _persistentRequirements = persistentRequirements;
+            _persistentSetupTimeout = persistentSetupTimeout;
         }
 
         public IEnvironmentProvider CreateEnvironment()
@@ -110,14 +113,10 @@ public sealed class DockerAzureHostedEnvironment : IAsyncDisposable
 
         public ConfigInstance CreatePersistentConfig() => _persistentConfig;
 
-        public IReadOnlyCollection<EnvComponentIdentifier> GetPersistentComponentIdentifiers() =>
-        [
-            DockerAzureEnvironment.NetworkComponentId,
-            DockerAzureEnvironment.AzuriteComponentId,
-            DockerAzureEnvironment.CosmosDbComponentId,
-            DockerAzureEnvironment.MsSqlComponentId,
-            DockerAzureEnvironment.ServiceBusComponentId,
-        ];
+        public IReadOnlyCollection<EnvComponentIdentifier> GetPersistentComponentIdentifiers()
+            => DockerAzurePersistentRootMapper.Map(_persistentRequirements);
+
+        public TimeSpan GetPersistentSetupTimeout() => _persistentSetupTimeout;
     }
 
     private ConfigStore<TConfig> GetRequiredStore<TConfig>() where TConfig : class

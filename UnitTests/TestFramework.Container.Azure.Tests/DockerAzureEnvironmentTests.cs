@@ -110,11 +110,11 @@ public class DockerAzureEnvironmentTests
     {
         DockerAzureEnvironment environment = DockerAzureEnvironment.For<MinimalFunctionAppDefinition>()
             .Include<MinimalLogicAppDefinition>();
-        Step<object?> functionStep = new IsLiveTrigger().FunctionApp("func");
-        Step<object?> logicAppStep = new IsLiveTrigger().LogicApp("logic");
-        Step<object?> blobStep = new IsLiveTrigger().Blob("storage");
-        Step<object?> cosmosStep = new IsLiveTrigger().Cosmos("cosmos");
-        Step<object?> sqlStep = new IsLiveTrigger().Sql("sql");
+        var functionStep = new IsLiveTrigger().FunctionApp("func");
+        var logicAppStep = new IsLiveTrigger().LogicApp("logic");
+        var blobStep = new IsLiveTrigger().Blob("storage");
+        var cosmosStep = new IsLiveTrigger().Cosmos("cosmos");
+        var sqlStep = new IsLiveTrigger().Sql("sql");
 
         List<EnvironmentRequirement> requirements = [];
         requirements.AddRange(((IHasEnvironmentRequirements)functionStep).GetEnvironmentRequirements(null!));
@@ -138,7 +138,7 @@ public class DockerAzureEnvironmentTests
     public void ResolveComponents_ForAddsTypedFunctionAppDefinitionsAndDependencies()
     {
         DockerAzureEnvironment environment = DockerAzureEnvironment.For<TestFunctionAppDefinition>();
-        Step<object?> functionStep = new IsLiveTrigger().FunctionApp("func");
+        var functionStep = new IsLiveTrigger().FunctionApp("func");
 
         IReadOnlyCollection<EnvComponentIdentifier> result = environment.ResolveComponents([], ((IHasEnvironmentRequirements)functionStep).GetEnvironmentRequirements(null!));
 
@@ -163,7 +163,7 @@ public class DockerAzureEnvironmentTests
     public void ResolveComponents_ForAppliesServiceBusTopologyPathFromDependencies()
     {
         DockerAzureEnvironment environment = DockerAzureEnvironment.For<TestFunctionAppDefinition>();
-        Step<object?> functionStep = new IsLiveTrigger().FunctionApp("func");
+        var functionStep = new IsLiveTrigger().FunctionApp("func");
 
         IReadOnlyCollection<EnvComponentIdentifier> result = environment.ResolveComponents([], ((IHasEnvironmentRequirements)functionStep).GetEnvironmentRequirements(null!));
 
@@ -260,8 +260,8 @@ public class DockerAzureEnvironmentTests
     [Fact]
     public void GetOrCreateConfigStore_SynthesizesDefinitionDefaults_WhenStoreWasNotRegistered()
     {
-        DockerAzureEnvironment environment = DockerAzureEnvironment.For<DefaultedFunctionAppDefinition>();
-        Step<object?> functionStep = new IsLiveTrigger().FunctionApp("default-func");
+        DockerAzureEnvironment environment = DockerAzureEnvironment.For<SynthesizedFunctionAppDefinition>();
+        var functionStep = new IsLiveTrigger().FunctionApp("auto-func");
 
         environment.ResolveComponents([], ((IHasEnvironmentRequirements)functionStep).GetEnvironmentRequirements(null!));
 
@@ -272,7 +272,7 @@ public class DockerAzureEnvironmentTests
             .MakeGenericMethod(typeof(FunctionAppConfig))
             .Invoke(environment, [serviceProvider, environment.UsedFunctionAppIdentifiers, "Function App environment setup"])!;
 
-        FunctionAppConfig config = functionStore.GetConfig("default-func");
+        FunctionAppConfig config = functionStore.GetConfig("auto-func");
         Assert.Equal("http://localhost/", config.BaseUrl);
         Assert.Equal("unused", config.Code);
         Assert.Equal("unused", config.AdminCode);
@@ -281,8 +281,8 @@ public class DockerAzureEnvironmentTests
     [Fact]
     public void GetOrCreateConfigStore_SynthesizesLogicAppDefaults_WhenStoreWasNotRegistered()
     {
-        DockerAzureEnvironment environment = DockerAzureEnvironment.For<DefaultedLogicAppDefinition>();
-        Step<object?> logicAppStep = new IsLiveTrigger().LogicApp("logic-default");
+        DockerAzureEnvironment environment = DockerAzureEnvironment.For<SynthesizedLogicAppDefinition>();
+        var logicAppStep = new IsLiveTrigger().LogicApp("logic-auto");
 
         environment.ResolveComponents([], ((IHasEnvironmentRequirements)logicAppStep).GetEnvironmentRequirements(null!));
 
@@ -293,9 +293,9 @@ public class DockerAzureEnvironmentTests
             .MakeGenericMethod(typeof(LogicAppConfig))
             .Invoke(environment, [serviceProvider, environment.UsedLogicAppIdentifiers, "Logic App environment setup"])!;
 
-        LogicAppConfig config = logicAppStore.GetConfig("logic-default");
+        LogicAppConfig config = logicAppStore.GetConfig("logic-auto");
         Assert.Equal("http://localhost/", config.Standard.BaseUrl);
-        Assert.Equal("Orders", config.WorkflowName);
+        Assert.Equal("logic-auto", config.WorkflowName);
         Assert.Equal("unused", config.Standard.Code);
         Assert.Equal("unused", config.Standard.AdminCode);
     }
@@ -329,7 +329,7 @@ public class DockerAzureEnvironmentTests
     public void CreateRunScopedServiceProvider_ExposesLogicAppWorkflowMetadata_ForDockerDefinitions()
     {
         DockerAzureEnvironment environment = DockerAzureEnvironment.For<ConfiguredLogicAppDefinition>();
-        Step<object?> logicAppStep = new IsLiveTrigger().LogicApp("logic-configured");
+        var logicAppStep = new IsLiveTrigger().LogicApp("logic-configured");
 
         environment.ResolveComponents([], ((IHasEnvironmentRequirements)logicAppStep).GetEnvironmentRequirements(null!));
 
@@ -449,7 +449,7 @@ public class DockerAzureEnvironmentTests
     public void ResolveComponents_ThrowsWhenFunctionAppRegistrationIsMissing()
     {
         DockerAzureEnvironment environment = new();
-        Step<object?> functionStep = new IsLiveTrigger().FunctionApp("func");
+        var functionStep = new IsLiveTrigger().FunctionApp("func");
 
         InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => environment.ResolveComponents([], ((IHasEnvironmentRequirements)functionStep).GetEnvironmentRequirements(null!)));
 
@@ -460,7 +460,7 @@ public class DockerAzureEnvironmentTests
     public void ResolveComponents_ThrowsWhenLogicAppRegistrationIsMissing()
     {
         DockerAzureEnvironment environment = new();
-        Step<object?> logicAppStep = new IsLiveTrigger().LogicApp("logic");
+        var logicAppStep = new IsLiveTrigger().LogicApp("logic");
 
         InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => environment.ResolveComponents([], ((IHasEnvironmentRequirements)logicAppStep).GetEnvironmentRequirements(null!)));
 
@@ -494,7 +494,7 @@ public class DockerAzureEnvironmentTests
     public async Task AzuriteEnvComponent_ThrowsWhenStorageIdentifiersAreUsedWithoutConfigStore()
     {
         DockerAzureEnvironment environment = DockerAzureEnvironment.For<TestStorageDefinition>();
-        Step<object?> blobStep = new IsLiveTrigger().Blob("storage");
+        var blobStep = new IsLiveTrigger().Blob("storage");
 
         environment.ResolveComponents([], ((IHasEnvironmentRequirements)blobStep).GetEnvironmentRequirements(null!));
         typeof(DockerAzureEnvironment)
@@ -522,6 +522,7 @@ public class DockerAzureEnvironmentTests
         Assert.Equal("custom/azurite:1", typeof(DockerAzureEnvironment).GetMethod("GetAzuriteImage", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(environment, []));
         Assert.Equal("custom/cosmos:1", typeof(DockerAzureEnvironment).GetMethod("GetCosmosDbImage", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(environment, []));
         Assert.Equal("custom/mssql:1", typeof(DockerAzureEnvironment).GetMethod("GetMsSqlImage", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(environment, []));
+        Assert.Equal(1024, typeof(DockerAzureEnvironment).GetMethod("GetMsSqlMemoryLimitMb", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(environment, []));
         Assert.Equal("custom/servicebus:1", typeof(DockerAzureEnvironment).GetMethod("GetServiceBusImage", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(environment, []));
         Assert.Equal("StrongerPassword_123!", typeof(DockerAzureEnvironment).GetMethod("GetMsSqlPassword", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(environment, []));
         Assert.Equal(Path.Combine("Infrastructure", "bus-topology.json"), typeof(DockerAzureEnvironment).GetMethod("GetServiceBusTopologyConfigPath", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(environment, []));
@@ -672,34 +673,16 @@ public class DockerAzureEnvironmentTests
         }
     }
 
-    private sealed class DefaultedFunctionAppDefinition : DockerFunctionAppDefinition<TestFunctionHost>
+    private sealed class SynthesizedFunctionAppDefinition : DockerFunctionAppDefinition<TestFunctionHost>
     {
-        public override FunctionAppIdentifier Identifier => "default-func";
-
-        protected override FunctionAppConfig? CreateDefaultConfig() => new()
-        {
-            BaseUrl = "http://localhost/",
-            Code = "unused",
-            AdminCode = "unused",
-        };
+        public override FunctionAppIdentifier Identifier => "auto-func";
     }
 
-    private sealed class DefaultedLogicAppDefinition : DockerLogicAppDefinition
+    private sealed class SynthesizedLogicAppDefinition : DockerLogicAppDefinition
     {
-        public override LogicAppIdentifier Identifier => "logic-default";
+        public override LogicAppIdentifier Identifier => "logic-auto";
 
         public override string Path => TestLogicAppPath;
-
-        protected override LogicAppConfig? CreateDefaultConfig() => new()
-        {
-            WorkflowName = "Orders",
-            Standard = new LogicAppStandardConfig
-            {
-                BaseUrl = "http://localhost/",
-                Code = "unused",
-                AdminCode = "unused",
-            },
-        };
     }
 
     private sealed class ConfiguredLogicAppDefinition : DockerLogicAppDefinition
@@ -719,6 +702,7 @@ public class DockerAzureEnvironmentTests
         public override string? AzuriteImage => "custom/azurite:1";
         public override string? CosmosDbImage => "custom/cosmos:1";
         public override string? MsSqlImage => "custom/mssql:1";
+        public override int? MsSqlMemoryLimitMb => 1024;
         public override string? ServiceBusImage => "custom/servicebus:1";
         public override string? MsSqlPassword => "StrongerPassword_123!";
         public override string? ServiceBusTopologyConfigPath => Path.Combine("Infrastructure", "bus-topology.json");

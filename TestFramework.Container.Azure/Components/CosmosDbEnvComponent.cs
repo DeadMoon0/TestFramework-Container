@@ -22,6 +22,7 @@ namespace TestFramework.Container.Azure.Components;
 internal sealed class CosmosDbEnvComponent : DockerAzureEnvComponent
 {
     private static readonly string DebugLogPath = Path.Combine(AppContext.BaseDirectory, "cosmos-env-debug.log");
+    private static readonly TimeSpan GatewayReadinessTimeout = TimeSpan.FromMinutes(2);
 
     public override EnvComponentIdentifier Id => DockerAzureEnvironment.CosmosDbComponentId;
 
@@ -96,7 +97,7 @@ internal sealed class CosmosDbEnvComponent : DockerAzureEnvComponent
     }
     private static async Task WaitForGatewayAsync(CosmosClient client, ScopedLogger logger, CancellationToken cancellationToken)
     {
-        DateTime deadline = DateTime.UtcNow.AddMinutes(2);
+        DateTime deadline = DateTime.UtcNow.Add(GatewayReadinessTimeout);
         Exception? lastError = null;
         int attempt = 0;
 
@@ -120,7 +121,7 @@ internal sealed class CosmosDbEnvComponent : DockerAzureEnvComponent
             }
         }
 
-        throw new TimeoutException("The Cosmos emulator gateway did not become ready within two minutes.", lastError);
+        throw new TimeoutException($"The Cosmos emulator gateway did not become ready within {GatewayReadinessTimeout}.", lastError);
     }
 
     private static async Task DeploySchemaAsync(string connectionString, CosmosContainerDbConfig config, string partitionKeyPath, ScopedLogger logger, CancellationToken cancellationToken)

@@ -4,6 +4,7 @@
 		<TargetFramework>net8.0</TargetFramework>
 		<ImplicitUsings>disable</ImplicitUsings>
 		<Nullable>enable</Nullable>
+		<IsTestProject>false</IsTestProject>
 		<Title>TestFramework.Container.Azure</Title>
 		<Version>0.1.3</Version>
 		<Authors>DeadMoon0</Authors>

@@ -78,7 +78,7 @@ public class ContainerAzureSample
 	private sealed record SampleDocument(string Id, string PartitionKey);
 
 	private static readonly Timeline _timeline = Timeline.Create()
-		.Trigger(AzureTF.Trigger.IsLive.Cosmos("cosmos", AlivenessLevel.Authenticated)).WithTimeOut(TimeSpan.FromMinutes(2))
+		.Trigger(AzureExt.Trigger.IsLive.Cosmos("cosmos", AlivenessLevel.Authenticated)).WithTimeOut(TimeSpan.FromMinutes(2))
 		.Build();
 
 	[Fact]

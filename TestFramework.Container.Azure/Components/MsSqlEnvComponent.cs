@@ -30,6 +30,7 @@ internal sealed class MsSqlEnvComponent : DockerAzureEnvComponent
         INetwork network = dockerEnvironment.GetRequiredRuntimeState<INetwork>(DockerAzureEnvironment.NetworkComponentId);
         MsSqlBuilder builder = new MsSqlBuilder(dockerEnvironment.GetMsSqlImage())
             .WithPassword(dockerEnvironment.GetMsSqlPassword())
+            .WithEnvironment("MSSQL_MEMORY_LIMIT_MB", dockerEnvironment.GetMsSqlMemoryLimitMb().ToString())
             .WithNetwork(network)
             .WithNetworkAliases(ServiceBusBuilder.DatabaseNetworkAlias);
 
