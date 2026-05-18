@@ -23,6 +23,7 @@ namespace TestFramework.Container.Azure.Components;
 internal sealed class FunctionAppEnvComponent : DockerAzureEnvComponent
 {
     private const string FunctionAppRoot = "/home/site/wwwroot";
+    private static readonly TimeSpan FunctionAppReadyTimeout = TimeSpan.FromMinutes(4);
 
     public override EnvComponentIdentifier Id => DockerAzureEnvironment.FunctionAppComponentId;
 
@@ -226,7 +227,7 @@ internal sealed class FunctionAppEnvComponent : DockerAzureEnvComponent
     private static async Task WaitForHttpReadyAsync(string baseUrl, CancellationToken cancellationToken)
     {
         using HttpClient client = new() { BaseAddress = new Uri(baseUrl) };
-        DateTime deadline = DateTime.UtcNow.AddMinutes(2);
+        DateTime deadline = DateTime.UtcNow.Add(FunctionAppReadyTimeout);
 
         while (DateTime.UtcNow < deadline)
         {
@@ -249,7 +250,7 @@ internal sealed class FunctionAppEnvComponent : DockerAzureEnvComponent
             await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken).ConfigureAwait(false);
         }
 
-        throw new TimeoutException($"The Function App host at '{baseUrl}' did not become reachable within two minutes.");
+        throw new TimeoutException($"The Function App host at '{baseUrl}' did not become reachable within {FunctionAppReadyTimeout.TotalMinutes:0} minutes.");
     }
 
     private sealed record FunctionAppLocation(string ProjectDirectory, string OutputDirectory);
