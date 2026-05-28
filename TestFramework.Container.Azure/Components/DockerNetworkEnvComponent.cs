@@ -18,6 +18,9 @@ internal sealed class DockerNetworkEnvComponent : DockerAzureEnvComponent
 
     public override async Task<object?> CreateAsync(IEnvironmentProvider environment, IServiceProvider serviceProvider, VariableStore variableStore, ArtifactStore artifactStore, ScopedLogger logger, CancellationToken cancellationToken)
     {
+        if (environment is DockerAzureEnvironment dockerEnvironment)
+            dockerEnvironment.LogPendingResolutionSummary(logger);
+
         INetwork network = new NetworkBuilder()
             .WithName($"testframework-{Guid.NewGuid():N}")
             .Build();
@@ -25,8 +28,8 @@ internal sealed class DockerNetworkEnvComponent : DockerAzureEnvComponent
         await network.CreateAsync(cancellationToken)
             .ConfigureAwait(false);
 
-        if (environment is DockerAzureEnvironment dockerEnvironment)
-            dockerEnvironment.SetRuntimeState(Id, network);
+        if (environment is DockerAzureEnvironment runtimeEnvironment)
+            runtimeEnvironment.SetRuntimeState(Id, network);
 
         return network;
     }

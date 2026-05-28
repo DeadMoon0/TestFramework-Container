@@ -15,6 +15,7 @@ using TestFramework.Azure.StorageAccount.Blob;
 using TestFramework.Azure.StorageAccount.Table;
 using TestFramework.Core.Artifacts;
 using TestFramework.Core.Environment;
+using TestFramework.Core.Logging;
 
 namespace TestFramework.Container.Azure;
 
@@ -37,6 +38,8 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
     private readonly object _configStoreGate = new();
     private readonly DockerAzureDefinitionState _definitionState = new();
     private readonly Dictionary<Type, DockerAzureDefinition> _includedDefinitions = [];
+    private DockerAzureResolutionSnapshot _lastResolutionSnapshot = DockerAzureResolutionSnapshot.Empty;
+    private bool _resolutionSummaryLogged;
     public HashSet<string> UsedStorageIdentifiers { get; } = [];
     public HashSet<string> UsedCosmosIdentifiers { get; } = [];
     public HashSet<string> UsedSqlIdentifiers { get; } = [];
@@ -86,6 +89,53 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
         return new DockerAzureEnvironment().Include<TDefinition>();
     }
 
+    public DockerAzureEnvironment UseFunctionApp<TFunctionApp>(FunctionAppIdentifier identifier, Action<DockerFunctionAppBuilder>? configure = null, string? image = null)
+    {
+        return Include(new InlineFunctionAppDefinition<TFunctionApp>(identifier, configure, image));
+    }
+
+    public static DockerAzureEnvironment ForFunctionApp<TFunctionApp>(FunctionAppIdentifier identifier, Action<DockerFunctionAppBuilder>? configure = null, string? image = null)
+    {
+        return new DockerAzureEnvironment().UseFunctionApp<TFunctionApp>(identifier, configure, image);
+    }
+
+    public static DockerAzureEnvironment ForFunctionAppWithStorage<TFunctionApp, TStorage>(FunctionAppIdentifier identifier, string? image = null)
+        where TStorage : DockerStorageDefinition, new()
+    {
+        return ForFunctionApp<TFunctionApp>(identifier, builder => builder.UseStorage<TStorage>(), image);
+    }
+
+    public static DockerAzureEnvironment ForFunctionAppWithStorageAndCosmos<TFunctionApp, TStorage, TCosmos>(FunctionAppIdentifier identifier, string? image = null)
+        where TStorage : DockerStorageDefinition, new()
+        where TCosmos : DockerCosmosDefinition, new()
+    {
+        return ForFunctionApp<TFunctionApp>(identifier, builder => builder
+            .UseStorage<TStorage>()
+            .UseCosmos<TCosmos>(), image);
+    }
+
+    public static DockerAzureEnvironment ForFunctionAppWithStorageAndServiceBus<TFunctionApp, TStorage, TServiceBus>(FunctionAppIdentifier identifier, string? image = null)
+        where TStorage : DockerStorageDefinition, new()
+        where TServiceBus : DockerServiceBusDefinition, new()
+    {
+        return ForFunctionApp<TFunctionApp>(identifier, builder => builder
+            .UseStorage<TStorage>()
+            .UseServiceBusTrigger<TServiceBus>()
+            .UseServiceBusReply<TServiceBus>(), image);
+    }
+
+    public static DockerAzureEnvironment ForFunctionAppWithCommonBindings<TFunctionApp, TStorage, TCosmos, TServiceBus>(FunctionAppIdentifier identifier, string? image = null)
+        where TStorage : DockerStorageDefinition, new()
+        where TCosmos : DockerCosmosDefinition, new()
+        where TServiceBus : DockerServiceBusDefinition, new()
+    {
+        return ForFunctionApp<TFunctionApp>(identifier, builder => builder
+            .UseStorage<TStorage>()
+            .UseCosmos<TCosmos>()
+            .UseServiceBusTrigger<TServiceBus>()
+            .UseServiceBusReply<TServiceBus>(), image);
+    }
+
     public override IReadOnlyCollection<EnvComponentIdentifier> ResolveComponents(IEnumerable<ArtifactInstanceGeneric> artifacts, IEnumerable<EnvironmentRequirement> requirements)
     {
         UsedStorageIdentifiers.Clear();
@@ -95,6 +145,7 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
         UsedFunctionAppIdentifiers.Clear();
         CosmosPartitionKeyPaths.Clear();
         _synthesizedConfigStores.Clear();
+        _resolutionSummaryLogged = false;
 
         foreach (ArtifactInstanceGeneric artifact in artifacts)
             CaptureIdentifiers(artifact.Reference);
@@ -121,8 +172,19 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
             resolved.Add(ServiceBusComponentId);
 
         ValidateFunctionAppRegistrations();
+        _lastResolutionSnapshot = CreateResolutionSnapshot(resolved, contractBindings);
 
         return [.. resolved];
+    }
+
+    internal void LogPendingResolutionSummary(ScopedLogger logger)
+    {
+        if (_resolutionSummaryLogged || _lastResolutionSnapshot == DockerAzureResolutionSnapshot.Empty)
+            return;
+
+        _resolutionSummaryLogged = true;
+        foreach (string line in _lastResolutionSnapshot.ToLogLines())
+            logger.LogInformation(line);
     }
 
     internal void SetRuntimeState(EnvComponentIdentifier identifier, object? state)
@@ -263,6 +325,23 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
         }
     }
 
+    private DockerAzureResolutionSnapshot CreateResolutionSnapshot(IEnumerable<EnvComponentIdentifier> resolvedComponents, IReadOnlyCollection<ComponentContractBinding> contractBindings)
+    {
+        return new DockerAzureResolutionSnapshot(
+            [.. resolvedComponents.Select(component => component.ToString()).OrderBy(x => x, StringComparer.Ordinal)],
+            [.. UsedFunctionAppIdentifiers.OrderBy(x => x, StringComparer.Ordinal)],
+            [.. UsedStorageIdentifiers.OrderBy(x => x, StringComparer.Ordinal)],
+            [.. UsedCosmosIdentifiers.OrderBy(x => x, StringComparer.Ordinal)],
+            [.. UsedSqlIdentifiers.OrderBy(x => x, StringComparer.Ordinal)],
+            [.. UsedServiceBusIdentifiers.OrderBy(x => x, StringComparer.Ordinal)],
+            [.. contractBindings.Select(FormatContractBinding).OrderBy(x => x, StringComparer.Ordinal)]);
+    }
+
+    private static string FormatContractBinding(ComponentContractBinding binding)
+    {
+        return $"{binding.ConsumerIdentity} <= {binding.ProviderIdentity} ({binding.Requirement.GetType().Name})";
+    }
+
     private void ValidateFunctionAppRegistrations()
     {
         if (UsedFunctionAppIdentifiers.Count == 0)
@@ -389,5 +468,57 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
             clone.Include(definition);
 
         return clone;
+    }
+
+    private sealed class InlineFunctionAppDefinition<TFunctionApp>(FunctionAppIdentifier identifier, Action<DockerFunctionAppBuilder>? configure, string? image) : DockerFunctionAppDefinition<TFunctionApp>
+    {
+        public override FunctionAppIdentifier Identifier => identifier;
+
+        public override string Image => string.IsNullOrWhiteSpace(image) ? base.Image : image!;
+
+        protected override void Configure(DockerFunctionAppBuilder builder)
+        {
+            configure?.Invoke(builder);
+        }
+    }
+
+    internal sealed record DockerAzureResolutionSnapshot(
+        IReadOnlyCollection<string> ResolvedComponents,
+        IReadOnlyCollection<string> FunctionApps,
+        IReadOnlyCollection<string> Storage,
+        IReadOnlyCollection<string> Cosmos,
+        IReadOnlyCollection<string> Sql,
+        IReadOnlyCollection<string> ServiceBus,
+        IReadOnlyCollection<string> ContractBindings)
+    {
+        internal static DockerAzureResolutionSnapshot Empty { get; } = new([], [], [], [], [], [], []);
+
+        internal IReadOnlyCollection<string> ToLogLines()
+        {
+            List<string> lines =
+            [
+                $"Docker Azure resolution: components [{JoinOrNone(ResolvedComponents)}]"
+            ];
+
+            AddIfAny(lines, "Function Apps", FunctionApps);
+            AddIfAny(lines, "Storage", Storage);
+            AddIfAny(lines, "Cosmos", Cosmos);
+            AddIfAny(lines, "SQL", Sql);
+            AddIfAny(lines, "Service Bus", ServiceBus);
+
+            if (ContractBindings.Count > 0)
+                lines.Add($"Docker Azure contracts: {JoinOrNone(ContractBindings)}");
+
+            return lines;
+        }
+
+        private static void AddIfAny(List<string> lines, string label, IReadOnlyCollection<string> values)
+        {
+            if (values.Count > 0)
+                lines.Add($"Docker Azure {label}: {JoinOrNone(values)}");
+        }
+
+        private static string JoinOrNone(IReadOnlyCollection<string> values)
+            => values.Count == 0 ? "none" : string.Join(", ", values);
     }
 }

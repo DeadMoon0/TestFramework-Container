@@ -13,8 +13,11 @@ using TestFramework.Azure.StorageAccount.Blob;
 using TestFramework.Azure.StorageAccount.Table;
 using TestFramework.Azure.Trigger.IsLive;
 using TestFramework.Container.Azure;
+using TestFramework.Container.Azure.Contracts;
 using TestFramework.Core.Artifacts;
+using TestFramework.Core.Debugger;
 using TestFramework.Core.Environment;
+using TestFramework.Core.Logging;
 using TestFramework.Core.Steps;
 using TestFramework.Core.Variables;
 
@@ -149,6 +152,41 @@ public class DockerAzureEnvironmentTests
         DockerFunctionAppRegistration registration = Assert.Single(registrations);
         Assert.Equal("func", registration.Identifier);
         Assert.Equal(typeof(TestFunctionHost), registration.FunctionType);
+    }
+
+    [Fact]
+    public void ForFunctionAppWithCommonBindings_AddsCommonLocalStackWithoutCustomDefinition()
+    {
+        DockerAzureEnvironment environment = DockerAzureEnvironment.ForFunctionAppWithCommonBindings<TestFunctionHost, TestStorageDefinition, TestCosmosDefinition, TestServiceBusDefinition>("func-inline");
+        var functionStep = new IsLiveTrigger().FunctionApp("func-inline");
+
+        IReadOnlyCollection<EnvComponentIdentifier> result = environment.ResolveComponents([], ((IHasEnvironmentRequirements)functionStep).GetEnvironmentRequirements(null!));
+
+        Assert.Contains(DockerAzureEnvironment.FunctionAppComponentId, result);
+        Assert.Contains(DockerAzureEnvironment.AzuriteComponentId, result);
+        Assert.Contains(DockerAzureEnvironment.CosmosDbComponentId, result);
+        Assert.Contains(DockerAzureEnvironment.ServiceBusComponentId, result);
+        Assert.Contains("func-inline", environment.UsedFunctionAppIdentifiers);
+    }
+
+    [Fact]
+    public void ResolveComponents_FormatsResolutionSummaryWithIdentifiersAndContracts()
+    {
+        DockerAzureEnvironment environment = DockerAzureEnvironment.For<ContractLoggingFunctionAppDefinition>();
+        var functionStep = new IsLiveTrigger().FunctionApp("func-contract");
+
+        environment.ResolveComponents([], ((IHasEnvironmentRequirements)functionStep).GetEnvironmentRequirements(null!));
+
+        RecordingRunDebugger debugger = new();
+        ScopedLogger logger = CreateLogger(debugger);
+        typeof(DockerAzureEnvironment)
+            .GetMethod("LogPendingResolutionSummary", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(environment, [logger]);
+
+        Assert.Contains(debugger.LogEntries, entry => entry.Message.Contains("Docker Azure resolution: components", StringComparison.Ordinal));
+        Assert.Contains(debugger.LogEntries, entry => entry.Message.Contains("Function Apps: func-contract", StringComparison.Ordinal));
+        Assert.Contains(debugger.LogEntries, entry => entry.Message.Contains("Service Bus: bus", StringComparison.Ordinal));
+        Assert.Contains(debugger.LogEntries, entry => entry.Message.Contains("functionapp:func-contract <= servicebus:bus", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -384,6 +422,19 @@ public class DockerAzureEnvironmentTests
     }
 
     [Fact]
+    public void FunctionAppEnvComponent_CreateMissingFunctionAppOutputException_BuildsHelpfulMessage()
+    {
+        Type componentType = typeof(DockerAzureEnvironment).Assembly.GetType("TestFramework.Container.Azure.Components.FunctionAppEnvComponent", throwOnError: true)!;
+
+        InvalidOperationException actual = (InvalidOperationException)componentType
+            .GetMethod("CreateMissingFunctionAppOutputException", BindingFlags.Static | BindingFlags.NonPublic)!
+            .Invoke(null, [typeof(DockerAzureEnvironmentTests), "TestFramework.Container.Azure.Tests", "C:\\repo\\project", "C:\\repo\\project\\bin\\Debug\\net8.0", "C:\\repo\\project\\bin\\Release\\net8.0"])!;
+
+        Assert.Contains("host.json", actual.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Build or publish", actual.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void ResolveComponents_ThrowsWhenLogicAppRequirementIsUsed()
     {
         DockerAzureEnvironment environment = new();
@@ -593,6 +644,41 @@ public class DockerAzureEnvironmentTests
         }
     }
 
+    private sealed class ContractLoggingFunctionAppDefinition : DockerFunctionAppDefinition<TestFunctionHost>
+    {
+        public override FunctionAppIdentifier Identifier => "func-contract";
+
+        protected override void ConfigureDependencies(DockerAzureDependencyBuilder dependencies)
+        {
+            dependencies.Include<ContractLoggingServiceBusDefinition>();
+        }
+
+        protected override void ConfigureContracts(DockerAzureContractBuilder contracts)
+        {
+            contracts.Require(new ServiceBusEndpointContract(
+                ContractKey: "reply",
+                ServiceBusIdentifier: "bus",
+                EndpointKind: ServiceBusEndpointKind.TopicSubscription,
+                EntityName: "processing-topic",
+                SubscriptionName: "processing-subscription"));
+        }
+    }
+
+    private sealed class ContractLoggingServiceBusDefinition : DockerServiceBusDefinition
+    {
+        public override ServiceBusIdentifier Identifier => "bus";
+
+        protected override void ConfigureContracts(DockerAzureContractBuilder contracts)
+        {
+            contracts.Provide(new ServiceBusEndpointContract(
+                ContractKey: "reply",
+                ServiceBusIdentifier: Identifier,
+                EndpointKind: ServiceBusEndpointKind.TopicSubscription,
+                EntityName: "processing-topic",
+                SubscriptionName: "processing-subscription"));
+        }
+    }
+
     private sealed class SynthesizedFunctionAppDefinition : DockerFunctionAppDefinition<TestFunctionHost>
     {
         public override FunctionAppIdentifier Identifier => "auto-func";
@@ -660,6 +746,21 @@ public class DockerAzureEnvironmentTests
         Assert.IsType<InvalidOperationException>(exception.InnerException);
     }
 
+    private static ScopedLogger CreateLogger(IRunDebugger debugger)
+    {
+        Type debuggingRunSessionType = typeof(VariableStore).Assembly.GetType("TestFramework.Core.Debugger.DebuggingRunSession", throwOnError: true)!;
+        object debuggingSession = Activator.CreateInstance(
+            debuggingRunSessionType,
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+            binder: null,
+            args: [debugger],
+            culture: null)!;
+
+        return (ScopedLogger)typeof(ScopedLogger)
+            .GetMethod("CreateWithDebuggerSession", BindingFlags.Static | BindingFlags.NonPublic)!
+            .Invoke(null, [debuggingSession])!;
+    }
+
     private sealed class StubNetwork : DotNet.Testcontainers.Networks.INetwork
     {
         public string Id => "stub";
@@ -667,5 +768,22 @@ public class DockerAzureEnvironmentTests
         public Task CreateAsync(CancellationToken ct = default) => Task.CompletedTask;
         public Task DeleteAsync(CancellationToken ct = default) => Task.CompletedTask;
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
+    private sealed class RecordingRunDebugger : IRunDebugger
+    {
+        public List<DebugLogEntry> LogEntries { get; } = [];
+
+        public Task SignalInitTimelineRunAsync(string sessionId, string name, string projectPath, TimelineRunStructure runStructure) => Task.CompletedTask;
+        public Task SignalEntityTransitionAsync(string sessionId, DebugEntityKind entityKind, string? stage, int? stepId, DebugLifecycleState state, DebugLifecycleState? previousState = null, DebugLifecycleState? outcomeState = null) => Task.CompletedTask;
+        public Task SignalValueUpdateAsync(string sessionId, string name, DebugValueKind valueKind, string? stage, int? stepId, DebugValueEnvelope value) => Task.CompletedTask;
+        public Task SignalLogEntryAsync(string sessionId, DebugLogEntry entry)
+        {
+            LogEntries.Add(entry);
+            return Task.CompletedTask;
+        }
+        public Task SignalAssertionAsync(string sessionId, DebugAssertionEntry entry) => Task.CompletedTask;
+        public Task SignalTimelineRunFinishedAsync(string sessionId) => Task.CompletedTask;
+        public Task SignalAndWaitBreakpointHitAsync(string sessionId, string stage, int stepId) => Task.CompletedTask;
     }
 }

@@ -4,6 +4,14 @@
 
 Use it when you want to keep the normal `TestFramework.Azure` timeline shape, but you want Blob, Table, Cosmos, SQL Server, or Service Bus dependencies to come from local containers instead of a live Azure environment.
 
+## Pick The Smallest Starting Point
+
+Choose the entry path that matches how much infrastructure shape you already know.
+
+1. Existing Azure timeline, explicit component graph: use `DockerAzureEnvironment.For<TRootDefinition>()`.
+2. One local Function App plus common bindings: use the additive helpers such as `ForFunctionApp<TFunctionApp>(...)`, `ForFunctionAppWithStorage<...>(...)`, `ForFunctionAppWithStorageAndServiceBus<...>(...)`, or `ForFunctionAppWithCommonBindings<...>(...)`.
+3. Live Azure resources or Logic Apps: stay on the `TestFramework.Azure` path; Docker/bootstrap is intentionally a Container concern.
+
 ## Install
 
 ```bash
@@ -48,6 +56,19 @@ If you already have a timeline that runs against real Azure, the migration path 
 In the normal case, the only runtime change is the `SetEnv(...)` call plus the definition class that describes the emulator-backed component graph.
 
 Cosmos is the main exception worth calling out explicitly: the emulator uses a development certificate, so tests usually need a `CosmosClientOptions` override with `DangerousAcceptAnyServerCertificateValidator`.
+
+## Quick Function App Fast Path
+
+When you do not need a reusable multi-component graph yet, start with the helper that matches the bindings your Function App actually uses.
+
+```csharp
+TimelineRun run = await timeline
+	.SetupRun(serviceProvider)
+	.SetEnv(DockerAzureEnvironment.ForFunctionAppWithStorageAndServiceBus<MyFunctionApp, MainStorage, MainBus>("Default"))
+	.RunAsync();
+```
+
+Use the full definition model when you need shared stacks, explicit contracts, or reusable composition across many tests. Use the helper entrypoints when you just need a working local Function App path first.
 
 ## Golden Sample
 
