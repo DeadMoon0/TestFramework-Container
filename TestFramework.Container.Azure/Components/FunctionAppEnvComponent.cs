@@ -47,12 +47,15 @@ internal sealed class FunctionAppEnvComponent : DockerAzureEnvComponent
         DockerEndpointMap endpointMap = dockerEnvironment.GetEndpointMap();
         List<IContainer> containers = [];
 
+        dockerEnvironment.LogPendingResolutionSummary(logger);
+
         foreach (string identifier in dockerEnvironment.UsedFunctionAppIdentifiers)
         {
             FunctionAppDefinitionDescriptor descriptor = dockerEnvironment.GetRequiredFunctionAppDescriptor(identifier);
             DockerFunctionAppRegistration registration = descriptor.Registration;
 
             FunctionAppLocation location = ResolveFunctionAppLocation(registration.FunctionType);
+            logger.LogInformation("Function App '{0}' resolved type '{1}' to project '{2}' and output '{3}'.", identifier, registration.FunctionType.FullName ?? registration.FunctionType.Name, location.ProjectDirectory, location.OutputDirectory);
             Dictionary<string, string> appSettings = BuildAppSettings(dockerEnvironment, serviceProvider, descriptor, logger);
             appSettings["AzureFunctionsJobHost__Logging__Console__IsEnabled"] = "true";
             appSettings["AzureWebJobsScriptRoot"] = FunctionAppRoot;
@@ -60,11 +63,13 @@ internal sealed class FunctionAppEnvComponent : DockerAzureEnvComponent
             appSettings["ASPNETCORE_URLS"] = "http://0.0.0.0:80";
             appSettings["PORT"] = "80";
             appSettings["WEBSITES_PORT"] = "80";
+            logger.LogInformation("Function App '{0}' app settings keys: {1}", identifier, string.Join(", ", appSettings.Keys.OrderBy(x => x, StringComparer.Ordinal)));
 
             ContainerBuilder builder = new ContainerBuilder(registration.Image)
                 .WithNetwork(network)
                 .WithPortBinding(80, true)
                 .WithBindMount(location.OutputDirectory, FunctionAppRoot, AccessMode.ReadOnly);
+            logger.LogInformation("Function App '{0}' starting image '{1}' with mount '{2}' -> '{3}'.", identifier, registration.Image, location.OutputDirectory, FunctionAppRoot);
 
             foreach ((string key, string value) in appSettings)
                 builder = builder.WithEnvironment(key, value);
@@ -72,9 +77,11 @@ internal sealed class FunctionAppEnvComponent : DockerAzureEnvComponent
             IContainer container = builder.Build();
 
             await container.StartAsync(cancellationToken).ConfigureAwait(false);
+            logger.LogInformation("Function App '{0}' container '{1}' started. Waiting for host readiness.", identifier, container.Id);
 
             string baseUrl = endpointMap.GetFunctionAppBaseUrl(container);
-            await WaitForHttpReadyAsync(baseUrl, cancellationToken).ConfigureAwait(false);
+            await WaitForHttpReadyAsync(identifier, baseUrl, logger, cancellationToken).ConfigureAwait(false);
+            logger.LogInformation("Function App '{0}' is reachable at '{1}'.", identifier, baseUrl);
 
             FunctionAppConfig current = functionStore!.GetConfig(identifier);
             functionStore.AddConfig(identifier, current with { BaseUrl = baseUrl });
@@ -131,13 +138,17 @@ internal sealed class FunctionAppEnvComponent : DockerAzureEnvComponent
 
         string assemblyName = functionType.Assembly.GetName().Name ?? throw new InvalidOperationException("The Function App assembly name could not be resolved.");
         string projectDirectory = ResolveProjectDirectory(assemblyName, outputDirectory);
+        string? fallbackOutputDirectory = null;
         if (!LooksLikeFunctionAppOutput(outputDirectory, assemblyName))
         {
             string configuration = ResolveBuildConfiguration(outputDirectory);
-            string candidateOutputDirectory = Path.Combine(projectDirectory, "bin", configuration, "net8.0");
-            if (LooksLikeFunctionAppOutput(candidateOutputDirectory, assemblyName))
-                outputDirectory = candidateOutputDirectory;
+            fallbackOutputDirectory = Path.Combine(projectDirectory, "bin", configuration, "net8.0");
+            if (LooksLikeFunctionAppOutput(fallbackOutputDirectory, assemblyName))
+                outputDirectory = fallbackOutputDirectory;
         }
+
+        if (!LooksLikeFunctionAppOutput(outputDirectory, assemblyName))
+            throw CreateMissingFunctionAppOutputException(functionType, assemblyName, projectDirectory, outputDirectory, fallbackOutputDirectory);
 
         return new FunctionAppLocation(projectDirectory, outputDirectory);
     }
@@ -224,10 +235,28 @@ internal sealed class FunctionAppEnvComponent : DockerAzureEnvComponent
         return settings;
     }
 
-    private static async Task WaitForHttpReadyAsync(string baseUrl, CancellationToken cancellationToken)
+    private static InvalidOperationException CreateMissingFunctionAppOutputException(Type functionType, string assemblyName, string projectDirectory, string selectedOutputDirectory, string? fallbackOutputDirectory)
+    {
+        List<string> details =
+        [
+            $"Function App type '{functionType.FullName}' must resolve to build output before the Docker container can start.",
+            $"Project directory: {projectDirectory}",
+            $"Selected output directory: {selectedOutputDirectory}",
+            $"Expected files: {Path.Combine(selectedOutputDirectory, "host.json")} and {Path.Combine(selectedOutputDirectory, $"{assemblyName}.dll")}",
+        ];
+
+        if (!string.IsNullOrWhiteSpace(fallbackOutputDirectory) && !string.Equals(fallbackOutputDirectory, selectedOutputDirectory, StringComparison.OrdinalIgnoreCase))
+            details.Add($"Checked fallback output directory: {fallbackOutputDirectory}");
+
+        details.Add("Build or publish the Function App project before starting the Docker Azure environment.");
+        return new InvalidOperationException(string.Join(Environment.NewLine, details));
+    }
+
+    private static async Task WaitForHttpReadyAsync(string identifier, string baseUrl, ScopedLogger logger, CancellationToken cancellationToken)
     {
         using HttpClient client = new() { BaseAddress = new Uri(baseUrl) };
         DateTime deadline = DateTime.UtcNow.Add(FunctionAppReadyTimeout);
+        logger.LogInformation("Function App '{0}' waiting up to {1} for admin/host/status at '{2}'.", identifier, FunctionAppReadyTimeout, new Uri(client.BaseAddress!, "admin/host/status"));
 
         while (DateTime.UtcNow < deadline)
         {
@@ -250,7 +279,7 @@ internal sealed class FunctionAppEnvComponent : DockerAzureEnvComponent
             await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken).ConfigureAwait(false);
         }
 
-        throw new TimeoutException($"The Function App host at '{baseUrl}' did not become reachable within {FunctionAppReadyTimeout.TotalMinutes:0} minutes.");
+        throw new TimeoutException($"The Function App host for '{identifier}' at '{baseUrl}' did not become reachable within {FunctionAppReadyTimeout.TotalMinutes:0} minutes.");
     }
 
     private sealed record FunctionAppLocation(string ProjectDirectory, string OutputDirectory);

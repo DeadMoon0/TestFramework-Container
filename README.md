@@ -9,6 +9,14 @@ Use it when you want the Azure timeline shape from `TestFramework.Azure`, but yo
 
 That includes the emulator-backed storage, messaging, database, and function-host surfaces.
 
+## Choose Your Path
+
+Use the container package when the timeline should stay Azure-shaped, but the backing resources should be local.
+
+- Already have a normal Azure timeline and want the smallest switch: keep the timeline, keep the identifiers, and add `SetEnv(DockerAzureEnvironment.For<TRootDefinition>())`.
+- Starting with a Function App and common local dependencies: prefer the additive helpers such as `DockerAzureEnvironment.ForFunctionAppWithStorage<...>(...)`, `ForFunctionAppWithStorageAndServiceBus<...>(...)`, or `ForFunctionAppWithCommonBindings<...>(...)` before building a larger definition graph.
+- Need real Azure resources or Logic Apps: stay on `TestFramework.Azure`; the container package does not own live Azure bootstrap.
+
 ## Install
 
 ```bash
@@ -59,6 +67,8 @@ If you are approaching the container package for the first time, keep the first 
 
 That gives you the beginner path: same timeline, same identifiers, one explicit environment switch.
 Only move into `Include<TDefinition>()`, contracts, and shared definition graphs once the first root-driven scenario is working.
+
+If the first scenario is a local Function App, the next-smallest path is one of the built-in common-stack helpers instead of a custom root definition. Start there when you only need one Function App plus its usual bindings.
 
 ## Read Next
 
