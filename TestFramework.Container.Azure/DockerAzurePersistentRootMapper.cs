@@ -38,9 +38,6 @@ internal static class DockerAzurePersistentRootMapper
                 persistentRoots.Add(DockerAzureEnvironment.ServiceBusComponentId);
                 persistentRoots.Add(DockerAzureEnvironment.MsSqlComponentId);
                 return;
-            case AzureEnvironmentResourceKinds.LogicApp:
-                persistentRoots.Add(DockerAzureEnvironment.AzuriteComponentId);
-                return;
             default:
                 throw new InvalidOperationException($"Unsupported persistent Azure resource kind '{requirement.ResourceKind}'.");
         }

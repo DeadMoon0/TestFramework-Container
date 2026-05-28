@@ -72,7 +72,6 @@ public class DockerAzureHostedCollectionFixture<TState> : IAsyncLifetime
             services.AddSingleton(CloneStore(GetRequiredStore<SqlDatabaseConfig>()));
             services.AddSingleton(CloneStore(GetRequiredStore<ServiceBusConfig>()));
             services.AddSingleton(CloneStore(GetRequiredStore<FunctionAppConfig>()));
-            services.AddSingleton(CloneStore(GetRequiredStore<LogicAppConfig>()));
         });
         configure?.Invoke(builder);
         return builder.Build();

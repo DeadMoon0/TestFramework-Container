@@ -9,8 +9,6 @@ using TestFramework.Azure.Configuration.SpecificConfigs;
 using TestFramework.Azure.DB.SqlServer;
 using TestFramework.Azure.Extensions;
 using TestFramework.Azure.Identifier;
-using TestFramework.Azure.LogicApp;
-using TestFramework.Azure.LogicApp.Trigger;
 using TestFramework.Azure.ServiceBus;
 using TestFramework.Azure.StorageAccount.Blob;
 using TestFramework.Azure.StorageAccount.Table;
@@ -36,7 +34,6 @@ namespace TestFramework.Container.Azure.Tests;
 public class DockerAzureEnvironmentSmokeTests
 {
     internal const string SmokeTableName = "smoketable";
-    private static readonly string SmokeLogicAppPath = Path.Combine("TestFramework-Container", "UnitTests", "TestFramework.Container.Azure.LogicApp");
 
     private readonly DockerAzureSmokeCollectionFixture _fixture;
 
@@ -92,22 +89,6 @@ public class DockerAzureEnvironmentSmokeTests
                 .UseCosmos<SmokeCosmosDefinition>()
                 .UseServiceBusReply<SmokeServiceBusDefinition>();
         }
-    }
-
-    internal sealed class SmokeLogicAppDefinition : DockerLogicAppDefinition
-    {
-        public override LogicAppIdentifier Identifier => "logic";
-
-        public override string Path => SmokeLogicAppPath;
-
-        protected override LogicAppConfig? CreateDefaultConfig() => new()
-        {
-            WorkflowName = "SmokeWorkflow",
-            Standard = new LogicAppStandardConfig
-            {
-                BaseUrl = "http://localhost/",
-            },
-        };
     }
 
     internal sealed class SmokeServiceBusFunctionAppDefinition : DockerFunctionAppDefinition<LocalServiceBusFunctionAppSmokeFunction>
@@ -287,103 +268,6 @@ public class DockerAzureEnvironmentSmokeTests
 
         Assert.Equal("run-override-queue", Assert.IsType<InspectServiceBusConfigResult>(run.Step("inspect-servicebus-config").LastResult.Result).QueueName);
         Assert.True(run.EnvironmentContext.Contains(DockerAzureEnvironment.ServiceBusComponentId));
-    }
-
-    [Fact]
-    [Trait("Category", "DockerSmoke")]
-    public async Task Timeline_CanInvokeDockerHostedLogicApp_AndObserveCompletedRun()
-    {
-        Timeline timeline = Timeline.Create()
-            .Trigger(
-                AzureExt.Trigger.LogicApp
-                    .Http("logic")
-                    .Workflow("SmokeWorkflow")
-                    .Manual()
-                    .WithBody(Var.Const("{\"smoke\":\"payload\"}"))
-                    .CallForRunContext())
-            .WithTimeOut(TimeSpan.FromMinutes(2))
-            .Name("logic-call")
-                    .GetRunContext("logicRun")
-            .WaitForEvent(AzureExt.Event.LogicApp.RunCompleted("logic", Var.Ref<LogicAppRunContext>("logicRun")))
-            .WithTimeOut(TimeSpan.FromMinutes(2))
-            .Name("logic-run-completed")
-            .Build();
-
-        TimelineRun run = await timeline.SetupRun().SetEnv(_fixture.GetEnv()).RunAsync();
-
-        run.EnsureRanToCompletion();
-
-        LogicAppRunContext result = Assert.IsType<LogicAppRunContext>(run.Step("logic-call").LastResult.Result);
-        Assert.Equal("SmokeWorkflow", result.WorkflowName);
-        Assert.False(string.IsNullOrWhiteSpace(result.RunId));
-
-        LogicAppRunDetails completed = Assert.IsType<LogicAppRunDetails>(run.Step("logic-run-completed").LastResult.Result);
-        Assert.Equal(result.RunId, completed.RunId);
-        Assert.Equal(LogicAppRunStatus.Succeeded, completed.Status);
-        Assert.True(run.EnvironmentContext.Contains(DockerAzureEnvironment.LogicAppComponentId));
-    }
-
-    [Fact]
-    [Trait("Category", "DockerSmoke")]
-    public async Task Timeline_CanInvokeDockerHostedStatelessLogicApp_AndCaptureResult()
-    {
-        Timeline timeline = Timeline.Create()
-            .Trigger(
-                AzureExt.Trigger.LogicApp
-                    .Http("logic")
-                    .Workflow("SmokeStatelessWorkflow")
-                    .Manual()
-                    .WithBody(Var.Const("{\"smoke\":\"payload\"}"))
-                    .CallAndCapture())
-            .WithTimeOut(TimeSpan.FromMinutes(2))
-            .Name("logic-stateless-call")
-            .Build();
-
-        TimelineRun run = await timeline.SetupRun().SetEnv(_fixture.GetEnv()).RunAsync();
-
-        run.EnsureRanToCompletion();
-
-        LogicAppCapturedResult result = Assert.IsType<LogicAppCapturedResult>(run.Step("logic-stateless-call").LastResult.Result);
-        Assert.Equal("SmokeStatelessWorkflow", result.WorkflowName);
-        Assert.Equal("manual", result.TriggerName);
-        Assert.Equal(HttpStatusCode.Accepted, result.StatusCode);
-        Assert.Equal(LogicAppRunStatus.Succeeded, result.Status);
-        Assert.Contains("logic-smoke-stateless-processed", result.ResponseBody, StringComparison.Ordinal);
-        Assert.Contains("payload", result.ResponseBody, StringComparison.Ordinal);
-        Assert.True(run.EnvironmentContext.Contains(DockerAzureEnvironment.LogicAppComponentId));
-    }
-
-    [Fact]
-    [Trait("Category", "DockerSmoke")]
-    public async Task Timeline_CanInvokeDockerHostedTimerLogicApp_AndObserveCompletedRun()
-    {
-        Timeline timeline = Timeline.Create()
-            .Trigger(
-                AzureExt.Trigger.LogicApp
-                    .Http("logic")
-                    .Workflow("SmokeTimerWorkflow")
-                    .Timer()
-                    .CallForRunContext())
-            .WithTimeOut(TimeSpan.FromMinutes(2))
-            .Name("logic-timer-call")
-                    .GetRunContext("logicTimerRun")
-            .WaitForEvent(AzureExt.Event.LogicApp.RunCompleted("logic", Var.Ref<LogicAppRunContext>("logicTimerRun")))
-            .WithTimeOut(TimeSpan.FromMinutes(2))
-            .Name("logic-timer-run-completed")
-            .Build();
-
-        TimelineRun run = await timeline.SetupRun().SetEnv(_fixture.GetEnv()).RunAsync();
-
-        run.EnsureRanToCompletion();
-
-        LogicAppRunContext result = Assert.IsType<LogicAppRunContext>(run.Step("logic-timer-call").LastResult.Result);
-        Assert.Equal("SmokeTimerWorkflow", result.WorkflowName);
-        Assert.False(string.IsNullOrWhiteSpace(result.RunId));
-
-        LogicAppRunDetails completed = Assert.IsType<LogicAppRunDetails>(run.Step("logic-timer-run-completed").LastResult.Result);
-        Assert.Equal(result.RunId, completed.RunId);
-        Assert.Equal(LogicAppRunStatus.Succeeded, completed.Status);
-        Assert.True(run.EnvironmentContext.Contains(DockerAzureEnvironment.LogicAppComponentId));
     }
 
     [Fact]

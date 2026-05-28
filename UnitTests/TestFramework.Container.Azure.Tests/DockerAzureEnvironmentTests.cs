@@ -8,7 +8,6 @@ using TestFramework.Azure.Configuration;
 using TestFramework.Azure.Configuration.SpecificConfigs;
 using TestFramework.Azure.DB.SqlServer;
 using TestFramework.Azure.Identifier;
-using TestFramework.Azure.LogicApp;
 using TestFramework.Azure.ServiceBus;
 using TestFramework.Azure.StorageAccount.Blob;
 using TestFramework.Azure.StorageAccount.Table;
@@ -23,8 +22,6 @@ namespace TestFramework.Container.Azure.Tests;
 
 public class DockerAzureEnvironmentTests
 {
-    private static readonly string TestLogicAppPath = Path.Combine("TestFramework-Container", "UnitTests", "TestFramework.Container.Azure.LogicApp");
-
     [Fact]
     public void ResolveComponents_MapsArtifactsToDockerAzureComponents()
     {
@@ -108,17 +105,14 @@ public class DockerAzureEnvironmentTests
     [Fact]
     public void ResolveComponents_MapsIsLiveStepRequirementsWithoutArtifacts()
     {
-        DockerAzureEnvironment environment = DockerAzureEnvironment.For<MinimalFunctionAppDefinition>()
-            .Include<MinimalLogicAppDefinition>();
+        DockerAzureEnvironment environment = DockerAzureEnvironment.For<MinimalFunctionAppDefinition>();
         var functionStep = new IsLiveTrigger().FunctionApp("func");
-        var logicAppStep = new IsLiveTrigger().LogicApp("logic");
         var blobStep = new IsLiveTrigger().Blob("storage");
         var cosmosStep = new IsLiveTrigger().Cosmos("cosmos");
         var sqlStep = new IsLiveTrigger().Sql("sql");
 
         List<EnvironmentRequirement> requirements = [];
         requirements.AddRange(((IHasEnvironmentRequirements)functionStep).GetEnvironmentRequirements(null!));
-        requirements.AddRange(((IHasEnvironmentRequirements)logicAppStep).GetEnvironmentRequirements(null!));
         requirements.AddRange(((IHasEnvironmentRequirements)blobStep).GetEnvironmentRequirements(null!));
         requirements.AddRange(((IHasEnvironmentRequirements)cosmosStep).GetEnvironmentRequirements(null!));
         requirements.AddRange(((IHasEnvironmentRequirements)sqlStep).GetEnvironmentRequirements(null!));
@@ -126,12 +120,10 @@ public class DockerAzureEnvironmentTests
         IReadOnlyCollection<EnvComponentIdentifier> result = environment.ResolveComponents([], requirements);
 
         Assert.Contains(DockerAzureEnvironment.FunctionAppComponentId, result);
-        Assert.Contains(DockerAzureEnvironment.LogicAppComponentId, result);
         Assert.Contains(DockerAzureEnvironment.AzuriteComponentId, result);
         Assert.Contains(DockerAzureEnvironment.CosmosDbComponentId, result);
         Assert.Contains(DockerAzureEnvironment.MsSqlComponentId, result);
         Assert.Contains("func", environment.UsedFunctionAppIdentifiers);
-        Assert.Contains("logic", environment.UsedLogicAppIdentifiers);
     }
 
     [Fact]
@@ -234,30 +226,6 @@ public class DockerAzureEnvironmentTests
     }
 
     [Fact]
-    public void LogicAppEnvComponent_BuildsWorkflowHostSettingsAndMergesCustomOverrides()
-    {
-        DockerAzureEnvironment environment = DockerAzureEnvironment.For<ConfiguredLogicAppDefinition>();
-
-        object descriptor = typeof(DockerAzureEnvironment)
-            .GetMethod("GetRequiredLogicAppDescriptor", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .Invoke(environment, [new LogicAppIdentifier("logic-configured")])!;
-
-        Dictionary<string, string> settings = (Dictionary<string, string>)typeof(DockerAzureEnvironment).Assembly
-            .GetType("TestFramework.Container.Azure.Components.LogicAppEnvComponent")!
-            .GetMethod("BuildAppSettings", BindingFlags.Static | BindingFlags.NonPublic)!
-            .Invoke(null, [environment, descriptor])!;
-
-        Assert.Equal("workflowApp", settings["APP_KIND"]);
-        Assert.Equal("dotnet", settings["FUNCTIONS_WORKER_RUNTIME"]);
-        Assert.Equal("1", settings["FUNCTIONS_INPROC_NET8_ENABLED"]);
-        Assert.Equal("Files", settings["AzureWebJobsSecretStorageType"]);
-        Assert.Equal("true", settings["FUNCTIONS_V2_COMPATIBILITY_MODE"]);
-        Assert.Equal("/home/site/wwwroot", settings["ProjectDirectoryPath"]);
-        Assert.Contains(DockerAzureEnvironment.AzuriteNetworkAlias, settings["AzureWebJobsStorage"]);
-        Assert.Equal("value", settings["LogicAppCustomSetting"]);
-    }
-
-    [Fact]
     public void GetOrCreateConfigStore_SynthesizesDefinitionDefaults_WhenStoreWasNotRegistered()
     {
         DockerAzureEnvironment environment = DockerAzureEnvironment.For<SynthesizedFunctionAppDefinition>();
@@ -276,28 +244,6 @@ public class DockerAzureEnvironmentTests
         Assert.Equal("http://localhost/", config.BaseUrl);
         Assert.Equal("unused", config.Code);
         Assert.Equal("unused", config.AdminCode);
-    }
-
-    [Fact]
-    public void GetOrCreateConfigStore_SynthesizesLogicAppDefaults_WhenStoreWasNotRegistered()
-    {
-        DockerAzureEnvironment environment = DockerAzureEnvironment.For<SynthesizedLogicAppDefinition>();
-        var logicAppStep = new IsLiveTrigger().LogicApp("logic-auto");
-
-        environment.ResolveComponents([], ((IHasEnvironmentRequirements)logicAppStep).GetEnvironmentRequirements(null!));
-
-        ServiceProvider serviceProvider = new ServiceCollection().BuildServiceProvider();
-
-        ConfigStore<LogicAppConfig> logicAppStore = (ConfigStore<LogicAppConfig>)typeof(DockerAzureEnvironment)
-            .GetMethod("GetOrCreateConfigStore", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .MakeGenericMethod(typeof(LogicAppConfig))
-            .Invoke(environment, [serviceProvider, environment.UsedLogicAppIdentifiers, "Logic App environment setup"])!;
-
-        LogicAppConfig config = logicAppStore.GetConfig("logic-auto");
-        Assert.Equal("http://localhost/", config.Standard.BaseUrl);
-        Assert.Equal("logic-auto", config.WorkflowName);
-        Assert.Equal("unused", config.Standard.Code);
-        Assert.Equal("unused", config.Standard.AdminCode);
     }
 
     [Fact]
@@ -323,25 +269,6 @@ public class DockerAzureEnvironmentTests
 
         Assert.Equal("test-db", config.DatabaseName);
         Assert.Equal("test-container", config.ContainerName);
-    }
-
-    [Fact]
-    public void CreateRunScopedServiceProvider_ExposesLogicAppWorkflowMetadata_ForDockerDefinitions()
-    {
-        DockerAzureEnvironment environment = DockerAzureEnvironment.For<ConfiguredLogicAppDefinition>();
-        var logicAppStep = new IsLiveTrigger().LogicApp("logic-configured");
-
-        environment.ResolveComponents([], ((IHasEnvironmentRequirements)logicAppStep).GetEnvironmentRequirements(null!));
-
-        IServiceProvider runServiceProvider = ((IRunScopedServiceProviderFactory)environment)
-            .CreateRunScopedServiceProvider(new ServiceCollection().BuildServiceProvider());
-
-        ILogicAppWorkflowMetadataProvider metadataProvider = runServiceProvider.GetRequiredService<ILogicAppWorkflowMetadataProvider>();
-
-        Assert.True(metadataProvider.TryGetWorkflowMode("logic-configured", "SmokeWorkflow", out LogicAppWorkflowMode statefulMode));
-        Assert.Equal(LogicAppWorkflowMode.Stateful, statefulMode);
-        Assert.True(metadataProvider.TryGetWorkflowMode("logic-configured", "SmokeStatelessWorkflow", out LogicAppWorkflowMode statelessMode));
-        Assert.Equal(LogicAppWorkflowMode.Stateless, statelessMode);
     }
 
     [Fact]
@@ -457,14 +384,14 @@ public class DockerAzureEnvironmentTests
     }
 
     [Fact]
-    public void ResolveComponents_ThrowsWhenLogicAppRegistrationIsMissing()
+    public void ResolveComponents_ThrowsWhenLogicAppRequirementIsUsed()
     {
         DockerAzureEnvironment environment = new();
         var logicAppStep = new IsLiveTrigger().LogicApp("logic");
 
         InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => environment.ResolveComponents([], ((IHasEnvironmentRequirements)logicAppStep).GetEnvironmentRequirements(null!)));
 
-        Assert.Contains("logic", exception.Message);
+        Assert.Contains("no longer supports Logic App", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -652,13 +579,6 @@ public class DockerAzureEnvironmentTests
         public override FunctionAppIdentifier Identifier => "func";
     }
 
-    private sealed class MinimalLogicAppDefinition : DockerLogicAppDefinition
-    {
-        public override LogicAppIdentifier Identifier => "logic";
-
-        public override string Path => TestLogicAppPath;
-    }
-
     private sealed class TestFunctionAppDefinition : DockerFunctionAppDefinition<TestFunctionHost>
     {
         public override FunctionAppIdentifier Identifier => "func";
@@ -676,25 +596,6 @@ public class DockerAzureEnvironmentTests
     private sealed class SynthesizedFunctionAppDefinition : DockerFunctionAppDefinition<TestFunctionHost>
     {
         public override FunctionAppIdentifier Identifier => "auto-func";
-    }
-
-    private sealed class SynthesizedLogicAppDefinition : DockerLogicAppDefinition
-    {
-        public override LogicAppIdentifier Identifier => "logic-auto";
-
-        public override string Path => TestLogicAppPath;
-    }
-
-    private sealed class ConfiguredLogicAppDefinition : DockerLogicAppDefinition
-    {
-        public override LogicAppIdentifier Identifier => "logic-configured";
-
-        public override string Path => TestLogicAppPath;
-
-        protected override void Configure(DockerLogicAppBuilder builder)
-        {
-            builder.WithAppSetting("LogicAppCustomSetting", "value");
-        }
     }
 
     private sealed class TestInfrastructureDefinition : DockerAzureInfrastructureDefinition

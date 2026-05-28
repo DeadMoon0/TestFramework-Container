@@ -32,7 +32,6 @@ public sealed class DockerAzureSmokeState : IDockerAzureHostedFixtureState
         new(AzureEnvironmentResourceKinds.ServiceBus, "func-reply-bus"),
         new(AzureEnvironmentResourceKinds.FunctionApp, "func"),
         new(AzureEnvironmentResourceKinds.FunctionApp, "func-sb"),
-        new(AzureEnvironmentResourceKinds.LogicApp, "logic"),
     ];
 
     public DockerAzureEnvironment CreateEnvironment()
@@ -44,7 +43,6 @@ public sealed class DockerAzureSmokeState : IDockerAzureHostedFixtureState
             .Include<DockerAzureEnvironmentSmokeTests.SmokeFunctionTriggerBusDefinition>()
             .Include<DockerAzureEnvironmentSmokeTests.SmokeFunctionReplyBusDefinition>()
             .Include<DockerAzureEnvironmentSmokeTests.SmokeFunctionAppDefinition>()
-            .Include<DockerAzureEnvironmentSmokeTests.SmokeLogicAppDefinition>()
             .Include<DockerAzureEnvironmentSmokeTests.SmokeServiceBusFunctionAppDefinition>();
     }
 
@@ -88,15 +86,6 @@ internal static class DockerAzureSmokeConfigFactory
                 ConfigStore<FunctionAppConfig> functionAppStore = ConfigStore<FunctionAppConfig>.Create("func-sb", CreateFunctionAppConfig());
                 functionAppStore.AddConfig("func", CreateFunctionAppConfig());
                 services.AddSingleton(functionAppStore);
-
-                services.AddSingleton(ConfigStore<LogicAppConfig>.Create("logic", new LogicAppConfig
-                {
-                    WorkflowName = "SmokeWorkflow",
-                    Standard = new LogicAppStandardConfig
-                    {
-                        BaseUrl = "http://localhost/",
-                    },
-                }));
 
                 services.AddDbContext<DockerAzureEnvironmentSmokeTests.SmokeSqlDbContext>((serviceProvider, options) =>
                 {
