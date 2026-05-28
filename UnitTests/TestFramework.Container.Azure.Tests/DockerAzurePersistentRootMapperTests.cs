@@ -21,7 +21,6 @@ public class DockerAzurePersistentRootMapperTests
         Assert.DoesNotContain(DockerAzureEnvironment.MsSqlComponentId, result);
         Assert.DoesNotContain(DockerAzureEnvironment.ServiceBusComponentId, result);
         Assert.DoesNotContain(DockerAzureEnvironment.FunctionAppComponentId, result);
-        Assert.DoesNotContain(DockerAzureEnvironment.LogicAppComponentId, result);
     }
 
     [Fact]
@@ -34,7 +33,6 @@ public class DockerAzurePersistentRootMapperTests
             new(AzureEnvironmentResourceKinds.Sql, "sql"),
             new(AzureEnvironmentResourceKinds.ServiceBus, "bus"),
             new(AzureEnvironmentResourceKinds.FunctionApp, "func"),
-            new(AzureEnvironmentResourceKinds.LogicApp, "logic"),
         ]);
 
         Assert.Equal(5, result.Count);
@@ -44,6 +42,5 @@ public class DockerAzurePersistentRootMapperTests
         Assert.Contains(DockerAzureEnvironment.MsSqlComponentId, result);
         Assert.Contains(DockerAzureEnvironment.ServiceBusComponentId, result);
         Assert.DoesNotContain(DockerAzureEnvironment.FunctionAppComponentId, result);
-        Assert.DoesNotContain(DockerAzureEnvironment.LogicAppComponentId, result);
     }
 }
