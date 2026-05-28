@@ -6,7 +6,7 @@
 		<Nullable>enable</Nullable>
 		<IsTestProject>false</IsTestProject>
 		<Title>TestFramework.Container.Azure</Title>
-		<Version>0.1.4</Version>
+		<Version>0.1.5</Version>
 		<Authors>DeadMoon0</Authors>
 		<Product>TestFramework</Product>
 		<Description>Docker-backed environment providers for TestFramework timelines for Azure components.</Description>
@@ -18,7 +18,7 @@
 		<PackageTags>Test;UnitTest;IntegrationTest;Framework;Timeline;Docker;Azure</PackageTags>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<Copyright>Copyright (c) DeadMoon0 2026</Copyright>
-		<PackageReleaseNotes>Adding Persistent Environments Support for the Docker Env</PackageReleaseNotes>
+		<PackageReleaseNotes>Remove LogicApp Support and Improve logging</PackageReleaseNotes>
 	</PropertyGroup>
 
 	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
@@ -53,13 +53,10 @@
 		<PackageReference Include="Testcontainers.CosmosDb" Version="4.11.0" />
 		<PackageReference Include="Testcontainers.MsSql" Version="4.11.0" />
 		<PackageReference Include="Testcontainers.ServiceBus" Version="4.11.0" />
+		<PackageReference Include="TestFramework.Azure" Version="0.1.11" />
+		<PackageReference Include="TestFramework.Config" Version="0.1.4" />
+		<PackageReference Include="TestFramework.Core" Version="0.1.7" />
 		<PackageReference Include="xunit" Version="2.5.3" />
-	</ItemGroup>
-
-	<ItemGroup>
-		<ProjectReference Include="..\..\TestFramework-Azure\TestFramework.Azure\TestFramework.Azure.csproj" />
-		<ProjectReference Include="..\..\TestFramework-Core\TestFramework.Config\TestFramework.Config.csproj" />
-		<ProjectReference Include="..\..\TestFramework-Core\TestFramework.Core\TestFramework.Core.csproj" />
 	</ItemGroup>
 
 	<ItemGroup>
