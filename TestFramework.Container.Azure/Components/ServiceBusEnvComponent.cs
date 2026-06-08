@@ -26,6 +26,12 @@ internal sealed class ServiceBusEnvComponent : DockerAzureEnvComponent
     public override async Task<object?> CreateAsync(IEnvironmentProvider environment, IServiceProvider serviceProvider, VariableStore variableStore, ArtifactStore artifactStore, ScopedLogger logger, CancellationToken cancellationToken)
     {
         DockerAzureEnvironment dockerEnvironment = GetDockerEnvironment(environment);
+        if (dockerEnvironment.UsedServiceBusIdentifiers.Count == 0)
+        {
+            logger.LogInformation("Skipping Service Bus environment setup because no Service Bus identifiers were requested.");
+            return null;
+        }
+
         ConfigStore<ServiceBusConfig>? configStore = EnvComponentConfigStoreGuard.GetRequiredStore<ServiceBusConfig>(dockerEnvironment, serviceProvider, dockerEnvironment.UsedServiceBusIdentifiers, "Service Bus environment setup");
         INetwork network = dockerEnvironment.GetRequiredRuntimeState<INetwork>(DockerAzureEnvironment.NetworkComponentId);
         MsSqlContainer msSqlContainer = dockerEnvironment.GetRequiredRuntimeState<MsSqlContainer>(DockerAzureEnvironment.MsSqlComponentId);
