@@ -164,6 +164,9 @@ public sealed class ProcessingReply : DockerServiceBusDefinition
 {
 	public override ServiceBusIdentifier Identifier => "ProcessingReply";
 
+	public DockerServiceBusEndpoint Reply
+		=> DockerServiceBusEndpoint.TopicSubscription("processing-reply", "Default");
+
 	protected override void ConfigureServiceBusTopology(DockerServiceBusTopologyBuilder builder)
 	{
 		builder.AddNamespace("sbemulatorns", ns => ns
@@ -180,7 +183,7 @@ public sealed class DefaultFunctionApp : DockerFunctionAppDefinition<AnalysisPro
 		builder
 			.UseStorage<MainStorage>()
 			.UseCosmos<MainDb>()
-			.UseServiceBusReply<ProcessingReply>();
+			.UseServiceBusReply<ProcessingReply>(bus => bus.Reply);
 	}
 }
 
@@ -285,6 +288,15 @@ public sealed class ProcessingReply : DockerServiceBusDefinition
 ```
 
 Use this when you want the sample to stay self-contained and the topology to live next to the identifier and config it belongs to. If the topology is invalid, the Service Bus component still fails during environment startup before the main timeline steps run.
+
+Function App bindings now select explicit endpoints from the Service Bus definition, for example:
+
+```csharp
+builder.UseServiceBusTrigger<SharedMessaging>(bus => bus.Incoming);
+builder.UseServiceBusReply<SharedMessaging>(bus => bus.Reply);
+```
+
+This keeps one definition aligned with one namespace while still binding multiple queue/topic endpoints cleanly.
 
 External JSON files are still supported for compatibility through `TopologyConfigPath` or `ServiceBusTopologyConfigPath`, but they are now the fallback option rather than the recommended sample style.
 

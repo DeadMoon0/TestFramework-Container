@@ -218,16 +218,19 @@ internal sealed class FunctionAppEnvComponent : DockerAzureEnvComponent
                 case FunctionAppResourceBindingKind.ServiceBusTrigger:
                     ServiceBusConfig triggerBus = dockerEnvironment.GetOrCreateConfigStore<ServiceBusConfig>(serviceProvider, [binding.ResourceIdentifier], "Function App environment setup")!.GetConfig(binding.ResourceIdentifier);
                     settings[binding.PrimarySettingName] = dockerEnvironment.GetEndpointMap().RewriteServiceBusForContainer(triggerBus.ConnectionString);
-                    if (binding.SecondarySettingName is not null)
-                        settings[binding.SecondarySettingName] = triggerBus.EntityName;
-                    if (binding.TertiarySettingName is not null && triggerBus.SubscriptionName is not null)
-                        settings[binding.TertiarySettingName] = triggerBus.SubscriptionName;
+                    if (binding.ServiceBusEndpoint is { } triggerEndpoint)
+                    {
+                        if (binding.SecondarySettingName is not null)
+                            settings[binding.SecondarySettingName] = triggerEndpoint.EntityName;
+                        if (binding.TertiarySettingName is not null && triggerEndpoint.SubscriptionName is not null)
+                            settings[binding.TertiarySettingName] = triggerEndpoint.SubscriptionName;
+                    }
                     break;
                 case FunctionAppResourceBindingKind.ServiceBusReply:
                     ServiceBusConfig replyBus = dockerEnvironment.GetOrCreateConfigStore<ServiceBusConfig>(serviceProvider, [binding.ResourceIdentifier], "Function App environment setup")!.GetConfig(binding.ResourceIdentifier);
                     settings[binding.PrimarySettingName] = dockerEnvironment.GetEndpointMap().RewriteServiceBusForContainer(replyBus.ConnectionString);
-                    if (binding.SecondarySettingName is not null)
-                        settings[binding.SecondarySettingName] = replyBus.EntityName;
+                    if (binding.ServiceBusEndpoint is { } replyEndpoint && binding.SecondarySettingName is not null)
+                        settings[binding.SecondarySettingName] = replyEndpoint.EntityName;
                     break;
             }
         }

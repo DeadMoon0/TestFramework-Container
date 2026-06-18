@@ -215,14 +215,14 @@ public abstract class DockerServiceBusDefinition : DockerAzureDefinition
 
     public virtual string TopologyConfigPath => DockerAzureDefaults.ServiceBusTopologyConfigPath;
 
-    protected virtual DockerServiceBusEndpoint? Endpoint => null;
-
     protected virtual bool RequiredSession => false;
 
-    internal ServiceBusConfig BuildConfig(string connectionString)
+    protected ServiceBusConfig BuildConfig(string connectionString, DockerServiceBusEndpoint endpoint)
+        => endpoint.CreateConfig(connectionString, RequiredSession);
+
+    protected virtual ServiceBusConfig? CreateDefaultConfig()
     {
-        DockerServiceBusEndpoint endpoint = Endpoint ?? throw new InvalidOperationException($"Override '{nameof(Endpoint)}' on '{GetType().Name}' to provide a Service Bus endpoint.");
-        return endpoint.CreateConfig(connectionString, RequiredSession);
+        return null;
     }
 
     protected virtual void ConfigureServiceBusTopology(DockerServiceBusTopologyBuilder builder)
@@ -231,13 +231,18 @@ public abstract class DockerServiceBusDefinition : DockerAzureDefinition
 
     internal bool TryCreateDefaultConfig(out ServiceBusConfig config)
     {
-        if (Endpoint is null)
+        config = CreateDefaultConfig() ?? new ServiceBusConfig
         {
-            config = default!;
-            return false;
-        }
+            ConnectionString = DockerAzureDefaults.PlaceholderConnectionString,
+            QueueName = null,
+            TopicName = null,
+            SubscriptionName = null,
+            RequiredSession = RequiredSession,
+        };
 
-        config = BuildConfig(DockerAzureDefaults.PlaceholderConnectionString);
+        if (string.IsNullOrWhiteSpace(config.ConnectionString))
+            config = config with { ConnectionString = DockerAzureDefaults.PlaceholderConnectionString };
+
         return true;
     }
 
@@ -385,37 +390,45 @@ public sealed class DockerFunctionAppBuilder
     }
 
     public DockerFunctionAppBuilder UseServiceBusTrigger<TServiceBus>(
+        Func<TServiceBus, DockerServiceBusEndpoint> endpointSelector,
         string connectionSettingName = "ServiceBusTriggerConnection",
         string entitySettingName = "ServiceBusTriggerTopicName",
         string? subscriptionSettingName = "ServiceBusTriggerSubscriptionName",
         DependencyOwnership ownership = DependencyOwnership.Shared)
         where TServiceBus : DockerServiceBusDefinition, new()
     {
+        ArgumentNullException.ThrowIfNull(endpointSelector);
         TServiceBus definition = new();
+        DockerServiceBusEndpoint endpoint = endpointSelector(definition);
         AddDependency(typeof(TServiceBus), ownership);
         ReplaceResourceBinding(new FunctionAppResourceBinding(
             FunctionAppResourceBindingKind.ServiceBusTrigger,
             definition.Identifier,
             connectionSettingName,
             entitySettingName,
-            subscriptionSettingName));
+            subscriptionSettingName,
+            endpoint));
         AddServiceBusTopologySource(definition.GetTopologySource());
         return this;
     }
 
     public DockerFunctionAppBuilder UseServiceBusReply<TServiceBus>(
+        Func<TServiceBus, DockerServiceBusEndpoint> endpointSelector,
         string connectionSettingName = "ServiceBusReplyConnectionString",
         string entitySettingName = "ServiceBusReplyTopicName",
         DependencyOwnership ownership = DependencyOwnership.Shared)
         where TServiceBus : DockerServiceBusDefinition, new()
     {
+        ArgumentNullException.ThrowIfNull(endpointSelector);
         TServiceBus definition = new();
+        DockerServiceBusEndpoint endpoint = endpointSelector(definition);
         AddDependency(typeof(TServiceBus), ownership);
         ReplaceResourceBinding(new FunctionAppResourceBinding(
             FunctionAppResourceBindingKind.ServiceBusReply,
             definition.Identifier,
             connectionSettingName,
-            entitySettingName));
+            entitySettingName,
+            ServiceBusEndpoint: endpoint));
         AddServiceBusTopologySource(definition.GetTopologySource());
         return this;
     }
@@ -490,7 +503,8 @@ internal sealed record FunctionAppResourceBinding(
     string ResourceIdentifier,
     string PrimarySettingName,
     string? SecondarySettingName = null,
-    string? TertiarySettingName = null);
+    string? TertiarySettingName = null,
+    DockerServiceBusEndpoint? ServiceBusEndpoint = null);
 
 internal sealed class DockerAzureDefinitionState
 {

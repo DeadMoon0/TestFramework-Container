@@ -25,7 +25,6 @@ using TestFramework.Core.Timelines.Builder.TimelineBuilder;
 using TestFramework.Core.Timelines.Builder.TimelineRunBuilder;
 using TestFramework.Core.Variables;
 using System.Net;
-
 namespace TestFramework.Container.Azure.Tests;
 
 // README sync note: the README golden sample is backed by the smoke test below.
@@ -57,10 +56,27 @@ public class DockerAzureEnvironmentSmokeTests
         public override CosmosContainerIdentifier Identifier => "cosmos";
     }
 
+    internal sealed class SmokeFunctionServiceBusDefinition : DockerServiceBusDefinition
+    {
+        public override ServiceBusIdentifier Identifier => "func-bus";
+
+        public DockerServiceBusEndpoint Trigger
+            => DockerServiceBusEndpoint.TopicSubscription("smoke-trigger-topic", "smoke-trigger-subscription");
+
+        public DockerServiceBusEndpoint Reply
+            => DockerServiceBusEndpoint.TopicSubscription("smoke-reply-topic", "smoke-reply-default");
+
+        protected override void ConfigureServiceBusTopology(DockerServiceBusTopologyBuilder builder)
+            => ConfigureDedicatedFunctionAppServiceBusTopology(builder);
+    }
+
     internal sealed class SmokeServiceBusDefinition : DockerServiceBusDefinition
     {
         public override ServiceBusIdentifier Identifier => "bus";
-    }
+
+        public DockerServiceBusEndpoint Reply
+            => DockerServiceBusEndpoint.TopicSubscription("default-topic", "default-subscription");
+        }
 
     internal sealed class SmokeFunctionTriggerBusDefinition : DockerServiceBusDefinition
     {
@@ -87,7 +103,7 @@ public class DockerAzureEnvironmentSmokeTests
             builder
                 .UseStorage<SmokeStorageDefinition>(tableNameSettingName: "StorageTableName")
                 .UseCosmos<SmokeCosmosDefinition>()
-                .UseServiceBusReply<SmokeServiceBusDefinition>();
+                .UseServiceBusReply<SmokeServiceBusDefinition>(d => d.Reply);
         }
     }
 
@@ -99,8 +115,8 @@ public class DockerAzureEnvironmentSmokeTests
         {
             builder
                 .UseStorage<SmokeStorageDefinition>()
-                .UseServiceBusTrigger<SmokeFunctionTriggerBusDefinition>()
-                .UseServiceBusReply<SmokeFunctionReplyBusDefinition>();
+                .UseServiceBusTrigger<SmokeFunctionServiceBusDefinition>(d => d.Trigger)
+                .UseServiceBusReply<SmokeFunctionServiceBusDefinition>(d => d.Reply);
         }
     }
 

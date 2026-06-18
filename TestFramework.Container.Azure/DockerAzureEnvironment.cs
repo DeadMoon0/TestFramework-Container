@@ -114,17 +114,25 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
             .UseCosmos<TCosmos>(), image);
     }
 
-    public static DockerAzureEnvironment ForFunctionAppWithStorageAndServiceBus<TFunctionApp, TStorage, TServiceBus>(FunctionAppIdentifier identifier, string? image = null)
+    public static DockerAzureEnvironment ForFunctionAppWithStorageAndServiceBus<TFunctionApp, TStorage, TServiceBus>(
+        FunctionAppIdentifier identifier,
+        Func<TServiceBus, DockerServiceBusEndpoint> triggerSelector,
+        Func<TServiceBus, DockerServiceBusEndpoint> replySelector,
+        string? image = null)
         where TStorage : DockerStorageDefinition, new()
         where TServiceBus : DockerServiceBusDefinition, new()
     {
         return ForFunctionApp<TFunctionApp>(identifier, builder => builder
             .UseStorage<TStorage>()
-            .UseServiceBusTrigger<TServiceBus>()
-            .UseServiceBusReply<TServiceBus>(), image);
+            .UseServiceBusTrigger<TServiceBus>(triggerSelector)
+            .UseServiceBusReply<TServiceBus>(replySelector), image);
     }
 
-    public static DockerAzureEnvironment ForFunctionAppWithCommonBindings<TFunctionApp, TStorage, TCosmos, TServiceBus>(FunctionAppIdentifier identifier, string? image = null)
+    public static DockerAzureEnvironment ForFunctionAppWithCommonBindings<TFunctionApp, TStorage, TCosmos, TServiceBus>(
+        FunctionAppIdentifier identifier,
+        Func<TServiceBus, DockerServiceBusEndpoint> triggerSelector,
+        Func<TServiceBus, DockerServiceBusEndpoint> replySelector,
+        string? image = null)
         where TStorage : DockerStorageDefinition, new()
         where TCosmos : DockerCosmosDefinition, new()
         where TServiceBus : DockerServiceBusDefinition, new()
@@ -132,8 +140,8 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
         return ForFunctionApp<TFunctionApp>(identifier, builder => builder
             .UseStorage<TStorage>()
             .UseCosmos<TCosmos>()
-            .UseServiceBusTrigger<TServiceBus>()
-            .UseServiceBusReply<TServiceBus>(), image);
+            .UseServiceBusTrigger<TServiceBus>(triggerSelector)
+            .UseServiceBusReply<TServiceBus>(replySelector), image);
     }
 
     public override IReadOnlyCollection<EnvComponentIdentifier> ResolveComponents(IEnumerable<ArtifactInstanceGeneric> artifacts, IEnumerable<EnvironmentRequirement> requirements)

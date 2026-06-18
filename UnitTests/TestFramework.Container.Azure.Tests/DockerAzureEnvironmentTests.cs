@@ -20,7 +20,6 @@ using TestFramework.Core.Environment;
 using TestFramework.Core.Logging;
 using TestFramework.Core.Steps;
 using TestFramework.Core.Variables;
-
 namespace TestFramework.Container.Azure.Tests;
 
 public class DockerAzureEnvironmentTests
@@ -157,7 +156,7 @@ public class DockerAzureEnvironmentTests
     [Fact]
     public void ForFunctionAppWithCommonBindings_AddsCommonLocalStackWithoutCustomDefinition()
     {
-        DockerAzureEnvironment environment = DockerAzureEnvironment.ForFunctionAppWithCommonBindings<TestFunctionHost, TestStorageDefinition, TestCosmosDefinition, TestServiceBusDefinition>("func-inline");
+        DockerAzureEnvironment environment = DockerAzureEnvironment.ForFunctionAppWithCommonBindings<TestFunctionHost, TestStorageDefinition, TestCosmosDefinition, TestServiceBusDefinition>("func-inline", d => d.Trigger, d => d.Reply);
         var functionStep = new IsLiveTrigger().FunctionApp("func-inline");
 
         IReadOnlyCollection<EnvComponentIdentifier> result = environment.ResolveComponents([], ((IHasEnvironmentRequirements)functionStep).GetEnvironmentRequirements(null!));
@@ -233,8 +232,8 @@ public class DockerAzureEnvironmentTests
             {
                 ConnectionString = "Endpoint=sb://localhost/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=key=;",
                 QueueName = null,
-                TopicName = "processing-topic",
-                SubscriptionName = "processing-subscription",
+                TopicName = null,
+                SubscriptionName = null,
                 RequiredSession = false
             }))
             .BuildServiceProvider();
@@ -605,6 +604,12 @@ public class DockerAzureEnvironmentTests
         public override ServiceBusIdentifier Identifier => "bus";
 
         public override string TopologyConfigPath => Path.Combine("TestTopology", "servicebus.json");
+
+        public DockerServiceBusEndpoint Trigger
+            => DockerServiceBusEndpoint.TopicSubscription("processing-topic", "processing-subscription");
+
+        public DockerServiceBusEndpoint Reply
+            => DockerServiceBusEndpoint.TopicSubscription("processing-topic", "processing-subscription");
     }
 
     private sealed class TestDefaultServiceBusDefinition : DockerServiceBusDefinition
@@ -639,8 +644,8 @@ public class DockerAzureEnvironmentTests
             builder
                 .UseStorage<TestStorageDefinition>()
                 .UseCosmos<TestCosmosDefinition>()
-                .UseServiceBusTrigger<TestServiceBusDefinition>()
-                .UseServiceBusReply<TestServiceBusDefinition>();
+                .UseServiceBusTrigger<TestServiceBusDefinition>(d => d.Trigger)
+                .UseServiceBusReply<TestServiceBusDefinition>(d => d.Reply);
         }
     }
 
