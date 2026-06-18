@@ -96,7 +96,7 @@ public sealed class DefaultFunctionApp : DockerFunctionAppDefinition<AnalysisPro
 		builder
 			.UseStorage<MainStorage>()
 			.UseCosmos<MainDb>()
-			.UseServiceBusReply<MainBus>()
+			.UseServiceBusReply<MainBus>(bus => bus.Reply)
 			.WithAppSetting("FeatureFlags__VerboseStartup", "true");
 	}
 }
