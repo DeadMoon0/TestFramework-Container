@@ -47,7 +47,11 @@ Those placeholder config entries can be registered directly by the test project,
 
 The timeline still reads like a normal TestFramework timeline. The environment is the switch that makes the run container-backed.
 
-Logic Apps are not supported in the Docker container package. Use a live Azure-hosted Logic App when you need Logic App coverage.
+## Limitations
+
+**Logic Apps are not supported in the Docker container package.**
+
+If your timeline includes Logic App triggers or events, keep those tests on the live `TestFramework.Azure` path with a real Azure-hosted Logic App. The container environment covers: Function Apps, Service Bus, Blob Storage, Table Storage, Cosmos DB, and SQL.
 
 ## Prerequisites
 
