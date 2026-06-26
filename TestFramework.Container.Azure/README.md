@@ -4,6 +4,8 @@
 
 Use it when you want to keep the normal `TestFramework.Azure` timeline shape, but you want Blob, Table, Cosmos, SQL Server, or Service Bus dependencies to come from local containers instead of a live Azure environment.
 
+**Important limitation:** Logic Apps are not supported in container mode. For Logic App tests, use `TestFramework.Azure` with live Azure-hosted workflows instead.
+
 ## Pick The Smallest Starting Point
 
 Choose the entry path that matches how much infrastructure shape you already know.
