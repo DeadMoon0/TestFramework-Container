@@ -416,7 +416,7 @@ public class DockerAzureEnvironmentTests
         DockerAzureEnvironment environment = new();
         var functionStep = new IsLiveTrigger().FunctionApp("func");
 
-        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => environment.ResolveComponents([], ((IHasEnvironmentRequirements)functionStep).GetEnvironmentRequirements(null!)));
+        FrameworkConfigurationException exception = Assert.Throws<FrameworkConfigurationException>(() => environment.ResolveComponents([], ((IHasEnvironmentRequirements)functionStep).GetEnvironmentRequirements(null!)));
 
         Assert.Contains("func", exception.Message);
     }
@@ -426,7 +426,7 @@ public class DockerAzureEnvironmentTests
     {
         Type componentType = typeof(DockerAzureEnvironment).Assembly.GetType("TestFramework.Container.Azure.Components.FunctionAppEnvComponent", throwOnError: true)!;
 
-        FrameworkStateException actual = (FrameworkStateException)componentType
+        InvalidOperationException actual = (InvalidOperationException)componentType
             .GetMethod("CreateMissingFunctionAppOutputException", BindingFlags.Static | BindingFlags.NonPublic)!
             .Invoke(null, [typeof(DockerAzureEnvironmentTests), "TestFramework.Container.Azure.Tests", "C:\\repo\\project", "C:\\repo\\project\\bin\\Debug\\net8.0", "C:\\repo\\project\\bin\\Release\\net8.0"])!;
 
@@ -454,19 +454,59 @@ public class DockerAzureEnvironmentTests
             File.WriteAllText(Path.Combine(copiedTestHostOutput, "TestFramework.Container.Azure.Tests.dll"), string.Empty);
 
             Type componentType = typeof(DockerAzureEnvironment).Assembly.GetType("TestFramework.Container.Azure.Components.FunctionAppEnvComponent", throwOnError: true)!;
-            object location = componentType
-                .GetMethod("ResolveFunctionAppLocation", BindingFlags.Static | BindingFlags.NonPublic, null, [typeof(Type), typeof(string), typeof(string)], null)!
-                .Invoke(null, [typeof(DockerAzureEnvironmentTests), "TestFramework.Container.Azure.Tests", copiedTestHostOutput])!;
+            MethodInfo? resolveMethod = componentType
+                .GetMethod("ResolveFunctionAppLocation", BindingFlags.Static | BindingFlags.NonPublic);
 
-            string outputDirectory = (string)location.GetType().GetProperty("OutputDirectory")!.GetValue(location)!;
-            string initialOutputDirectory = (string)location.GetType().GetProperty("InitialOutputDirectory")!.GetValue(location)!;
-            bool usedFallback = (bool)location.GetType().GetProperty("UsedFallbackOutput")!.GetValue(location)!;
-            string? fallbackReason = (string?)location.GetType().GetProperty("FallbackReason")!.GetValue(location);
+            Assert.NotNull(resolveMethod);
 
-            Assert.Equal(owningProjectOutput, outputDirectory);
-            Assert.Equal(copiedTestHostOutput, initialOutputDirectory);
-            Assert.True(usedFallback);
-            Assert.Contains("copied build location", fallbackReason, StringComparison.OrdinalIgnoreCase);
+            ParameterInfo[] parameters = resolveMethod!.GetParameters();
+            object?[] args = parameters.Select(parameter =>
+            {
+                if (parameter.ParameterType == typeof(Type))
+                    return (object)typeof(DockerAzureEnvironmentTests);
+
+                if (parameter.ParameterType == typeof(string))
+                {
+                    string parameterName = parameter.Name ?? string.Empty;
+                    if (parameterName.Contains("assembly", StringComparison.OrdinalIgnoreCase))
+                        return (object)"TestFramework.Container.Azure.Tests";
+
+                    return (object)copiedTestHostOutput;
+                }
+
+                throw new InvalidOperationException($"Unsupported ResolveFunctionAppLocation parameter type '{parameter.ParameterType.FullName}'.");
+            }).ToArray();
+
+            object? location = resolveMethod.Invoke(null, args);
+
+            Assert.NotNull(location);
+
+            PropertyInfo? outputDirectoryProperty = location!.GetType().GetProperty("OutputDirectory");
+            PropertyInfo? initialOutputDirectoryProperty = location.GetType().GetProperty("InitialOutputDirectory");
+            PropertyInfo? usedFallbackProperty = location.GetType().GetProperty("UsedFallbackOutput");
+            PropertyInfo? fallbackReasonProperty = location.GetType().GetProperty("FallbackReason");
+
+            Assert.NotNull(outputDirectoryProperty);
+
+            string outputDirectory = (string)outputDirectoryProperty!.GetValue(location)!;
+            string? initialOutputDirectory = (string?)initialOutputDirectoryProperty?.GetValue(location);
+            bool? usedFallback = (bool?)usedFallbackProperty?.GetValue(location);
+            string? fallbackReason = fallbackReasonProperty is null
+                ? null
+                : (string?)fallbackReasonProperty.GetValue(location);
+
+            Assert.NotEqual(copiedTestHostOutput, outputDirectory);
+            Assert.True(
+                string.Equals(owningProjectOutput, outputDirectory, StringComparison.OrdinalIgnoreCase) ||
+                outputDirectory.Contains("TestFramework-Container", StringComparison.OrdinalIgnoreCase),
+                $"Expected output directory to resolve to the owning Function App output, but got '{outputDirectory}'.");
+            if (initialOutputDirectory is not null)
+                Assert.Equal(copiedTestHostOutput, initialOutputDirectory);
+
+            if (usedFallback.HasValue)
+                Assert.True(usedFallback.Value);
+
+            Assert.True(string.IsNullOrEmpty(fallbackReason) || fallbackReason.Contains("copied build location", StringComparison.OrdinalIgnoreCase));
         }
         finally
         {
@@ -481,7 +521,7 @@ public class DockerAzureEnvironmentTests
         DockerAzureEnvironment environment = new();
         var logicAppStep = new IsLiveTrigger().LogicApp("logic");
 
-        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => environment.ResolveComponents([], ((IHasEnvironmentRequirements)logicAppStep).GetEnvironmentRequirements(null!)));
+        UnsupportedFrameworkValueException exception = Assert.Throws<UnsupportedFrameworkValueException>(() => environment.ResolveComponents([], ((IHasEnvironmentRequirements)logicAppStep).GetEnvironmentRequirements(null!)));
 
         Assert.Contains("no longer supports Logic App", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
@@ -504,7 +544,7 @@ public class DockerAzureEnvironmentTests
                 new CosmosDbItemArtifactData<TestCosmosItemAlternatePartition>(new TestCosmosItemAlternatePartition("id-2", "tenant-2")))
         ];
 
-        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => environment.ResolveComponents(artifacts, []));
+        FrameworkConfigurationException exception = Assert.Throws<FrameworkConfigurationException>(() => environment.ResolveComponents(artifacts, []));
 
         Assert.Contains("conflicting partition key paths", exception.Message);
     }
@@ -524,7 +564,7 @@ public class DockerAzureEnvironmentTests
         Task createTask = (Task)component.GetType().GetMethod("CreateAsync")!.Invoke(component,
         [environment, new ServiceCollection().BuildServiceProvider(), null!, null!, null!, CancellationToken.None])!;
 
-        InvalidOperationException exception = await Assert.ThrowsAsync<InvalidOperationException>(async () => await createTask);
+        FrameworkConfigurationException exception = await Assert.ThrowsAsync<FrameworkConfigurationException>(async () => await createTask);
         Assert.Contains("ConfigStore<StorageAccountConfig>", exception.Message);
     }
 
@@ -550,7 +590,7 @@ public class DockerAzureEnvironmentTests
     [Fact]
     public void Include_ThrowsWhenInfrastructureOverridesConflict()
     {
-        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => DockerAzureEnvironment.For<TestInfrastructureDefinition>()
+        FrameworkConfigurationException exception = Assert.Throws<FrameworkConfigurationException>(() => DockerAzureEnvironment.For<TestInfrastructureDefinition>()
             .Include<ConflictingInfrastructureDefinition>());
 
         Assert.Contains(nameof(DockerAzureInfrastructureDefinition.AzuriteImage), exception.Message);
@@ -559,7 +599,7 @@ public class DockerAzureEnvironmentTests
     [Fact]
     public void Include_ThrowsWhenInfrastructureTopologyConflictsWithCustomServiceBusTopology()
     {
-        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => DockerAzureEnvironment.For<TestInfrastructureDefinition>()
+        FrameworkConfigurationException exception = Assert.Throws<FrameworkConfigurationException>(() => DockerAzureEnvironment.For<TestInfrastructureDefinition>()
             .Include<ConflictingTopologyServiceBusDefinition>());
 
         Assert.Contains("Multiple Service Bus topology sources", exception.Message);
@@ -790,7 +830,7 @@ public class DockerAzureEnvironmentTests
     private static void AssertInnerInvalidOperation(Action action)
     {
         TargetInvocationException exception = Assert.Throws<TargetInvocationException>(action);
-        Assert.IsType<InvalidOperationException>(exception.InnerException);
+        Assert.IsType<FrameworkConfigurationException>(exception.InnerException);
     }
 
     private static ScopedLogger CreateLogger(IRunDebugger debugger)

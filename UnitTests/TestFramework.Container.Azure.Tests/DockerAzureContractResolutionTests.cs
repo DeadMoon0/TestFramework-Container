@@ -2,6 +2,7 @@ using TestFramework.Azure.Identifier;
 using TestFramework.Container.Azure;
 using TestFramework.Container.Azure.Contracts;
 using TestFramework.Core.Environment;
+using TestFramework.Core.Exceptions;
 using TestFramework.Core.Steps;
 
 namespace TestFramework.Container.Azure.Tests;
@@ -34,7 +35,7 @@ public class DockerAzureContractResolutionTests
         DockerAzureEnvironment environment = DockerAzureEnvironment.For<ExclusiveFunctionAppDefinitionA>()
             .Include<ExclusiveFunctionAppDefinitionB>();
 
-        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => environment.ResolveComponents([], []));
+        DependencyGraphException exception = Assert.Throws<DependencyGraphException>(() => environment.ResolveComponents([], []));
 
         Assert.Contains("exclusive", exception.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("servicebus:bus", exception.Message, StringComparison.Ordinal);

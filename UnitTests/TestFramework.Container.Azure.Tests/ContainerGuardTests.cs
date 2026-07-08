@@ -3,6 +3,7 @@ using TestFramework.Container.Azure;
 using TestFramework.Container.Azure.Components;
 using TestFramework.Core.Artifacts;
 using TestFramework.Core.Environment;
+using TestFramework.Core.Exceptions;
 using TestFramework.Core.Logging;
 using TestFramework.Core.Variables;
 
@@ -13,7 +14,7 @@ public class ContainerGuardTests
     [Fact]
     public void ConnectionStringGuards_RejectServiceBusConnectionWithoutEmulatorFlag()
     {
-        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+        FrameworkConfigurationException exception = Assert.Throws<FrameworkConfigurationException>(() =>
             ConnectionStringGuards.EnsureServiceBus("Endpoint=sb://127.0.0.1/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=key=;"));
 
         Assert.Contains("UseDevelopmentEmulator=true", exception.Message, StringComparison.Ordinal);
@@ -22,7 +23,7 @@ public class ContainerGuardTests
     [Fact]
     public void ConnectionStringGuards_RejectServiceBusConnectionToRemoteHost()
     {
-        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+        FrameworkConfigurationException exception = Assert.Throws<FrameworkConfigurationException>(() =>
             ConnectionStringGuards.EnsureServiceBus("Endpoint=sb://contoso.servicebus.windows.net/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=key=;UseDevelopmentEmulator=true;"));
 
         Assert.Contains("local Docker emulator endpoint", exception.Message, StringComparison.OrdinalIgnoreCase);
@@ -33,7 +34,7 @@ public class ContainerGuardTests
     {
         DockerAzureEnvironment environment = new();
 
-        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+        FrameworkStateException exception = Assert.Throws<FrameworkStateException>(() =>
             environment.GetRequiredRuntimeState<object>(DockerAzureEnvironment.AzuriteComponentId));
 
         Assert.Contains(DockerAzureEnvironment.AzuriteComponentId.ToString(), exception.Message, StringComparison.Ordinal);
@@ -44,7 +45,7 @@ public class ContainerGuardTests
     {
         AzuriteEnvComponent component = new();
 
-        InvalidOperationException exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        FrameworkStateException exception = await Assert.ThrowsAsync<FrameworkStateException>(() =>
             component.CreateAsync(
                 new FakeEnvironmentProvider(),
                 new ServiceCollection().BuildServiceProvider(),
