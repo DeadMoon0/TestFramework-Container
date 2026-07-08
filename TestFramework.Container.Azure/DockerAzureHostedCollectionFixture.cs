@@ -9,6 +9,7 @@ using TestFramework.Config;
 using TestFramework.Config.Builder.InstanceBuilder;
 using TestFramework.Core.Artifacts;
 using TestFramework.Core.Environment;
+using TestFramework.Core.Exceptions;
 using Xunit;
 
 namespace TestFramework.Container.Azure;
@@ -56,14 +57,14 @@ public class DockerAzureHostedCollectionFixture<TState> : IAsyncLifetime
 
     public IEnvironmentProvider GetEnv(Action<IConfigInstanceBuilder>? configure = null)
     {
-        PersistentEnvironmentContext<DockerAzurePersistentSetup> persistentContext = _persistentContext ?? throw new InvalidOperationException("The hosted Docker Azure fixture has not finished initialization.");
+        PersistentEnvironmentContext<DockerAzurePersistentSetup> persistentContext = _persistentContext ?? throw new FrameworkStateException("The hosted Docker Azure fixture has not finished initialization.");
         IServiceProvider configServiceProvider = CreateRunConfig(configure).BuildServiceProvider();
         return new HostedEnvironmentProvider(persistentContext.CreateEnvironment(), configServiceProvider);
     }
 
     private ConfigInstance CreateRunConfig(Action<IConfigInstanceBuilder>? configure = null)
     {
-        ConfigInstance persistentConfig = _persistentConfig ?? throw new InvalidOperationException("The hosted Docker Azure fixture has not finished initialization.");
+        ConfigInstance persistentConfig = _persistentConfig ?? throw new FrameworkStateException("The hosted Docker Azure fixture has not finished initialization.");
         IConfigInstanceBuilder builder = persistentConfig.SetupSubInstance();
         builder.AddService(services =>
         {
@@ -79,7 +80,7 @@ public class DockerAzureHostedCollectionFixture<TState> : IAsyncLifetime
 
     private ConfigStore<TConfig> GetRequiredStore<TConfig>() where TConfig : class
     {
-        IServiceProvider persistentServiceProvider = _persistentServiceProvider ?? throw new InvalidOperationException("The hosted Docker Azure fixture has not finished initialization.");
+        IServiceProvider persistentServiceProvider = _persistentServiceProvider ?? throw new FrameworkStateException("The hosted Docker Azure fixture has not finished initialization.");
         return persistentServiceProvider.GetRequiredService<ConfigStore<TConfig>>();
     }
 

@@ -6,6 +6,7 @@ using TestFramework.Azure.Configuration.SpecificConfigs;
 using TestFramework.Azure.Identifier;
 using TestFramework.Container.Azure.Contracts;
 using TestFramework.Core.Environment;
+using TestFramework.Core.Exceptions;
 
 namespace TestFramework.Container.Azure;
 
@@ -119,8 +120,8 @@ public abstract class DockerCosmosDefinition : DockerAzureDefinition
     internal CosmosContainerDbConfig BuildConfig(string connectionString) => new()
     {
         ConnectionString = connectionString,
-        DatabaseName = DatabaseName ?? throw new InvalidOperationException($"Override '{nameof(DatabaseName)}' on '{GetType().Name}' to provide a Cosmos database name."),
-        ContainerName = ContainerName ?? throw new InvalidOperationException($"Override '{nameof(ContainerName)}' on '{GetType().Name}' to provide a Cosmos container name."),
+        DatabaseName = DatabaseName ?? throw new FrameworkConfigurationException($"Override '{nameof(DatabaseName)}' on '{GetType().Name}' to provide a Cosmos database name."),
+        ContainerName = ContainerName ?? throw new FrameworkConfigurationException($"Override '{nameof(ContainerName)}' on '{GetType().Name}' to provide a Cosmos container name."),
     };
 
     internal bool TryCreateDefaultConfig(out CosmosContainerDbConfig config)
@@ -152,7 +153,7 @@ public abstract class DockerSqlDefinition : DockerAzureDefinition
     internal SqlDatabaseConfig BuildConfig(string connectionString) => new()
     {
         ConnectionString = connectionString,
-        DatabaseName = DatabaseName ?? throw new InvalidOperationException($"Override '{nameof(DatabaseName)}' on '{GetType().Name}' to provide a SQL database name."),
+        DatabaseName = DatabaseName ?? throw new FrameworkConfigurationException($"Override '{nameof(DatabaseName)}' on '{GetType().Name}' to provide a SQL database name."),
         ContextType = ContextType,
     };
 
@@ -330,7 +331,7 @@ public sealed class DockerAzureDependencyBuilder
         ComponentDependency dependency = new(definitionType, ownership);
 
         if (_dependencies.TryGetValue(definitionType, out ComponentDependency? existing) && existing is not null && existing.Ownership != ownership)
-            throw new InvalidOperationException($"Dependency '{definitionType.FullName}' was configured with conflicting ownership values.");
+            throw new FrameworkConfigurationException($"Dependency '{definitionType.FullName}' was configured with conflicting ownership values.");
 
         _dependencies[definitionType] = dependency;
         return this;
@@ -444,7 +445,7 @@ public sealed class DockerFunctionAppBuilder
         ComponentDependency dependency = new(dependencyType, ownership);
 
         if (_dependencies.TryGetValue(dependencyType, out ComponentDependency? existing) && existing is not null && existing.Ownership != ownership)
-            throw new InvalidOperationException($"Dependency '{dependencyType.FullName}' was configured with conflicting ownership values.");
+            throw new FrameworkConfigurationException($"Dependency '{dependencyType.FullName}' was configured with conflicting ownership values.");
 
         _dependencies[dependencyType] = dependency;
     }
@@ -580,20 +581,20 @@ internal sealed class DockerAzureDefinitionState
                     SetServiceBusTopologySource(source);
                 break;
             default:
-                throw new InvalidOperationException($"Unsupported Docker Azure definition type '{definition.GetType().FullName}'.");
+                throw new UnsupportedFrameworkValueException($"Unsupported Docker Azure definition type '{definition.GetType().FullName}'.");
         }
     }
 
     private void AddDependencyDefinition(Type dependencyType, Type ownerType)
     {
         if (!typeof(DockerAzureDefinition).IsAssignableFrom(dependencyType))
-            throw new InvalidOperationException($"Dependency type '{dependencyType.FullName}' declared by '{ownerType.FullName}' is not a Docker Azure definition.");
+            throw new FrameworkConfigurationException($"Dependency type '{dependencyType.FullName}' declared by '{ownerType.FullName}' is not a Docker Azure definition.");
 
         if (dependencyType.IsAbstract)
-            throw new InvalidOperationException($"Dependency type '{dependencyType.FullName}' declared by '{ownerType.FullName}' must be a concrete Docker Azure definition.");
+            throw new FrameworkConfigurationException($"Dependency type '{dependencyType.FullName}' declared by '{ownerType.FullName}' must be a concrete Docker Azure definition.");
 
         if (Activator.CreateInstance(dependencyType) is not DockerAzureDefinition dependencyDefinition)
-            throw new InvalidOperationException($"Dependency type '{dependencyType.FullName}' declared by '{ownerType.FullName}' could not be constructed.");
+            throw new FrameworkStateException($"Dependency type '{dependencyType.FullName}' declared by '{ownerType.FullName}' could not be constructed.");
 
         AddDefinition(dependencyDefinition);
     }
@@ -658,7 +659,7 @@ internal sealed class DockerAzureDefinitionState
         if (_functionAppDescriptors.TryGetValue(identifier, out FunctionAppDefinitionDescriptor? descriptor))
             return descriptor;
 
-        throw new InvalidOperationException($"No Docker Function App registration was configured for identifier '{identifier}'.");
+        throw new FrameworkConfigurationException($"No Docker Function App registration was configured for identifier '{identifier}'.");
     }
 
     public bool TryGetDefaultConfig(Type configType, string identifier, out object? config)
@@ -697,7 +698,7 @@ internal sealed class DockerAzureDefinitionState
         if (_functionAppDescriptors.TryGetValue(identifier, out FunctionAppDefinitionDescriptor? existing))
         {
             if (existing.Registration.FunctionType != descriptor.Registration.FunctionType)
-                throw new InvalidOperationException($"Docker Function App identifier '{identifier}' was configured for multiple function types.");
+                throw new FrameworkConfigurationException($"Docker Function App identifier '{identifier}' was configured for multiple function types.");
 
             return;
         }
@@ -717,7 +718,7 @@ internal sealed class DockerAzureDefinitionState
         }
 
         if (!ServiceBusTopologySource.SemanticallyEquals(source))
-            throw new InvalidOperationException($"Multiple Service Bus topology sources were configured: {ServiceBusTopologySource.Describe()} and {source.Describe()}.");
+            throw new FrameworkConfigurationException($"Multiple Service Bus topology sources were configured: {ServiceBusTopologySource.Describe()} and {source.Describe()}.");
     }
 
     private static string? ResolveOverride(string? current, string? value, string propertyName)
@@ -729,7 +730,7 @@ internal sealed class DockerAzureDefinitionState
             return value;
 
         if (!string.Equals(current, value, StringComparison.Ordinal))
-            throw new InvalidOperationException($"Multiple values were configured for {propertyName}: '{current}' and '{value}'.");
+            throw new FrameworkConfigurationException($"Multiple values were configured for {propertyName}: '{current}' and '{value}'.");
 
         return current;
     }
@@ -743,7 +744,7 @@ internal sealed class DockerAzureDefinitionState
             return value;
 
         if (current != value)
-            throw new InvalidOperationException($"Multiple values were configured for {propertyName}: '{current}' and '{value}'.");
+            throw new FrameworkConfigurationException($"Multiple values were configured for {propertyName}: '{current}' and '{value}'.");
 
         return current;
     }
@@ -782,7 +783,7 @@ internal sealed class DockerAzureDefinitionState
             return $"servicebus:{identifier}";
         if (configType == typeof(FunctionAppConfig))
             return $"functionapp:{identifier}";
-        throw new InvalidOperationException($"Unsupported config type '{configType.FullName}' for Docker Azure default config lookup.");
+        throw new UnsupportedFrameworkValueException($"Unsupported config type '{configType.FullName}' for Docker Azure default config lookup.");
     }
 
     private static IReadOnlyCollection<ComponentDependency> MergeDependencies(
@@ -794,7 +795,7 @@ internal sealed class DockerAzureDefinitionState
         {
             if (merged.TryGetValue(dependency.ComponentType, out ComponentDependency? existing) && existing is not null && existing.Ownership != dependency.Ownership)
             {
-                throw new InvalidOperationException($"Dependency '{dependency.ComponentType.FullName}' was configured with conflicting ownership values.");
+                throw new FrameworkConfigurationException($"Dependency '{dependency.ComponentType.FullName}' was configured with conflicting ownership values.");
             }
 
             merged[dependency.ComponentType] = dependency;

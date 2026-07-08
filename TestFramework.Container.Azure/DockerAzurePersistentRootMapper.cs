@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using TestFramework.Azure;
 using TestFramework.Core.Environment;
+using TestFramework.Core.Exceptions;
 
 namespace TestFramework.Container.Azure;
 
@@ -39,7 +40,7 @@ internal static class DockerAzurePersistentRootMapper
                 persistentRoots.Add(DockerAzureEnvironment.MsSqlComponentId);
                 return;
             default:
-                throw new InvalidOperationException($"Unsupported persistent Azure resource kind '{requirement.ResourceKind}'.");
+                throw new UnsupportedFrameworkValueException($"Unsupported persistent Azure resource kind '{requirement.ResourceKind}'.");
         }
     }
 }

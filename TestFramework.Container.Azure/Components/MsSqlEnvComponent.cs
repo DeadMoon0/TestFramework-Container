@@ -10,6 +10,7 @@ using TestFramework.Azure.Configuration;
 using TestFramework.Azure.Configuration.SpecificConfigs;
 using TestFramework.Core.Artifacts;
 using TestFramework.Core.Environment;
+using TestFramework.Core.Exceptions;
 using TestFramework.Core.Logging;
 using TestFramework.Core.Variables;
 
@@ -79,6 +80,6 @@ internal sealed class MsSqlEnvComponent : DockerAzureEnvComponent
             }
         }
 
-        throw new InvalidOperationException("The SQL container did not become ready in time.");
+        throw new FrameworkTimeoutException("The SQL container did not become ready in time.");
     }
 }

@@ -302,6 +302,14 @@ This keeps one definition aligned with one namespace while still binding multipl
 
 External JSON files are still supported for compatibility through `TopologyConfigPath` or `ServiceBusTopologyConfigPath`, but they are now the fallback option rather than the recommended sample style.
 
+## Troubleshooting Notes
+
+- If a definition is included but no container starts for it, verify the timeline requirements or dependent definitions actually activate it.
+- If graph validation fails, debug the definition graph first and the timeline second.
+- If a Function App host cannot be resolved under referenced build output, the current resolution order prefers the owning project directory and then checks the matching `bin/<Configuration>/net8.0` output. Build the owning Function App project before assuming the timeline binding is wrong.
+- If that fallback path is used, the environment now logs an explicit warning that includes the copied assembly output path and the owning-project output path it selected instead.
+- If you are choosing between local-only, Docker-backed, and live Azure paths, use [../../TestFramework-Showroom/Documentation/LocalToDockerToLive.md](../../TestFramework-Showroom/Documentation/LocalToDockerToLive.md) as the narrative guide instead of mixing the three mental models ad hoc.
+
 ### Queue, Topic, And Subscription Example
 
 Use one fluent topology when a sample or shared stack needs multiple entities at once:

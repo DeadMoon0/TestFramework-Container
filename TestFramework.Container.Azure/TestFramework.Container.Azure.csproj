@@ -55,8 +55,11 @@
 		<PackageReference Include="Testcontainers.ServiceBus" Version="4.11.0" />
 		<PackageReference Include="TestFramework.Azure" Version="0.1.11" />
 		<PackageReference Include="TestFramework.Config" Version="0.1.4" />
-		<PackageReference Include="TestFramework.Core" Version="0.1.7" />
 		<PackageReference Include="xunit" Version="2.5.3" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\..\TestFramework-Core\TestFramework.Core\TestFramework.Core.csproj" />
 	</ItemGroup>
 
 	<ItemGroup>

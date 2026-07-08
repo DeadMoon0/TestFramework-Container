@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
+using TestFramework.Core.Exceptions;
 using TestFramework.Core.Environment;
 
 namespace TestFramework.Container.Azure.Components;
@@ -19,7 +20,7 @@ internal abstract class DockerAzureEnvComponent : EnvComponent
         if (environment is IEnvironmentProviderProxy proxy)
             return GetDockerEnvironment(proxy.InnerEnvironment);
 
-        throw new InvalidOperationException($"Environment component '{Id}' requires {nameof(DockerAzureEnvironment)}.");
+        throw new FrameworkStateException($"Environment component '{Id}' requires {nameof(DockerAzureEnvironment)}.");
     }
 
     protected static async Task ForceRemoveContainerAsync(IContainer container, CancellationToken cancellationToken)

@@ -4,6 +4,7 @@ using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
+using TestFramework.Core.Exceptions;
 using Testcontainers.ServiceBus;
 
 namespace TestFramework.Container.Azure;
@@ -25,7 +26,7 @@ public sealed class DockerServiceBusTopologyBuilder
     internal ServiceBusEmulatorTopologyDefinition Build()
     {
         if (_namespaces.Count == 0)
-            throw new InvalidOperationException("A Service Bus emulator topology must declare at least one namespace.");
+            throw new FrameworkConfigurationException("A Service Bus emulator topology must declare at least one namespace.");
 
         return new ServiceBusEmulatorTopologyDefinition(new ServiceBusEmulatorUserConfigDefinition([.. _namespaces], new ServiceBusEmulatorLoggingDefinition("Console")));
     }

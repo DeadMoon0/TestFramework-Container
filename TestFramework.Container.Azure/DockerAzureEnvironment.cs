@@ -15,6 +15,7 @@ using TestFramework.Azure.StorageAccount.Blob;
 using TestFramework.Azure.StorageAccount.Table;
 using TestFramework.Core.Artifacts;
 using TestFramework.Core.Environment;
+using TestFramework.Core.Exceptions;
 using TestFramework.Core.Logging;
 
 namespace TestFramework.Container.Azure;
@@ -219,7 +220,7 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
                 return typedState;
         }
 
-        throw new InvalidOperationException($"The runtime state for environment component '{identifier}' is not available.");
+        throw new FrameworkStateException($"The runtime state for environment component '{identifier}' is not available.");
     }
 
     internal IReadOnlyCollection<DockerFunctionAppRegistration> GetFunctionAppRegistrations()
@@ -245,7 +246,7 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
     internal string GetServiceBusTopologyConfigPath()
     {
         ServiceBusTopologySource source = GetServiceBusTopologySource();
-        return source.ConfigPath ?? throw new InvalidOperationException("The active Service Bus topology was configured fluently and does not have a backing file path.");
+        return source.ConfigPath ?? throw new FrameworkStateException("The active Service Bus topology was configured fluently and does not have a backing file path.");
     }
 
     internal string GetAzuriteImage()
@@ -358,7 +359,7 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
         HashSet<string> configuredIdentifiers = [.. GetFunctionAppRegistrations().Select(x => x.Identifier)];
         string[] missingIdentifiers = [.. UsedFunctionAppIdentifiers.Where(identifier => !configuredIdentifiers.Contains(identifier)).OrderBy(identifier => identifier, StringComparer.Ordinal)];
         if (missingIdentifiers.Length > 0)
-            throw new InvalidOperationException($"No Docker Function App registration was configured for: {string.Join(", ", missingIdentifiers)}.");
+            throw new FrameworkConfigurationException($"No Docker Function App registration was configured for: {string.Join(", ", missingIdentifiers)}.");
     }
 
     private void CaptureActivatedDefinitionUsage(IEnumerable<DockerAzureDefinitionMetadata> definitions)
@@ -392,7 +393,7 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
     {
         string partitionKeyPath = CosmosModelSchemaResolver.ResolvePartitionKeyPath(modelType);
         if (CosmosPartitionKeyPaths.TryGetValue(identifier, out string? existingPath) && !string.Equals(existingPath, partitionKeyPath, StringComparison.Ordinal))
-            throw new InvalidOperationException($"Cosmos identifier '{identifier}' was configured with conflicting partition key paths: '{existingPath}' and '{partitionKeyPath}'.");
+            throw new FrameworkConfigurationException($"Cosmos identifier '{identifier}' was configured with conflicting partition key paths: '{existingPath}' and '{partitionKeyPath}'.");
 
         CosmosPartitionKeyPaths[identifier] = partitionKeyPath;
     }
@@ -426,7 +427,7 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
             return;
         }
 
-        throw new InvalidOperationException($"{componentName} requires ConfigStore<{typeof(TConfig).Name}> for identifier '{identifier}', and no component default config was defined for that identifier.");
+        throw new FrameworkConfigurationException($"{componentName} requires ConfigStore<{typeof(TConfig).Name}> for identifier '{identifier}', and no component default config was defined for that identifier.");
     }
 
     internal IReadOnlyCollection<string> GetUsedIdentifiersFor(Type configType)
@@ -442,7 +443,7 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
         if (configType == typeof(FunctionAppConfig))
             return UsedFunctionAppIdentifiers;
 
-        throw new InvalidOperationException($"Unsupported config type '{configType.FullName}' for Docker Azure store resolution.");
+        throw new UnsupportedFrameworkValueException($"Unsupported config type '{configType.FullName}' for Docker Azure store resolution.");
     }
 
     protected override void OnRequirementResolved(EnvironmentRequirement requirement)
@@ -465,7 +466,7 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
                 UsedFunctionAppIdentifiers.Add(requirement.ResourceIdentifier);
                 break;
             case AzureEnvironmentResourceKinds.LogicApp:
-                throw new InvalidOperationException($"DockerAzureEnvironment no longer supports Logic App resource '{requirement.ResourceIdentifier}'. Use a live Azure-hosted Logic App instead of Docker container hosting.");
+                throw new UnsupportedFrameworkValueException($"DockerAzureEnvironment no longer supports Logic App resource '{requirement.ResourceIdentifier}'. Use a live Azure-hosted Logic App instead of Docker container hosting.");
         }
     }
 

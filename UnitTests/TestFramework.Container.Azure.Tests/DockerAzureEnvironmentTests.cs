@@ -17,6 +17,7 @@ using TestFramework.Container.Azure.Contracts;
 using TestFramework.Core.Artifacts;
 using TestFramework.Core.Debugger;
 using TestFramework.Core.Environment;
+using TestFramework.Core.Exceptions;
 using TestFramework.Core.Logging;
 using TestFramework.Core.Steps;
 using TestFramework.Core.Variables;
@@ -425,12 +426,53 @@ public class DockerAzureEnvironmentTests
     {
         Type componentType = typeof(DockerAzureEnvironment).Assembly.GetType("TestFramework.Container.Azure.Components.FunctionAppEnvComponent", throwOnError: true)!;
 
-        InvalidOperationException actual = (InvalidOperationException)componentType
+        FrameworkStateException actual = (FrameworkStateException)componentType
             .GetMethod("CreateMissingFunctionAppOutputException", BindingFlags.Static | BindingFlags.NonPublic)!
             .Invoke(null, [typeof(DockerAzureEnvironmentTests), "TestFramework.Container.Azure.Tests", "C:\\repo\\project", "C:\\repo\\project\\bin\\Debug\\net8.0", "C:\\repo\\project\\bin\\Release\\net8.0"])!;
 
         Assert.Contains("host.json", actual.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Build or publish", actual.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void FunctionAppEnvComponent_ResolveFunctionAppLocation_PrefersOwningProjectOutput_WhenAssemblyComesFromCopiedTestHostOutput()
+    {
+        string root = Path.Combine(Path.GetTempPath(), $"tf-functionapp-{Guid.NewGuid():N}");
+        string projectDirectory = Path.Combine(root, "FunctionApp");
+        string copiedTestHostOutput = Path.Combine(root, "ConsumerTests", "bin", "Debug", "net8.0");
+        string owningProjectOutput = Path.Combine(projectDirectory, "bin", "Debug", "net8.0");
+
+        Directory.CreateDirectory(projectDirectory);
+        Directory.CreateDirectory(copiedTestHostOutput);
+        Directory.CreateDirectory(owningProjectOutput);
+
+        try
+        {
+            File.WriteAllText(Path.Combine(projectDirectory, "TestFramework.Container.Azure.Tests.csproj"), "<Project />");
+            File.WriteAllText(Path.Combine(owningProjectOutput, "host.json"), "{}");
+            File.WriteAllText(Path.Combine(owningProjectOutput, "TestFramework.Container.Azure.Tests.dll"), string.Empty);
+            File.WriteAllText(Path.Combine(copiedTestHostOutput, "TestFramework.Container.Azure.Tests.dll"), string.Empty);
+
+            Type componentType = typeof(DockerAzureEnvironment).Assembly.GetType("TestFramework.Container.Azure.Components.FunctionAppEnvComponent", throwOnError: true)!;
+            object location = componentType
+                .GetMethod("ResolveFunctionAppLocation", BindingFlags.Static | BindingFlags.NonPublic, null, [typeof(Type), typeof(string), typeof(string)], null)!
+                .Invoke(null, [typeof(DockerAzureEnvironmentTests), "TestFramework.Container.Azure.Tests", copiedTestHostOutput])!;
+
+            string outputDirectory = (string)location.GetType().GetProperty("OutputDirectory")!.GetValue(location)!;
+            string initialOutputDirectory = (string)location.GetType().GetProperty("InitialOutputDirectory")!.GetValue(location)!;
+            bool usedFallback = (bool)location.GetType().GetProperty("UsedFallbackOutput")!.GetValue(location)!;
+            string? fallbackReason = (string?)location.GetType().GetProperty("FallbackReason")!.GetValue(location);
+
+            Assert.Equal(owningProjectOutput, outputDirectory);
+            Assert.Equal(copiedTestHostOutput, initialOutputDirectory);
+            Assert.True(usedFallback);
+            Assert.Contains("copied build location", fallbackReason, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+                Directory.Delete(root, recursive: true);
+        }
     }
 
     [Fact]

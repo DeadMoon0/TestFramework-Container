@@ -14,6 +14,7 @@ using TestFramework.Azure.Configuration.SpecificConfigs;
 using TestFramework.Azure.DB.CosmosDB;
 using TestFramework.Core.Artifacts;
 using TestFramework.Core.Environment;
+using TestFramework.Core.Exceptions;
 using TestFramework.Core.Logging;
 using TestFramework.Core.Variables;
 
@@ -121,7 +122,7 @@ internal sealed class CosmosDbEnvComponent : DockerAzureEnvComponent
             }
         }
 
-        throw new TimeoutException($"The Cosmos emulator gateway did not become ready within {GatewayReadinessTimeout}.", lastError);
+        throw new FrameworkTimeoutException($"The Cosmos emulator gateway did not become ready within {GatewayReadinessTimeout}.", lastError);
     }
 
     private static async Task DeploySchemaAsync(string connectionString, CosmosContainerDbConfig config, string partitionKeyPath, ScopedLogger logger, CancellationToken cancellationToken)
