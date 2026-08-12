@@ -26,10 +26,12 @@ jobs:
           docker --version
           docker info > /dev/null
 
-      - name: Setup .NET 8
+      - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 8.0.x
+          dotnet-version: |
+            8.0.x
+            10.0.x
 
       - name: Restore test project
         run: dotnet restore UnitTests/TestFramework.Container.Azure.Tests/TestFramework.Container.Azure.Tests.csproj
