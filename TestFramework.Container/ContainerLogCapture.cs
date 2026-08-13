@@ -28,6 +28,10 @@ public static class ContainerLogCapture
         ArgumentNullException.ThrowIfNull(container);
         ArgumentNullException.ThrowIfNull(logger);
 
+        // Read once, and defensively: a container that never got created throws on this property,
+        // and the failure path must not be the thing that hides why capture was needed.
+        string containerId = DescribeId(container);
+
         try
         {
             (string standardOutput, string standardError) = await container.GetLogsAsync(
@@ -37,10 +41,10 @@ public static class ContainerLogCapture
                 ct: cancellationToken).ConfigureAwait(false);
 
             if (!string.IsNullOrWhiteSpace(standardOutput))
-                logger.LogInformation($"{description} stdout ({container.Id}):{Environment.NewLine}{standardOutput}");
+                logger.LogInformation($"{description} stdout ({containerId}):{Environment.NewLine}{standardOutput}");
 
             if (!string.IsNullOrWhiteSpace(standardError))
-                logger.LogWarning($"{description} stderr ({container.Id}):{Environment.NewLine}{standardError}");
+                logger.LogWarning($"{description} stderr ({containerId}):{Environment.NewLine}{standardError}");
         }
         catch (OperationCanceledException)
         {
@@ -48,7 +52,19 @@ public static class ContainerLogCapture
         }
         catch (Exception exception)
         {
-            logger.LogWarning($"Failed to capture {description} container logs ({container.Id}): {exception.GetType().Name}: {exception.Message}");
+            logger.LogWarning($"Failed to capture {description} container logs ({containerId}): {exception.GetType().Name}: {exception.Message}");
+        }
+    }
+
+    private static string DescribeId(IContainer container)
+    {
+        try
+        {
+            return container.Id;
+        }
+        catch (InvalidOperationException)
+        {
+            return "never created";
         }
     }
 }
