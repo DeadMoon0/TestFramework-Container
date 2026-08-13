@@ -28,6 +28,7 @@ Targets `net8.0` and `net10.0`.
 | `ContainerOutputResolver` | locates a project's build output and its target framework, for bind-mounting |
 | `ContainerLogCapture` | writes a container's output into the run log before it is removed |
 | `ContainerDockerCommands` | removes containers and networks reliably, falling back to disposal |
+| `ContainerDockerHost` | points the client at the Docker Desktop named pipe a Windows machine uses |
 | `MsSqlContainerFactory` | builds a SQL Server container from shared settings |
 
 ## The One Rule Worth Knowing
