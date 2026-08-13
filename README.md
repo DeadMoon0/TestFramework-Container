@@ -23,6 +23,7 @@ Use the container package when the timeline should stay Azure-shaped, but the ba
 |---|---|
 | `TestFramework.Container` | shared Docker building blocks: network, host and network endpoint addressing, readiness waits, build-output resolution, log capture |
 | `TestFramework.Container.Azure` | Docker-backed Azure emulators for TestFramework timelines, built on the above |
+| `TestFramework.Container.Web` | Docker-backed SQL Server for `TestFramework.Web` timelines, built on the same blocks — see [its README](./TestFramework.Container.Web/README.md) |
 
 ## Install
 

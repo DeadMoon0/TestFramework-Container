@@ -1,0 +1,67 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+		<ImplicitUsings>disable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<GenerateDocumentationFile>true</GenerateDocumentationFile>
+		<IsTestProject>false</IsTestProject>
+		<Title>TestFramework.Container.Web</Title>
+		<Version>0.1.0</Version>
+		<Authors>DeadMoon0</Authors>
+		<Product>TestFramework</Product>
+		<Description>Docker-backed environment providers for TestFramework.Web timelines: starts a SQL Server container, provisions the databases a run declares, and publishes their connection strings to the running timeline.</Description>
+		<PackageProjectUrl>https://github.com/DeadMoon0/TestFramework-Container</PackageProjectUrl>
+		<PackageIcon>Icon.png</PackageIcon>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+		<RepositoryUrl>https://github.com/DeadMoon0/TestFramework-Container.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageTags>Test;UnitTest;IntegrationTest;Framework;Timeline;Docker;Web;Sql;SqlServer</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<Copyright>Copyright (c) DeadMoon0 2026</Copyright>
+		<PackageReleaseNotes>Initial release: container-backed SQL Server databases for web timelines</PackageReleaseNotes>
+	</PropertyGroup>
+
+	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+		<TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+	</PropertyGroup>
+
+	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
+		<TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+			<_Parameter1>TestFramework.Container.Web.Tests</_Parameter1>
+		</AssemblyAttribute>
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\TestFramework.Container\TestFramework.Container.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Microsoft.Data.SqlClient" Version="6.1.2" />
+		<PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0" />
+		<!-- Direct reference overrides the vulnerable SSH.NET 2025.1.0 that Testcontainers pulls in
+		     transitively (GHSA-q939-rpr3-3284). Testcontainers still pins it as of 4.13.0. -->
+		<PackageReference Include="SSH.NET" Version="2026.0.0" />
+		<PackageReference Include="Testcontainers" Version="4.11.0" />
+		<PackageReference Include="Testcontainers.MsSql" Version="4.11.0" />
+		<PackageReference Include="TestFramework.Config" Version="0.1.4" />
+		<PackageReference Include="TestFramework.Core" Version="0.1.8" />
+		<PackageReference Include="TestFramework.Web" Version="0.3.0" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<None Include="..\Modules\TestFramework-Common\Assets\Icon.png">
+			<Pack>True</Pack>
+			<PackagePath>\</PackagePath>
+		</None>
+		<None Include="README.md">
+			<Pack>True</Pack>
+			<PackagePath>\</PackagePath>
+		</None>
+	</ItemGroup>
+
+</Project>
