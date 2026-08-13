@@ -39,6 +39,7 @@ internal sealed class ApiEnvComponent : WebEnvComponentBase
     [
         DockerWebEnvironment.NetworkComponentId,
         DockerWebEnvironment.SqlServerComponentId,
+        DockerWebEnvironment.StubComponentId,
     ];
 
     public override async Task<object?> CreateAsync(IEnvironmentProvider environment, IServiceProvider serviceProvider, VariableStore variableStore, ArtifactStore artifactStore, ScopedLogger logger, CancellationToken cancellationToken)
@@ -119,15 +120,22 @@ internal sealed class ApiEnvComponent : WebEnvComponentBase
     private static IReadOnlyDictionary<string, string> ComposeSettings(DockerWebEnvironment webEnvironment, DockerApiDefinition definition, DockerApiSpec spec)
     {
         Dictionary<string, string> settings = new(spec.Settings, StringComparer.OrdinalIgnoreCase);
-        if (spec.SqlBindings.Count == 0)
-            return settings;
 
-        SqlServerComponentState sqlState = webEnvironment.GetRequiredRuntimeState<SqlServerComponentState>(DockerWebEnvironment.SqlServerComponentId);
-        foreach (DockerApiSqlBinding binding in spec.SqlBindings)
+        // The application is on the network, so every address it is given is a network address.
+        // Handing it a host-mapped one would work from the test process and fail from inside the
+        // container.
+        if (spec.SqlBindings.Count > 0)
         {
-            // The application is on the network, so it gets the network address. Handing it the
-            // host-mapped one would work from the test process and fail from inside the container.
-            settings[binding.SettingPath] = sqlState.GetRequiredDatabase(binding.SqlIdentifier).NetworkConnectionString;
+            SqlServerComponentState sqlState = webEnvironment.GetRequiredRuntimeState<SqlServerComponentState>(DockerWebEnvironment.SqlServerComponentId);
+            foreach (DockerApiSqlBinding binding in spec.SqlBindings)
+                settings[binding.SettingPath] = sqlState.GetRequiredDatabase(binding.SqlIdentifier).NetworkConnectionString;
+        }
+
+        if (spec.StubBindings.Count > 0)
+        {
+            StubComponentState stubState = webEnvironment.GetRequiredRuntimeState<StubComponentState>(DockerWebEnvironment.StubComponentId);
+            foreach (DockerApiStubBinding binding in spec.StubBindings)
+                settings[binding.SettingPath] = stubState.GetRequiredStub(binding.StubIdentifier).NetworkBaseUrl.ToString();
         }
 
         return settings;

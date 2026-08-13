@@ -115,7 +115,7 @@ public class DockerApiDefinitionTests
 
         FrameworkConfigurationException exception = Assert.Throws<FrameworkConfigurationException>(builder.Build);
 
-        Assert.Contains("more than one database", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("more than one resource", exception.Message, StringComparison.Ordinal);
     }
 
     internal sealed class OtherSqlDefinition : DockerSqlDefinition

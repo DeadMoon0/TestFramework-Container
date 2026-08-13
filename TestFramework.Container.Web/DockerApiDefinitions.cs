@@ -5,6 +5,7 @@ using System.Linq;
 using TestFramework.Core.Exceptions;
 using TestFramework.Web.Identifier;
 using TestFramework.Web.Sql;
+using TestFramework.Web.Stub;
 
 namespace TestFramework.Container.Web;
 
@@ -81,6 +82,7 @@ public sealed class DockerApiBuilder(Type definitionType)
     private readonly Dictionary<string, string> _settings = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _environmentVariables = new(StringComparer.Ordinal);
     private readonly List<DockerApiSqlBinding> _sqlBindings = [];
+    private readonly List<DockerApiStubBinding> _stubBindings = [];
     private string _environmentName = DockerWebDefaults.ApiEnvironmentName;
     private string? _healthPath = DockerWebDefaults.ApiHealthPath;
     private string? _image;
@@ -211,26 +213,42 @@ public sealed class DockerApiBuilder(Type definitionType)
     }
 
     /// <summary>
+    /// Points a configuration value at a declared stub, using the address containers reach it by.
+    /// </summary>
+    /// <typeparam name="TStub">The stub definition to bind to.</typeparam>
+    /// <param name="settingPath">The configuration path receiving the stub's address.</param>
+    /// <remarks>
+    /// The application is given the network address of the stub, never the host-mapped one the test
+    /// process uses.
+    /// </remarks>
+    public DockerApiBuilder UseStub<TStub>(string settingPath)
+        where TStub : StubDefinition, new()
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(settingPath);
+        _stubBindings.Add(new DockerApiStubBinding(new TStub().Identifier, settingPath));
+        return this;
+    }
+
+    /// <summary>
     /// Validates and returns the collected declaration.
     /// </summary>
     /// <exception cref="FrameworkConfigurationException">The declaration is inconsistent.</exception>
     public DockerApiSpec Build()
     {
-        string[] collisions = [.. _sqlBindings
-            .Select(binding => binding.SettingPath)
+        string[] collisions = [.. BoundPaths
             .Where(path => _settings.ContainsKey(path))
             .Distinct(StringComparer.OrdinalIgnoreCase)];
 
         if (collisions.Length > 0)
-            throw new FrameworkConfigurationException($"'{definitionType.Name}' sets {string.Join(", ", collisions.Select(path => $"'{path}'"))} both directly and from a database binding, so the value that would win is not obvious. Remove one of the two.");
+            throw new FrameworkConfigurationException($"'{definitionType.Name}' sets {string.Join(", ", collisions.Select(path => $"'{path}'"))} both directly and from a resource binding, so the value that would win is not obvious. Remove one of the two.");
 
-        string[] duplicateBindings = [.. _sqlBindings
-            .GroupBy(binding => binding.SettingPath, StringComparer.OrdinalIgnoreCase)
+        string[] duplicateBindings = [.. BoundPaths
+            .GroupBy(path => path, StringComparer.OrdinalIgnoreCase)
             .Where(group => group.Count() > 1)
             .Select(group => group.Key)];
 
         if (duplicateBindings.Length > 0)
-            throw new FrameworkConfigurationException($"'{definitionType.Name}' binds {string.Join(", ", duplicateBindings.Select(path => $"'{path}'"))} to more than one database.");
+            throw new FrameworkConfigurationException($"'{definitionType.Name}' binds {string.Join(", ", duplicateBindings.Select(path => $"'{path}'"))} to more than one resource.");
 
         return new DockerApiSpec(
             _image,
@@ -241,8 +259,12 @@ public sealed class DockerApiBuilder(Type definitionType)
             _readinessTimeout,
             _settings,
             _environmentVariables,
-            [.. _sqlBindings]);
+            [.. _sqlBindings],
+            [.. _stubBindings]);
     }
+
+    private IEnumerable<string> BoundPaths
+        => _sqlBindings.Select(binding => binding.SettingPath).Concat(_stubBindings.Select(binding => binding.SettingPath));
 }
 
 /// <summary>
@@ -251,6 +273,13 @@ public sealed class DockerApiBuilder(Type definitionType)
 /// <param name="SqlIdentifier">The database the value points at.</param>
 /// <param name="SettingPath">The configuration path receiving the connection string.</param>
 public sealed record DockerApiSqlBinding(SqlIdentifier SqlIdentifier, string SettingPath);
+
+/// <summary>
+/// A configuration value that carries the address of a declared stub.
+/// </summary>
+/// <param name="StubIdentifier">The stub the value points at.</param>
+/// <param name="SettingPath">The configuration path receiving the base address.</param>
+public sealed record DockerApiStubBinding(StubIdentifier StubIdentifier, string SettingPath);
 
 /// <summary>
 /// How one application is run.
@@ -264,6 +293,7 @@ public sealed record DockerApiSqlBinding(SqlIdentifier SqlIdentifier, string Set
 /// <param name="Settings">Configuration values written to the generated settings file.</param>
 /// <param name="EnvironmentVariables">Environment variables passed to the container.</param>
 /// <param name="SqlBindings">Configuration values carrying database addresses.</param>
+/// <param name="StubBindings">Configuration values carrying stub addresses.</param>
 public sealed record DockerApiSpec(
     string? Image,
     string? OutputDirectory,
@@ -273,7 +303,8 @@ public sealed record DockerApiSpec(
     TimeSpan ReadinessTimeout,
     IReadOnlyDictionary<string, string> Settings,
     IReadOnlyDictionary<string, string> EnvironmentVariables,
-    IReadOnlyList<DockerApiSqlBinding> SqlBindings)
+    IReadOnlyList<DockerApiSqlBinding> SqlBindings,
+    IReadOnlyList<DockerApiStubBinding> StubBindings)
 {
     /// <summary>
     /// Returns the runtime image for a target framework moniker.
@@ -304,5 +335,5 @@ public sealed record DockerApiSpec(
     /// Returns a readable description of the declaration.
     /// </summary>
     public override string ToString()
-        => $"{EnvironmentName} on port {InternalPort} ({Settings.Count} setting(s), {SqlBindings.Count} database binding(s))";
+        => $"{EnvironmentName} on port {InternalPort} ({Settings.Count} setting(s), {SqlBindings.Count} database binding(s), {StubBindings.Count} stub binding(s))";
 }

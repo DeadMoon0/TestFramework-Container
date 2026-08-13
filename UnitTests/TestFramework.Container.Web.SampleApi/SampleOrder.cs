@@ -6,7 +6,13 @@ namespace TestFramework.Container.Web.SampleApi;
 /// <param name="Id">The database-assigned key.</param>
 /// <param name="Name">The order name.</param>
 /// <param name="Quantity">The ordered quantity.</param>
-public sealed record SampleOrder(int Id, string Name, int Quantity);
+public sealed record SampleOrder(int Id, string Name, int Quantity)
+{
+    /// <summary>
+    /// What the payments dependency reported, or <c>skipped</c> when none was configured.
+    /// </summary>
+    public string PaymentStatus { get; init; } = "skipped";
+}
 
 /// <summary>
 /// An order as a caller creates it, without the key the database assigns.

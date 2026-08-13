@@ -8,6 +8,7 @@ using TestFramework.Core.Exceptions;
 using TestFramework.Web;
 using TestFramework.Web.Sql;
 using TestFramework.Web.Sql.Artifacts;
+using TestFramework.Web.Stub;
 
 namespace TestFramework.Container.Web;
 
@@ -44,7 +45,13 @@ public class DockerWebEnvironment : EnvironmentProviderBase
     /// </summary>
     public static readonly EnvComponentIdentifier ApiComponentId = "api";
 
+    /// <summary>
+    /// The component that runs the declared stub servers.
+    /// </summary>
+    public static readonly EnvComponentIdentifier StubComponentId = "stub";
+
     private readonly Dictionary<Type, DockerWebDefinition> _definitions = [];
+    private readonly Dictionary<Type, StubDefinition> _stubDefinitions = [];
     private readonly Dictionary<EnvComponentIdentifier, object?> _runtimeStates = [];
     private readonly object _runtimeStateGate = new();
 
@@ -55,10 +62,12 @@ public class DockerWebEnvironment : EnvironmentProviderBase
     {
         AddComponent(new WebNetworkEnvComponent());
         AddComponent(new SqlServerEnvComponent());
+        AddComponent(new StubEnvComponent());
         AddComponent(new ApiEnvComponent());
 
         MapResourceKind(WebEnvironmentResourceKinds.Sql, SqlServerComponentId);
         MapResourceKind(WebEnvironmentResourceKinds.RestApi, ApiComponentId);
+        MapResourceKind(WebEnvironmentResourceKinds.Stub, StubComponentId);
         MapArtifact(typeof(SqlRowArtifactDescriber<>), SqlServerComponentId);
     }
 
@@ -71,6 +80,16 @@ public class DockerWebEnvironment : EnvironmentProviderBase
     /// The API identifiers the last resolution found in use.
     /// </summary>
     public HashSet<string> UsedApiIdentifiers { get; } = [];
+
+    /// <summary>
+    /// The stub identifiers the last resolution found in use.
+    /// </summary>
+    public HashSet<string> UsedStubIdentifiers { get; } = [];
+
+    /// <summary>
+    /// The image the stub servers run.
+    /// </summary>
+    public string StubImage { get; private set; } = DockerWebDefaults.StubImage;
 
     /// <summary>
     /// The image the SQL Server container runs.
@@ -160,6 +179,43 @@ public class DockerWebEnvironment : EnvironmentProviderBase
     }
 
     /// <summary>
+    /// Overrides the stub server image.
+    /// </summary>
+    /// <param name="image">The image to run.</param>
+    public DockerWebEnvironment UseStubImage(string image)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(image);
+        StubImage = image;
+        return this;
+    }
+
+    /// <summary>
+    /// Declares a stubbed dependency this environment serves.
+    /// </summary>
+    /// <typeparam name="TStub">The stub definition to include.</typeparam>
+    /// <remarks>
+    /// A stub definition says nothing about hosting, so it comes from the web package rather than
+    /// this one. Including it here is what decides that a container serves it.
+    /// </remarks>
+    public DockerWebEnvironment IncludeStub<TStub>()
+        where TStub : StubDefinition, new()
+        => Include(new TStub());
+
+    /// <summary>
+    /// Declares a stubbed dependency this environment serves.
+    /// </summary>
+    /// <param name="definition">The stub definition to include.</param>
+    /// <exception cref="FrameworkConfigurationException">Two definitions claim the same identifier.</exception>
+    public DockerWebEnvironment Include(StubDefinition definition)
+    {
+        ArgumentNullException.ThrowIfNull(definition);
+
+        EnsureUniqueStubIdentifier(definition);
+        _stubDefinitions[definition.GetType()] = definition;
+        return this;
+    }
+
+    /// <summary>
     /// The SQL databases this environment provisions.
     /// </summary>
     public IReadOnlyList<DockerSqlDefinition> GetSqlDefinitions()
@@ -171,6 +227,12 @@ public class DockerWebEnvironment : EnvironmentProviderBase
     public IReadOnlyList<DockerApiDefinition> GetApiDefinitions()
         => [.. _definitions.Values.OfType<DockerApiDefinition>().OrderBy(definition => definition.Identifier.Identifier, StringComparer.Ordinal)];
 
+    /// <summary>
+    /// The stubbed dependencies this environment serves.
+    /// </summary>
+    public IReadOnlyList<StubDefinition> GetStubDefinitions()
+        => [.. _stubDefinitions.Values.OrderBy(definition => definition.Identifier.Identifier, StringComparer.Ordinal)];
+
     /// <inheritdoc />
     public override IReadOnlyCollection<EnvComponentIdentifier> ResolveComponents(IEnumerable<ArtifactInstanceGeneric> artifacts, IEnumerable<EnvironmentRequirement> requirements)
     {
@@ -178,6 +240,7 @@ public class DockerWebEnvironment : EnvironmentProviderBase
 
         UsedSqlIdentifiers.Clear();
         UsedApiIdentifiers.Clear();
+        UsedStubIdentifiers.Clear();
 
         foreach (ArtifactInstanceGeneric artifact in artifacts)
         {
@@ -196,6 +259,9 @@ public class DockerWebEnvironment : EnvironmentProviderBase
 
         if (GetApiDefinitions().Count > 0)
             resolved.Add(ApiComponentId);
+
+        if (GetStubDefinitions().Count > 0)
+            resolved.Add(StubComponentId);
 
         EnsureDeclaredIdentifiers();
         EnsureDeclaredApiBindings();
@@ -241,6 +307,19 @@ public class DockerWebEnvironment : EnvironmentProviderBase
 
         if (string.Equals(requirement.ResourceKind, WebEnvironmentResourceKinds.RestApi, StringComparison.Ordinal))
             UsedApiIdentifiers.Add(requirement.ResourceIdentifier);
+
+        if (string.Equals(requirement.ResourceKind, WebEnvironmentResourceKinds.Stub, StringComparison.Ordinal))
+            UsedStubIdentifiers.Add(requirement.ResourceIdentifier);
+    }
+
+    private void EnsureUniqueStubIdentifier(StubDefinition candidate)
+    {
+        StubDefinition? conflicting = GetStubDefinitions().FirstOrDefault(existing =>
+            existing.GetType() != candidate.GetType()
+            && string.Equals(existing.Identifier.Identifier, candidate.Identifier.Identifier, StringComparison.Ordinal));
+
+        if (conflicting is not null)
+            throw new FrameworkConfigurationException($"'{candidate.GetType().Name}' and '{conflicting.GetType().Name}' both declare the stub identifier '{candidate.Identifier}'. One identifier is served by one definition.");
     }
 
     private static void EnsureUniqueIdentifier<TDefinition>(
@@ -273,28 +352,49 @@ public class DockerWebEnvironment : EnvironmentProviderBase
             "API",
             nameof(DockerApiDefinition),
             "which application to run");
+
+        EnsureDeclared(
+            UsedStubIdentifiers,
+            [.. GetStubDefinitions().Select(definition => definition.Identifier.Identifier)],
+            "stub",
+            nameof(StubDefinition),
+            "which stub to serve");
     }
 
     private void EnsureDeclaredApiBindings()
     {
         HashSet<string> databases = [.. GetSqlDefinitions().Select(definition => definition.Identifier.Identifier)];
+        HashSet<string> stubs = [.. GetStubDefinitions().Select(definition => definition.Identifier.Identifier)];
 
         foreach (DockerApiDefinition api in GetApiDefinitions())
         {
-            string[] missing = [.. api.Build().SqlBindings
-                .Select(binding => binding.SqlIdentifier.Identifier)
-                .Where(identifier => !databases.Contains(identifier))
-                .Distinct(StringComparer.Ordinal)
-                .OrderBy(identifier => identifier, StringComparer.Ordinal)];
+            DockerApiSpec spec = api.Build();
 
-            if (missing.Length == 0)
-                continue;
-
-            throw new FrameworkConfigurationException(
-                $"'{api.GetType().Name}' binds to the SQL identifier(s) {string.Join(", ", missing.Select(identifier => $"'{identifier}'"))}, which no included definition declares. "
-                + $"Declared: {(databases.Count == 0 ? "none" : string.Join(", ", databases.OrderBy(identifier => identifier, StringComparer.Ordinal)))}. "
-                + "Include the DockerSqlDefinition the application needs, so it can be given an address.");
+            EnsureBound(api, databases, [.. spec.SqlBindings.Select(binding => binding.SqlIdentifier.Identifier)], "SQL", nameof(DockerSqlDefinition), "a database");
+            EnsureBound(api, stubs, [.. spec.StubBindings.Select(binding => binding.StubIdentifier.Identifier)], "stub", nameof(StubDefinition), "a stub");
         }
+    }
+
+    private static void EnsureBound(
+        DockerApiDefinition api,
+        HashSet<string> declared,
+        IReadOnlyList<string> bound,
+        string kind,
+        string definitionTypeName,
+        string whatItNeeds)
+    {
+        string[] missing = [.. bound
+            .Where(identifier => !declared.Contains(identifier))
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(identifier => identifier, StringComparer.Ordinal)];
+
+        if (missing.Length == 0)
+            return;
+
+        throw new FrameworkConfigurationException(
+            $"'{api.GetType().Name}' binds to the {kind} identifier(s) {string.Join(", ", missing.Select(identifier => $"'{identifier}'"))}, which no included definition declares. "
+            + $"Declared: {(declared.Count == 0 ? "none" : string.Join(", ", declared.OrderBy(identifier => identifier, StringComparer.Ordinal)))}. "
+            + $"Include the {definitionTypeName} the application needs, so it can be given {whatItNeeds}.");
     }
 
     private static void EnsureDeclared(

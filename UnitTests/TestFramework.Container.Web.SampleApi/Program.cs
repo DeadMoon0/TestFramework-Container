@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Globalization;
+using System.Net.Http;
+using System.Net.Http.Json;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -54,9 +56,33 @@ app.MapPost("/api/orders", async (CreateSampleOrder order) =>
     if (assignedId is not int id)
         return Results.Problem("The database did not assign an identity.");
 
+    string paymentStatus = await ChargeAsync(id, order.Quantity).ConfigureAwait(false);
+
     return Results.Created(
         $"/api/orders/{id.ToString(CultureInfo.InvariantCulture)}",
-        new SampleOrder(id, order.Name, order.Quantity));
+        new SampleOrder(id, order.Name, order.Quantity) { PaymentStatus = paymentStatus });
 });
 
+// The dependency this application calls outwards. It is optional so the application still runs when
+// nothing stubbed it, which is what an unconfigured integration usually should do.
+async Task<string> ChargeAsync(int orderId, int quantity)
+{
+    string? paymentsBaseUrl = app.Configuration["Services:Payments:BaseUrl"];
+    if (string.IsNullOrWhiteSpace(paymentsBaseUrl))
+        return "skipped";
+
+    using HttpClient client = new() { BaseAddress = new Uri(paymentsBaseUrl, UriKind.Absolute) };
+    using HttpResponseMessage response = await client
+        .PostAsJsonAsync("api/charges", new { orderId, amount = quantity * 10 })
+        .ConfigureAwait(false);
+
+    if (!response.IsSuccessStatusCode)
+        return $"failed:{(int)response.StatusCode}";
+
+    ChargeResponse? charge = await response.Content.ReadFromJsonAsync<ChargeResponse>().ConfigureAwait(false);
+    return charge?.Status ?? "unknown";
+}
+
 await app.RunAsync().ConfigureAwait(false);
+
+internal sealed record ChargeResponse(string Status);

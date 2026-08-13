@@ -2,7 +2,7 @@
 
 # TestFramework.Container.Web
 
-Serves the API and the database a `TestFramework.Web` timeline needs from Docker containers.
+Serves the API, the database and the stubbed dependencies a `TestFramework.Web` timeline needs from Docker containers.
 
 A timeline written against a deployed system runs here unchanged. It still names an identifier; this
 environment decides that the identifier is served by a container it starts, and publishes the address
@@ -172,6 +172,59 @@ serving the code it started with, so an edit-and-rerun cycle would silently test
 Databases have reset modes for stale *data*; there is no equivalent for a stale binary, so the
 application container is per-run and the SQL container is not.
 
+## Stubbing What The Application Calls
+
+A stub definition comes from `TestFramework.Web` and says nothing about hosting — declaring it here
+is what decides that a container serves it:
+
+```csharp
+internal sealed class PaymentsStubDefinition : StubDefinition
+{
+    public override StubIdentifier Identifier => "payments";
+
+    protected override void Configure(StubMappingBuilder builder) => builder
+        .OnGet("/api/rates/EUR")
+            .RespondJson(HttpStatusCode.OK, new { currency = "EUR", rate = 1.08 })
+        .OnPost("/api/charges")
+            .WithHeader("Idempotency-Key")
+            .RespondJson(HttpStatusCode.Created, new { id = "{{Random Type=Guid}}" }, useTemplating: true);
+}
+```
+
+The application is pointed at it the same way it is pointed at a database:
+
+```csharp
+protected override void Configure(DockerApiBuilder builder) => builder
+    .UseSql<SalesSqlDefinition>("ConnectionStrings:Sales")
+    .UseStub<PaymentsStubDefinition>("Services:Payments:BaseUrl");
+
+DockerWebEnvironment.For<SalesSqlDefinition>()
+    .Include<OrdersApiDefinition>()
+    .IncludeStub<PaymentsStubDefinition>();
+```
+
+Then the timeline asserts on what the application sent **outwards**, which no response body can show:
+
+```csharp
+.WaitForEvent(WebExt.Stub.Called("payments", HttpMethod.Post, "/api/charges")).Name("charged")
+.Trigger(WebExt.Stub.Calls("payments")).Name("calls")
+
+run.StubCall("charged").Select(call => call.Body).Should().Contain("\"amount\":30");
+run.StubCalls("calls").Should().HaveCount(1);
+run.StubUnmatchedCalls("calls").Should().HaveCount(0);   // nothing was called that was not declared
+```
+
+Mappings are declarative because a container cannot call back into the test process. Handlebars
+templating (`{{request.body.amount}}`) covers the cases a C# callback would otherwise be reached for.
+
+Two things worth knowing:
+
+- **Mappings are verified on startup.** A mapping the server rejects is simply absent, and every call
+  to it would answer `404` for no visible reason, so the component compares declared against loaded
+  and fails immediately with the container log if they differ.
+- **The image follows `latest`.** Its publisher does not tag releases; pin it with
+  `UseStubImage(...)` when a run has to be reproducible over time.
+
 ## Two Addresses, Again
 
 The test process gets the **host** connection string; the application container gets the **network**
@@ -204,6 +257,7 @@ DockerWebEnvironment.For<SampleSqlDefinition>()
 |---|---|
 | `The run has no SQL configuration store` | `LoadWebConfig()` was not called on the config the run uses. |
 | `The run has no API configuration store` | The same, for an application. |
+| `declared N mapping(s) but the server loaded M` | The stub server rejected a mapping. Its log, already captured, names the file. |
 | `which no included definition declares` | A step, artifact or binding names an identifier no definition was included for. The message lists what is declared. |
 | `does not name a database` | The definition's `Configure` never called `WithDatabase(...)`. |
 | `is not a plain identifier` | A database name goes into a statement verbatim, so only letters, digits and underscores are accepted. |
@@ -215,5 +269,6 @@ DockerWebEnvironment.For<SampleSqlDefinition>()
 
 ## Scope
 
-This package runs the application under test and the SQL Server behind it. Stubbing the services
-*that* application calls is not part of it yet.
+This package runs the application under test, the SQL Server behind it, and the stubbed dependencies
+in front of it. It does not host an application in the test process; that is deliberately a different
+environment, not a mode of this one.

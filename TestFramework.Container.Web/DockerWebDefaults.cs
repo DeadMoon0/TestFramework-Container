@@ -70,4 +70,37 @@ public static class DockerWebDefaults
     /// How long to wait for a started application to answer.
     /// </summary>
     public static readonly TimeSpan ApiReadinessTimeout = TimeSpan.FromMinutes(2);
+
+    /// <summary>
+    /// The stub server image started for declared stubs.
+    /// </summary>
+    /// <remarks>
+    /// The publisher does not tag releases, so this follows <c>latest</c>. Pin it with
+    /// <c>UseStubImage(...)</c> when a run has to be reproducible over time.
+    /// </remarks>
+    public const string StubImage = "sheyenrath/wiremock.net:latest";
+
+    /// <summary>
+    /// The directory a stub server reads its mappings from.
+    /// </summary>
+    /// <remarks>
+    /// The image's working directory is <c>/app</c>, and the server loads static mappings from
+    /// <c>__admin/mappings</c> below it.
+    /// </remarks>
+    public const string StubMappingsRoot = "/app/__admin/mappings";
+
+    /// <summary>
+    /// The port a stub server listens on inside its container.
+    /// </summary>
+    public const int StubInternalPort = 80;
+
+    /// <summary>
+    /// The administration path a stub server exposes.
+    /// </summary>
+    public const string StubAdminPath = "/__admin";
+
+    /// <summary>
+    /// How long to wait for a started stub server to answer.
+    /// </summary>
+    public static readonly TimeSpan StubReadinessTimeout = TimeSpan.FromSeconds(60);
 }
