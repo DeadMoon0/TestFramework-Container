@@ -6,7 +6,7 @@
 		<Nullable>enable</Nullable>
 		<IsTestProject>false</IsTestProject>
 		<Title>TestFramework.Container.Azure</Title>
-		<Version>0.1.7</Version>
+		<Version>0.1.8</Version>
 		<Authors>DeadMoon0</Authors>
 		<Product>TestFramework</Product>
 		<Description>Docker-backed environment providers for TestFramework timelines for Azure components.</Description>
@@ -18,7 +18,7 @@
 		<PackageTags>Test;UnitTest;IntegrationTest;Framework;Timeline;Docker;Azure</PackageTags>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<Copyright>Copyright (c) DeadMoon0 2026</Copyright>
-		<PackageReleaseNotes>Multi-target net8.0 and net10.0</PackageReleaseNotes>
+		<PackageReleaseNotes>Override the vulnerable transitive SSH.NET dependency</PackageReleaseNotes>
 	</PropertyGroup>
 
 	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
@@ -48,6 +48,9 @@
 		<PackageReference Include="Microsoft.Azure.Cosmos" Version="3.59.0" />
 		<PackageReference Include="Microsoft.Data.SqlClient" Version="6.1.2" />
 		<PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+		<!-- Direct reference overrides the vulnerable SSH.NET 2025.1.0 that Testcontainers pulls in
+		     transitively (GHSA-q939-rpr3-3284). Testcontainers still pins it as of 4.13.0. -->
+		<PackageReference Include="SSH.NET" Version="2026.0.0" />
 		<PackageReference Include="Testcontainers" Version="4.11.0" />
 		<PackageReference Include="Testcontainers.Azurite" Version="4.11.0" />
 		<PackageReference Include="Testcontainers.CosmosDb" Version="4.11.0" />
