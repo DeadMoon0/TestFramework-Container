@@ -37,8 +37,10 @@ jobs:
         run: |
           dotnet restore UnitTests/TestFramework.Container.Tests/TestFramework.Container.Tests.csproj
           dotnet restore UnitTests/TestFramework.Container.Azure.Tests/TestFramework.Container.Azure.Tests.csproj
+          dotnet restore UnitTests/TestFramework.Container.Web.Tests/TestFramework.Container.Web.Tests.csproj
 
       - name: Run unit tests
         run: |
           dotnet test UnitTests/TestFramework.Container.Tests/TestFramework.Container.Tests.csproj --configuration Release --no-restore --logger "trx"
           dotnet test UnitTests/TestFramework.Container.Azure.Tests/TestFramework.Container.Azure.Tests.csproj --configuration Release --no-restore --logger "trx"
+          dotnet test UnitTests/TestFramework.Container.Web.Tests/TestFramework.Container.Web.Tests.csproj --configuration Release --no-restore --logger "trx"
