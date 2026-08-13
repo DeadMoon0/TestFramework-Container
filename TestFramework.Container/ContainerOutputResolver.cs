@@ -40,6 +40,23 @@ public sealed record ContainerOutput(string ProjectDirectory, string OutputDirec
     /// The entry assembly file name, as passed to <c>dotnet</c> inside the container.
     /// </summary>
     public string AssemblyFileName => $"{AssemblyName}.dll";
+
+    /// <summary>
+    /// When the shipped assembly was last written.
+    /// </summary>
+    /// <remarks>
+    /// Nothing here builds anything: the output is expected to exist already, normally because a
+    /// project reference made the test build produce it. That leaves one failure this cannot
+    /// prevent -- shipping a stale build and testing last week's code -- so the timestamp is
+    /// reported instead of assumed.
+    /// </remarks>
+    public DateTimeOffset? AssemblyLastWriteTimeUtc => ReadTimestamp();
+
+    private DateTimeOffset? ReadTimestamp()
+    {
+        string path = Path.Combine(OutputDirectory, AssemblyFileName);
+        return File.Exists(path) ? new DateTimeOffset(File.GetLastWriteTimeUtc(path), TimeSpan.Zero) : null;
+    }
 }
 
 /// <summary>

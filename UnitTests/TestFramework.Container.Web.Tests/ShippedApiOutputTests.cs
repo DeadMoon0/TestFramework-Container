@@ -37,4 +37,17 @@ public class ShippedApiOutputTests
         Assert.StartsWith("net", output.TargetFramework, StringComparison.Ordinal);
         Assert.EndsWith(output.TargetFramework, output.OutputDirectory, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void ResolveProjectOutput_ReportsHowOldTheShippedBuildIs()
+    {
+        // Nothing builds the application, so the age of what gets shipped is the only signal that a
+        // stale output is being tested.
+        ContainerOutput output = ContainerOutputResolver.ResolveProjectOutput(typeof(SampleApiMarker));
+
+        Assert.NotNull(output.AssemblyLastWriteTimeUtc);
+        Assert.Equal(
+            File.GetLastWriteTimeUtc(Path.Combine(output.OutputDirectory, output.AssemblyFileName)),
+            output.AssemblyLastWriteTimeUtc!.Value.UtcDateTime);
+    }
 }

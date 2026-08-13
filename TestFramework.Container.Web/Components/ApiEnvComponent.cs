@@ -65,12 +65,14 @@ internal sealed class ApiEnvComponent : WebEnvComponentBase
             string settingsFileName = ApiSettingsFile.FileName(spec.EnvironmentName);
             string image = spec.ResolveImage(output.TargetFramework);
 
-            // Stated rather than implied: what is shipped, from where, and with which settings.
+            // Stated rather than implied: what is shipped, from where, how old it is, and on what.
+            // Nothing here builds; the timestamp is how a stale output becomes visible.
             logger.LogInformation(
-                "API '{0}' ships '{1}' ({2}) on image '{3}'.",
+                "API '{0}' ships '{1}' ({2}, built {3}) on image '{4}'.",
                 definition.Identifier.ToString(),
                 output.OutputDirectory,
                 output.TargetFramework,
+                output.AssemblyLastWriteTimeUtc?.ToString("u", CultureInfo.InvariantCulture) ?? "unknown",
                 image);
 
             if (output.UsedFallbackOutput)
@@ -85,7 +87,14 @@ internal sealed class ApiEnvComponent : WebEnvComponentBase
             await WaitForReadinessAsync(container, definition, spec, baseUrl, logger, cancellationToken).ConfigureAwait(false);
 
             Publish(configStore, definition.Identifier, baseUrl, spec.HealthPath);
-            apis.Add(new RunningApi(definition.Identifier, container, baseUrl, output.OutputDirectory, settingsFileName, settingsJson));
+            apis.Add(new RunningApi(
+                definition.Identifier,
+                container,
+                baseUrl,
+                output.OutputDirectory,
+                output.AssemblyLastWriteTimeUtc,
+                settingsFileName,
+                settingsJson));
 
             logger.LogInformation("API '{0}' is reachable at '{1}'.", definition.Identifier.ToString(), baseUrl);
         }

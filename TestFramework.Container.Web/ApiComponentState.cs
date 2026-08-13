@@ -13,17 +13,21 @@ namespace TestFramework.Container.Web;
 /// <param name="Container">The running container.</param>
 /// <param name="BaseUrl">The address the test process reaches it at.</param>
 /// <param name="ShippedDirectory">The build output that was copied into it.</param>
+/// <param name="ShippedBuiltAtUtc">When the shipped assembly was last written.</param>
 /// <param name="SettingsFileName">The name of the generated settings file.</param>
 /// <param name="SettingsJson">The exact configuration the application was given.</param>
 /// <remarks>
-/// The shipped directory and the settings content are kept so a test can state what actually ran,
-/// rather than having to infer it from a container that may already be gone.
+/// The shipped directory, its age and the settings content are kept so a test can state what
+/// actually ran, rather than having to infer it from a container that may already be gone. Nothing
+/// in this package builds the application, so the timestamp is the only evidence that what ran was
+/// not a stale build.
 /// </remarks>
 public sealed record RunningApi(
     string Identifier,
     IContainer Container,
     Uri BaseUrl,
     string ShippedDirectory,
+    DateTimeOffset? ShippedBuiltAtUtc,
     string SettingsFileName,
     string SettingsJson);
 
