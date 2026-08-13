@@ -23,8 +23,12 @@ public sealed record ContainerOutput(string ProjectDirectory, string OutputDirec
     public string? InitialOutputDirectory { get; init; }
 
     /// <summary>
-    /// Whether the owning project's output was used instead of the loaded location.
+    /// Whether the preferred location was unusable, so the second candidate was chosen.
     /// </summary>
+    /// <remarks>
+    /// Which location is preferred depends on the method used. <see cref="FallbackReason"/> says
+    /// what happened.
+    /// </remarks>
     public bool UsedFallbackOutput { get; init; }
 
     /// <summary>
@@ -69,6 +73,57 @@ public static class ContainerOutputResolver
             ?? throw new DirectoryNotFoundException($"Could not locate the output directory for '{entryPointType.FullName}'.");
 
         return ResolveFrom(entryPointType, loadedOutputDirectory, requiredFiles);
+    }
+
+    /// <summary>
+    /// Resolves the owning project's own build output, preferring it over the loaded location.
+    /// </summary>
+    /// <param name="entryPointType">A type from the application assembly.</param>
+    /// <param name="requiredFiles">
+    /// File names that must exist in the output, relative to it. The assembly itself is always
+    /// required.
+    /// </param>
+    /// <remarks>
+    /// Use this when shipping an application into a container. A project-referenced assembly is
+    /// copied into the referencing project's output as well, so the location it was loaded from is
+    /// often a test project's directory: complete enough to run, but full of assemblies the
+    /// application does not need, and misleading about what was shipped.
+    /// </remarks>
+    /// <exception cref="FrameworkConfigurationException">The output could not be located.</exception>
+    public static ContainerOutput ResolveProjectOutput(Type entryPointType, params string[] requiredFiles)
+    {
+        ArgumentNullException.ThrowIfNull(entryPointType);
+        ArgumentNullException.ThrowIfNull(requiredFiles);
+
+        Assembly assembly = entryPointType.Assembly;
+        if (string.IsNullOrWhiteSpace(assembly.Location))
+            throw new FrameworkConfigurationException($"Could not resolve an assembly location for '{entryPointType.FullName}'. Single-file or in-memory assemblies cannot be shipped into a container.");
+
+        string loadedOutputDirectory = Path.GetDirectoryName(assembly.Location)
+            ?? throw new DirectoryNotFoundException($"Could not locate the output directory for '{entryPointType.FullName}'.");
+
+        string assemblyName = assembly.GetName().Name
+            ?? throw new FrameworkStateException($"The assembly name for '{entryPointType.FullName}' could not be resolved.");
+
+        string targetFramework = ResolveTargetFramework(assembly);
+        string projectDirectory = ResolveProjectDirectory(assemblyName, loadedOutputDirectory);
+        string[] required = [$"{assemblyName}.dll", .. requiredFiles];
+        string projectOutput = Path.Combine(projectDirectory, "bin", ResolveBuildConfiguration(loadedOutputDirectory), targetFramework);
+
+        if (LooksComplete(projectOutput, required))
+            return new ContainerOutput(projectDirectory, projectOutput, targetFramework, assemblyName) { InitialOutputDirectory = loadedOutputDirectory };
+
+        if (LooksComplete(loadedOutputDirectory, required))
+        {
+            return new ContainerOutput(projectDirectory, loadedOutputDirectory, targetFramework, assemblyName)
+            {
+                InitialOutputDirectory = loadedOutputDirectory,
+                UsedFallbackOutput = true,
+                FallbackReason = $"The project's own output ('{projectOutput}') does not contain {string.Join(" and ", required)}, so the location the assembly was loaded from is shipped instead.",
+            };
+        }
+
+        throw CreateMissingOutputException(entryPointType, projectDirectory, projectOutput, loadedOutputDirectory, required);
     }
 
     /// <summary>

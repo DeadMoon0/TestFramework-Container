@@ -32,7 +32,7 @@ public static class ContainerReadiness
     ];
 
     /// <summary>
-    /// Waits until an HTTP endpoint answers.
+    /// Waits until an HTTP endpoint answers with a status that proves the service is up.
     /// </summary>
     /// <param name="baseAddress">The base address to probe.</param>
     /// <param name="path">The path to request, relative to the base address.</param>
@@ -41,16 +41,60 @@ public static class ContainerReadiness
     /// <param name="logger">The scoped logger.</param>
     /// <param name="cancellationToken">The cancellation token for the running setup.</param>
     /// <exception cref="FrameworkTimeoutException">The endpoint did not answer within the timeout.</exception>
-    public static async Task WaitForHttpAsync(
+    public static Task WaitForHttpAsync(
         Uri baseAddress,
         string path,
         TimeSpan timeout,
         string description,
         ScopedLogger logger,
         CancellationToken cancellationToken)
+        => WaitForHttpAsync(baseAddress, path, timeout, description, logger, AnsweringStatusCodes.Contains, cancellationToken);
+
+    /// <summary>
+    /// Waits until an HTTP endpoint answers at all, whatever the status.
+    /// </summary>
+    /// <param name="baseAddress">The base address to probe.</param>
+    /// <param name="path">The path to request, relative to the base address.</param>
+    /// <param name="timeout">How long to keep trying.</param>
+    /// <param name="description">A description used in log and error output, such as the identifier.</param>
+    /// <param name="logger">The scoped logger.</param>
+    /// <param name="cancellationToken">The cancellation token for the running setup.</param>
+    /// <remarks>
+    /// For a service with no health endpoint, where a <c>404</c> still proves something is listening.
+    /// </remarks>
+    /// <exception cref="FrameworkTimeoutException">The endpoint did not answer within the timeout.</exception>
+    public static Task WaitForHttpAnswerAsync(
+        Uri baseAddress,
+        string path,
+        TimeSpan timeout,
+        string description,
+        ScopedLogger logger,
+        CancellationToken cancellationToken)
+        => WaitForHttpAsync(baseAddress, path, timeout, description, logger, _ => true, cancellationToken);
+
+    /// <summary>
+    /// Waits until an HTTP endpoint answers with a status the caller accepts.
+    /// </summary>
+    /// <param name="baseAddress">The base address to probe.</param>
+    /// <param name="path">The path to request, relative to the base address.</param>
+    /// <param name="timeout">How long to keep trying.</param>
+    /// <param name="description">A description used in log and error output, such as the identifier.</param>
+    /// <param name="logger">The scoped logger.</param>
+    /// <param name="isReady">Decides whether a status proves readiness.</param>
+    /// <param name="cancellationToken">The cancellation token for the running setup.</param>
+    /// <exception cref="FrameworkTimeoutException">The endpoint did not answer within the timeout.</exception>
+    public static async Task WaitForHttpAsync(
+        Uri baseAddress,
+        string path,
+        TimeSpan timeout,
+        string description,
+        ScopedLogger logger,
+        Func<HttpStatusCode, bool> isReady,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(baseAddress);
         ArgumentNullException.ThrowIfNull(logger);
+        ArgumentNullException.ThrowIfNull(isReady);
 
         using HttpClient client = new() { BaseAddress = baseAddress };
         DateTime deadline = DateTime.UtcNow.Add(timeout);
@@ -63,7 +107,7 @@ public static class ContainerReadiness
             try
             {
                 using HttpResponseMessage response = await client.GetAsync(path, cancellationToken).ConfigureAwait(false);
-                if (AnsweringStatusCodes.Contains(response.StatusCode))
+                if (isReady(response.StatusCode))
                     return;
             }
             catch (OperationCanceledException)

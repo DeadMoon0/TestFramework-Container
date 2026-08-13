@@ -25,7 +25,7 @@ Targets `net8.0` and `net10.0`.
 | `ContainerNetworkFactory` | creates the uniquely named network one environment's containers share |
 | `ContainerEndpoints` | the two addresses every container has: host-mapped and network-alias |
 | `ContainerReadiness` | waits until an HTTP endpoint or a SQL database actually answers |
-| `ContainerOutputResolver` | locates a project's build output and its target framework, for bind-mounting |
+| `ContainerOutputResolver` | locates a project's build output and its target framework, for shipping into a container |
 | `ContainerLogCapture` | writes a container's output into the run log before it is removed |
 | `ContainerDockerCommands` | removes containers and networks reliably, falling back to disposal |
 | `ContainerDockerHost` | points the client at the Docker Desktop named pipe a Windows machine uses |
@@ -58,15 +58,27 @@ await ContainerReadiness.WaitForHttpAsync(baseAddress, "/health", TimeSpan.FromM
 await ContainerReadiness.WaitForSqlStatementAsync(connectionString, "SELECT DB_NAME();", TimeSpan.FromMinutes(2), "main", cancellationToken);
 ```
 
-## Mounting Build Output
+## Shipping Build Output
 
-`ContainerOutputResolver` finds the assemblies to mount and the framework they were built for, so the
+`ContainerOutputResolver` finds the assemblies to ship and the framework they were built for, so the
 runtime image can be chosen to match instead of being hardcoded:
 
 ```csharp
-ContainerOutput output = ContainerOutputResolver.Resolve(typeof(Program), "appsettings.json");
+// Prefers the location the assembly was loaded from.
+ContainerOutput loaded = ContainerOutputResolver.Resolve(typeof(Program), "host.json");
+
+// Prefers the owning project's own bin. Use this for an application under test.
+ContainerOutput owned = ContainerOutputResolver.ResolveProjectOutput(typeof(ApiMarker));
+
 // output.OutputDirectory, output.TargetFramework ("net10.0"), output.AssemblyFileName
 ```
 
-When the required files are not where it looked, it fails with every path it examined rather than
-starting a container that would fail obscurely.
+The distinction matters: a project-referenced assembly is copied into the referencing project's
+output as well, so resolving from the loaded location lands in a *test project's* bin — complete
+enough to start, full of assemblies the application does not need, and misleading about what was
+shipped. `ResolveProjectOutput` prefers the application's own output and falls back to the loaded
+location only when that is incomplete.
+
+When the required files are in neither place, resolution fails with every path it examined rather
+than starting a container that would fail obscurely. Prefer stating the directory explicitly where
+the consuming API allows it — resolution is a convenience, not a contract.

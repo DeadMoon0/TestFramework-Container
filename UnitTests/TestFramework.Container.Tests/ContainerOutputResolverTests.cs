@@ -110,6 +110,18 @@ public class ContainerOutputResolverTests
     }
 
     [Fact]
+    public void ResolveProjectOutput_ReturnsTheOwningProjectsOwnOutput()
+    {
+        ContainerOutput output = ContainerOutputResolver.ResolveProjectOutput(typeof(ContainerOutputResolverTests));
+
+        string expected = Path.Combine(output.ProjectDirectory, "bin", ExpectedConfiguration, CurrentTargetFramework);
+
+        Assert.Equal(expected, output.OutputDirectory);
+        Assert.False(output.UsedFallbackOutput);
+        Assert.Equal($"{AssemblyName}.dll", output.AssemblyFileName);
+    }
+
+    [Fact]
     public void ResolveTargetFramework_ReturnsTheMonikerTheAssemblyWasBuiltFor()
     {
         // The runtime image is chosen from this, so a hardcoded moniker would break a net10 app.
@@ -148,6 +160,12 @@ public class ContainerOutputResolverTests
     }
 
     private static string AssemblyName => typeof(ContainerOutputResolverTests).Assembly.GetName().Name!;
+
+    private static string ExpectedConfiguration =>
+        Path.GetDirectoryName(typeof(ContainerOutputResolverTests).Assembly.Location)!
+            .Contains($"{Path.DirectorySeparatorChar}Release{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase)
+            ? "Release"
+            : "Debug";
 
     private static string CurrentTargetFramework => ContainerOutputResolver.ResolveTargetFramework(typeof(ContainerOutputResolverTests).Assembly);
 }
