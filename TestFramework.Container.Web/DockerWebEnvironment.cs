@@ -39,6 +39,11 @@ public class DockerWebEnvironment : EnvironmentProviderBase
     /// </summary>
     public static readonly EnvComponentIdentifier SqlServerComponentId = "sqlserver";
 
+    /// <summary>
+    /// The component that runs the declared applications.
+    /// </summary>
+    public static readonly EnvComponentIdentifier ApiComponentId = "api";
+
     private readonly Dictionary<Type, DockerWebDefinition> _definitions = [];
     private readonly Dictionary<EnvComponentIdentifier, object?> _runtimeStates = [];
     private readonly object _runtimeStateGate = new();
@@ -50,8 +55,10 @@ public class DockerWebEnvironment : EnvironmentProviderBase
     {
         AddComponent(new WebNetworkEnvComponent());
         AddComponent(new SqlServerEnvComponent());
+        AddComponent(new ApiEnvComponent());
 
         MapResourceKind(WebEnvironmentResourceKinds.Sql, SqlServerComponentId);
+        MapResourceKind(WebEnvironmentResourceKinds.RestApi, ApiComponentId);
         MapArtifact(typeof(SqlRowArtifactDescriber<>), SqlServerComponentId);
     }
 
@@ -59,6 +66,11 @@ public class DockerWebEnvironment : EnvironmentProviderBase
     /// The SQL identifiers the last resolution found in use.
     /// </summary>
     public HashSet<string> UsedSqlIdentifiers { get; } = [];
+
+    /// <summary>
+    /// The API identifiers the last resolution found in use.
+    /// </summary>
+    public HashSet<string> UsedApiIdentifiers { get; } = [];
 
     /// <summary>
     /// The image the SQL Server container runs.
@@ -100,13 +112,14 @@ public class DockerWebEnvironment : EnvironmentProviderBase
     {
         ArgumentNullException.ThrowIfNull(definition);
 
-        if (definition is DockerSqlDefinition sql)
+        switch (definition)
         {
-            DockerSqlDefinition? conflicting = GetSqlDefinitions()
-                .FirstOrDefault(existing => existing.GetType() != sql.GetType() && string.Equals(existing.Identifier, sql.Identifier, StringComparison.Ordinal));
-
-            if (conflicting is not null)
-                throw new FrameworkConfigurationException($"'{sql.GetType().Name}' and '{conflicting.GetType().Name}' both declare the SQL identifier '{sql.Identifier}'. One identifier is served by one definition.");
+            case DockerSqlDefinition sql:
+                EnsureUniqueIdentifier(GetSqlDefinitions(), sql, existing => existing.Identifier, "SQL");
+                break;
+            case DockerApiDefinition api:
+                EnsureUniqueIdentifier(GetApiDefinitions(), api, existing => existing.Identifier, "API");
+                break;
         }
 
         _definitions[definition.GetType()] = definition;
@@ -152,12 +165,19 @@ public class DockerWebEnvironment : EnvironmentProviderBase
     public IReadOnlyList<DockerSqlDefinition> GetSqlDefinitions()
         => [.. _definitions.Values.OfType<DockerSqlDefinition>().OrderBy(definition => definition.Identifier.Identifier, StringComparer.Ordinal)];
 
+    /// <summary>
+    /// The applications this environment runs.
+    /// </summary>
+    public IReadOnlyList<DockerApiDefinition> GetApiDefinitions()
+        => [.. _definitions.Values.OfType<DockerApiDefinition>().OrderBy(definition => definition.Identifier.Identifier, StringComparer.Ordinal)];
+
     /// <inheritdoc />
     public override IReadOnlyCollection<EnvComponentIdentifier> ResolveComponents(IEnumerable<ArtifactInstanceGeneric> artifacts, IEnumerable<EnvironmentRequirement> requirements)
     {
         ArgumentNullException.ThrowIfNull(artifacts);
 
         UsedSqlIdentifiers.Clear();
+        UsedApiIdentifiers.Clear();
 
         foreach (ArtifactInstanceGeneric artifact in artifacts)
         {
@@ -169,12 +189,16 @@ public class DockerWebEnvironment : EnvironmentProviderBase
 
         HashSet<EnvComponentIdentifier> resolved = [.. base.ResolveComponents(artifacts, requirements)];
 
-        // A declared database is started whether or not this particular timeline touches it: it was
-        // asked for, and one container serves all of them anyway.
+        // A declared resource is started whether or not this particular timeline touches it: it was
+        // asked for, and one SQL Server container serves every database anyway.
         if (GetSqlDefinitions().Count > 0 || UsedSqlIdentifiers.Count > 0)
             resolved.Add(SqlServerComponentId);
 
+        if (GetApiDefinitions().Count > 0)
+            resolved.Add(ApiComponentId);
+
         EnsureDeclaredIdentifiers();
+        EnsureDeclaredApiBindings();
 
         return [.. resolved];
     }
@@ -214,18 +238,79 @@ public class DockerWebEnvironment : EnvironmentProviderBase
 
         if (string.Equals(requirement.ResourceKind, WebEnvironmentResourceKinds.Sql, StringComparison.Ordinal))
             UsedSqlIdentifiers.Add(requirement.ResourceIdentifier);
+
+        if (string.Equals(requirement.ResourceKind, WebEnvironmentResourceKinds.RestApi, StringComparison.Ordinal))
+            UsedApiIdentifiers.Add(requirement.ResourceIdentifier);
+    }
+
+    private static void EnsureUniqueIdentifier<TDefinition>(
+        IEnumerable<TDefinition> existingDefinitions,
+        TDefinition candidate,
+        Func<TDefinition, string> selectIdentifier,
+        string kind)
+        where TDefinition : DockerWebDefinition
+    {
+        string identifier = selectIdentifier(candidate);
+        TDefinition? conflicting = existingDefinitions.FirstOrDefault(existing =>
+            existing.GetType() != candidate.GetType() && string.Equals(selectIdentifier(existing), identifier, StringComparison.Ordinal));
+
+        if (conflicting is not null)
+            throw new FrameworkConfigurationException($"'{candidate.GetType().Name}' and '{conflicting.GetType().Name}' both declare the {kind} identifier '{identifier}'. One identifier is served by one definition.");
     }
 
     private void EnsureDeclaredIdentifiers()
     {
-        HashSet<string> declared = [.. GetSqlDefinitions().Select(definition => definition.Identifier.Identifier)];
-        string[] missing = [.. UsedSqlIdentifiers.Where(identifier => !declared.Contains(identifier)).OrderBy(identifier => identifier, StringComparer.Ordinal)];
+        EnsureDeclared(
+            UsedSqlIdentifiers,
+            [.. GetSqlDefinitions().Select(definition => definition.Identifier.Identifier)],
+            "SQL",
+            nameof(DockerSqlDefinition),
+            "which database to create");
+
+        EnsureDeclared(
+            UsedApiIdentifiers,
+            [.. GetApiDefinitions().Select(definition => definition.Identifier.Identifier)],
+            "API",
+            nameof(DockerApiDefinition),
+            "which application to run");
+    }
+
+    private void EnsureDeclaredApiBindings()
+    {
+        HashSet<string> databases = [.. GetSqlDefinitions().Select(definition => definition.Identifier.Identifier)];
+
+        foreach (DockerApiDefinition api in GetApiDefinitions())
+        {
+            string[] missing = [.. api.Build().SqlBindings
+                .Select(binding => binding.SqlIdentifier.Identifier)
+                .Where(identifier => !databases.Contains(identifier))
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(identifier => identifier, StringComparer.Ordinal)];
+
+            if (missing.Length == 0)
+                continue;
+
+            throw new FrameworkConfigurationException(
+                $"'{api.GetType().Name}' binds to the SQL identifier(s) {string.Join(", ", missing.Select(identifier => $"'{identifier}'"))}, which no included definition declares. "
+                + $"Declared: {(databases.Count == 0 ? "none" : string.Join(", ", databases.OrderBy(identifier => identifier, StringComparer.Ordinal)))}. "
+                + "Include the DockerSqlDefinition the application needs, so it can be given an address.");
+        }
+    }
+
+    private static void EnsureDeclared(
+        IReadOnlyCollection<string> used,
+        HashSet<string> declared,
+        string kind,
+        string definitionTypeName,
+        string whatItDecides)
+    {
+        string[] missing = [.. used.Where(identifier => !declared.Contains(identifier)).OrderBy(identifier => identifier, StringComparer.Ordinal)];
         if (missing.Length == 0)
             return;
 
         throw new FrameworkConfigurationException(
-            $"The run uses the SQL identifier(s) {string.Join(", ", missing.Select(identifier => $"'{identifier}'"))}, which no included definition declares. "
+            $"The run uses the {kind} identifier(s) {string.Join(", ", missing.Select(identifier => $"'{identifier}'"))}, which no included definition declares. "
             + $"Declared: {(declared.Count == 0 ? "none" : string.Join(", ", declared.OrderBy(identifier => identifier, StringComparer.Ordinal)))}. "
-            + "Include a DockerSqlDefinition for it, so the environment knows which database to create.");
+            + $"Include a {definitionTypeName} for it, so the environment knows {whatItDecides}.");
     }
 }

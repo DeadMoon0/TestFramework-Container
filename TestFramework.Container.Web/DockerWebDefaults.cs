@@ -40,4 +40,34 @@ public static class DockerWebDefaults
     /// How long to wait for a started SQL Server to answer.
     /// </summary>
     public static readonly TimeSpan MsSqlReadinessTimeout = TimeSpan.FromSeconds(90);
+
+    /// <summary>
+    /// The repository the ASP.NET runtime image is taken from.
+    /// </summary>
+    public const string AspNetImageRepository = "mcr.microsoft.com/dotnet/aspnet";
+
+    /// <summary>
+    /// The directory an application's build output is placed in inside its container.
+    /// </summary>
+    public const string ApiRoot = "/app";
+
+    /// <summary>
+    /// The hosting environment name an application runs under unless it declares another.
+    /// </summary>
+    public const string ApiEnvironmentName = "Testing";
+
+    /// <summary>
+    /// The path probed until an application answers, unless it declares another.
+    /// </summary>
+    public const string ApiHealthPath = "/health";
+
+    /// <summary>
+    /// The port an application listens on inside its container.
+    /// </summary>
+    public const int ApiInternalPort = 8080;
+
+    /// <summary>
+    /// How long to wait for a started application to answer.
+    /// </summary>
+    public static readonly TimeSpan ApiReadinessTimeout = TimeSpan.FromMinutes(2);
 }

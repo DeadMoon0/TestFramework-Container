@@ -34,6 +34,16 @@ internal sealed class SqlServerEnvComponent : WebEnvComponentBase
         ArgumentNullException.ThrowIfNull(logger);
 
         DockerWebEnvironment webEnvironment = GetWebEnvironment(environment);
+        IReadOnlyList<DockerSqlDefinition> definitions = webEnvironment.GetSqlDefinitions();
+
+        // The application component depends on this one so that ordering is guaranteed when it needs
+        // a database. When nothing declares one, there is nothing to start.
+        if (definitions.Count == 0)
+        {
+            logger.LogInformation("No database was declared, so no SQL Server container is started.");
+            return null;
+        }
+
         WebConfigStore<SqlConfig> configStore = GetRequiredConfigStore(serviceProvider);
         SqlModelRegistry registry = SqlConfigResolver.ResolveModelRegistry(serviceProvider);
         INetwork network = webEnvironment.GetRequiredRuntimeState<INetwork>(DockerWebEnvironment.NetworkComponentId);
@@ -54,7 +64,7 @@ internal sealed class SqlServerEnvComponent : WebEnvComponentBase
         await ContainerReadiness.WaitForSqlAsync(serverConnectionString, DockerWebDefaults.MsSqlReadinessTimeout, "the SQL Server container", cancellationToken).ConfigureAwait(false);
 
         Dictionary<string, SqlDatabaseEndpoint> databases = [];
-        foreach (DockerSqlDefinition definition in webEnvironment.GetSqlDefinitions())
+        foreach (DockerSqlDefinition definition in definitions)
         {
             DockerSqlSpec spec = definition.Build();
             await SqlDatabaseProvisioner.EnsureDatabaseAsync(serverConnectionString, spec, logger, cancellationToken).ConfigureAwait(false);

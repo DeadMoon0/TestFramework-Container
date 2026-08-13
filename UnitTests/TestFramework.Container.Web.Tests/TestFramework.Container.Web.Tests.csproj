@@ -25,6 +25,8 @@
 
 	<ItemGroup>
 		<ProjectReference Include="..\..\TestFramework.Container.Web\TestFramework.Container.Web.csproj" />
+		<!-- The application under test. Referencing it is what builds the output the container ships. -->
+		<ProjectReference Include="..\TestFramework.Container.Web.SampleApi\TestFramework.Container.Web.SampleApi.csproj" />
 	</ItemGroup>
 
 </Project>

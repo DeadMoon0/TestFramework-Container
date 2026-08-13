@@ -6,4 +6,6 @@
   <Project Path="UnitTests/TestFramework.Container.Azure.ServiceBusFunctionApp/TestFramework.Container.Azure.ServiceBusFunctionApp.csproj" />
   <Project Path="UnitTests/TestFramework.Container.Azure.Tests/TestFramework.Container.Azure.Tests.csproj" />
   <Project Path="UnitTests/TestFramework.Container.Tests/TestFramework.Container.Tests.csproj" />
+  <Project Path="UnitTests/TestFramework.Container.Web.SampleApi/TestFramework.Container.Web.SampleApi.csproj" />
+  <Project Path="UnitTests/TestFramework.Container.Web.Tests/TestFramework.Container.Web.Tests.csproj" />
 </Solution>
