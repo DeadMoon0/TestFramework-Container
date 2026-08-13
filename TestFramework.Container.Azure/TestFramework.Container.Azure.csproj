@@ -6,7 +6,7 @@
 		<Nullable>enable</Nullable>
 		<IsTestProject>false</IsTestProject>
 		<Title>TestFramework.Container.Azure</Title>
-		<Version>0.1.8</Version>
+		<Version>0.1.9</Version>
 		<Authors>DeadMoon0</Authors>
 		<Product>TestFramework</Product>
 		<Description>Docker-backed environment providers for TestFramework timelines for Azure components.</Description>
@@ -18,7 +18,7 @@
 		<PackageTags>Test;UnitTest;IntegrationTest;Framework;Timeline;Docker;Azure</PackageTags>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<Copyright>Copyright (c) DeadMoon0 2026</Copyright>
-		<PackageReleaseNotes>Override the vulnerable transitive SSH.NET dependency</PackageReleaseNotes>
+		<PackageReleaseNotes>Build on the shared TestFramework.Container building blocks</PackageReleaseNotes>
 	</PropertyGroup>
 
 	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
@@ -33,6 +33,10 @@
 		<AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
 			<_Parameter1>TestFramework.Container.Azure.Tests</_Parameter1>
 		</AssemblyAttribute>
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\TestFramework.Container\TestFramework.Container.csproj" />
 	</ItemGroup>
 
 	<ItemGroup>

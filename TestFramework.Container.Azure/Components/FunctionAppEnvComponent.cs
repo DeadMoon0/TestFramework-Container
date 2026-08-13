@@ -54,8 +54,10 @@ internal sealed class FunctionAppEnvComponent : DockerAzureEnvComponent
             FunctionAppDefinitionDescriptor descriptor = dockerEnvironment.GetRequiredFunctionAppDescriptor(identifier);
             DockerFunctionAppRegistration registration = descriptor.Registration;
 
-            FunctionAppLocation location = ResolveFunctionAppLocation(registration.FunctionType);
+            ContainerOutput location = ContainerOutputResolver.Resolve(registration.FunctionType, "host.json");
             logger.LogInformation("Function App '{0}' resolved type '{1}' to project '{2}' and output '{3}'.", identifier, registration.FunctionType.FullName ?? registration.FunctionType.Name, location.ProjectDirectory, location.OutputDirectory);
+            if (location.UsedFallbackOutput)
+                logger.LogInformation("Function App '{0}' used the owning project output. {1}", identifier, location.FallbackReason ?? string.Empty);
             Dictionary<string, string> appSettings = BuildAppSettings(dockerEnvironment, serviceProvider, descriptor, logger);
             appSettings["AzureFunctionsJobHost__Logging__Console__IsEnabled"] = "true";
             appSettings["AzureWebJobsScriptRoot"] = FunctionAppRoot;
@@ -80,7 +82,7 @@ internal sealed class FunctionAppEnvComponent : DockerAzureEnvComponent
             logger.LogInformation("Function App '{0}' container '{1}' started. Waiting for host readiness.", identifier, container.Id);
 
             string baseUrl = endpointMap.GetFunctionAppBaseUrl(container);
-            await WaitForHttpReadyAsync(identifier, baseUrl, logger, cancellationToken).ConfigureAwait(false);
+            await ContainerReadiness.WaitForHttpAsync(new Uri(baseUrl), "admin/host/status", FunctionAppReadyTimeout, $"Function App '{identifier}'", logger, cancellationToken).ConfigureAwait(false);
             logger.LogInformation("Function App '{0}' is reachable at '{1}'.", identifier, baseUrl);
 
             FunctionAppConfig current = functionStore!.GetConfig(identifier);
@@ -98,86 +100,10 @@ internal sealed class FunctionAppEnvComponent : DockerAzureEnvComponent
         {
             foreach (IContainer container in containers)
             {
-                await LogContainerOutputAsync(container, logger, cancellationToken).ConfigureAwait(false);
+                await ContainerLogCapture.CaptureAsync(container, "Function App", logger, cancellationToken).ConfigureAwait(false);
                 await container.DisposeAsync().ConfigureAwait(false);
             }
         }
-    }
-
-    private static async Task LogContainerOutputAsync(IContainer container, ScopedLogger logger, CancellationToken cancellationToken)
-    {
-        try
-        {
-            (string stdout, string stderr) = await container.GetLogsAsync(
-                since: DateTime.UnixEpoch,
-                until: DateTime.UtcNow,
-                timestampsEnabled: false,
-                ct: cancellationToken).ConfigureAwait(false);
-
-            if (!string.IsNullOrWhiteSpace(stdout))
-                logger.LogInformation($"Function App container stdout ({container.Id}):{Environment.NewLine}{stdout}");
-
-            if (!string.IsNullOrWhiteSpace(stderr))
-                logger.LogWarning($"Function App container stderr ({container.Id}):{Environment.NewLine}{stderr}");
-        }
-        catch (Exception exception)
-        {
-            logger.LogWarning($"Failed to capture Function App container logs ({container.Id}): {exception.GetType().Name}: {exception.Message}");
-        }
-    }
-
-    private static FunctionAppLocation ResolveFunctionAppLocation(Type functionType)
-    {
-        string? assemblyLocation = functionType.Assembly.Location;
-        if (string.IsNullOrWhiteSpace(assemblyLocation))
-            throw new InvalidOperationException($"Could not resolve an assembly location for Function App type '{functionType.FullName}'.");
-
-        string? outputDirectory = Path.GetDirectoryName(assemblyLocation);
-        if (string.IsNullOrWhiteSpace(outputDirectory) || !Directory.Exists(outputDirectory))
-            throw new DirectoryNotFoundException($"Could not locate the Function App output directory for '{functionType.FullName}'.");
-
-        string assemblyName = functionType.Assembly.GetName().Name ?? throw new InvalidOperationException("The Function App assembly name could not be resolved.");
-        string projectDirectory = ResolveProjectDirectory(assemblyName, outputDirectory);
-        string? fallbackOutputDirectory = null;
-        if (!LooksLikeFunctionAppOutput(outputDirectory, assemblyName))
-        {
-            string configuration = ResolveBuildConfiguration(outputDirectory);
-            fallbackOutputDirectory = Path.Combine(projectDirectory, "bin", configuration, "net8.0");
-            if (LooksLikeFunctionAppOutput(fallbackOutputDirectory, assemblyName))
-                outputDirectory = fallbackOutputDirectory;
-        }
-
-        if (!LooksLikeFunctionAppOutput(outputDirectory, assemblyName))
-            throw CreateMissingFunctionAppOutputException(functionType, assemblyName, projectDirectory, outputDirectory, fallbackOutputDirectory);
-
-        return new FunctionAppLocation(projectDirectory, outputDirectory);
-    }
-
-    private static bool LooksLikeFunctionAppOutput(string outputDirectory, string assemblyName)
-        => File.Exists(Path.Combine(outputDirectory, "host.json"))
-        && File.Exists(Path.Combine(outputDirectory, $"{assemblyName}.dll"));
-
-    private static string ResolveBuildConfiguration(string outputDirectory)
-    {
-        if (outputDirectory.Contains($"{Path.DirectorySeparatorChar}Release{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase))
-            return "Release";
-
-        if (outputDirectory.Contains($"{Path.DirectorySeparatorChar}Debug{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase))
-            return "Debug";
-
-        return "Debug";
-    }
-
-    private static string ResolveProjectDirectory(string assemblyName, string startDirectory)
-    {
-        for (DirectoryInfo? current = new(startDirectory); current is not null; current = current.Parent)
-        {
-            string[] matches = Directory.GetFiles(current.FullName, $"{assemblyName}.csproj", SearchOption.AllDirectories);
-            if (matches.Length == 1)
-                return Path.GetDirectoryName(matches[0])!;
-        }
-
-        throw new DirectoryNotFoundException($"Could not locate the project directory for Function App assembly '{assemblyName}'.");
     }
 
     private static Dictionary<string, string> BuildAppSettings(DockerAzureEnvironment dockerEnvironment, IServiceProvider serviceProvider, FunctionAppDefinitionDescriptor descriptor, ScopedLogger? logger = null)
@@ -238,52 +164,4 @@ internal sealed class FunctionAppEnvComponent : DockerAzureEnvComponent
         return settings;
     }
 
-    private static InvalidOperationException CreateMissingFunctionAppOutputException(Type functionType, string assemblyName, string projectDirectory, string selectedOutputDirectory, string? fallbackOutputDirectory)
-    {
-        List<string> details =
-        [
-            $"Function App type '{functionType.FullName}' must resolve to build output before the Docker container can start.",
-            $"Project directory: {projectDirectory}",
-            $"Selected output directory: {selectedOutputDirectory}",
-            $"Expected files: {Path.Combine(selectedOutputDirectory, "host.json")} and {Path.Combine(selectedOutputDirectory, $"{assemblyName}.dll")}",
-        ];
-
-        if (!string.IsNullOrWhiteSpace(fallbackOutputDirectory) && !string.Equals(fallbackOutputDirectory, selectedOutputDirectory, StringComparison.OrdinalIgnoreCase))
-            details.Add($"Checked fallback output directory: {fallbackOutputDirectory}");
-
-        details.Add("Build or publish the Function App project before starting the Docker Azure environment.");
-        return new InvalidOperationException(string.Join(Environment.NewLine, details));
-    }
-
-    private static async Task WaitForHttpReadyAsync(string identifier, string baseUrl, ScopedLogger logger, CancellationToken cancellationToken)
-    {
-        using HttpClient client = new() { BaseAddress = new Uri(baseUrl) };
-        DateTime deadline = DateTime.UtcNow.Add(FunctionAppReadyTimeout);
-        logger.LogInformation("Function App '{0}' waiting up to {1} for admin/host/status at '{2}'.", identifier, FunctionAppReadyTimeout, new Uri(client.BaseAddress!, "admin/host/status"));
-
-        while (DateTime.UtcNow < deadline)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            try
-            {
-                using HttpResponseMessage response = await client.GetAsync("admin/host/status", cancellationToken).ConfigureAwait(false);
-                if (response.StatusCode is System.Net.HttpStatusCode.OK or System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden)
-                    return;
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch
-            {
-            }
-
-            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken).ConfigureAwait(false);
-        }
-
-        throw new TimeoutException($"The Function App host for '{identifier}' at '{baseUrl}' did not become reachable within {FunctionAppReadyTimeout.TotalMinutes:0} minutes.");
-    }
-
-    private sealed record FunctionAppLocation(string ProjectDirectory, string OutputDirectory);
 }

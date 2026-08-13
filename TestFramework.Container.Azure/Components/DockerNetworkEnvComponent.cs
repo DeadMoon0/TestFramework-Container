@@ -1,4 +1,3 @@
-using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Networks;
 using System;
 using System.Threading;
@@ -21,12 +20,7 @@ internal sealed class DockerNetworkEnvComponent : DockerAzureEnvComponent
         if (environment is DockerAzureEnvironment dockerEnvironment)
             dockerEnvironment.LogPendingResolutionSummary(logger);
 
-        INetwork network = new NetworkBuilder()
-            .WithName($"testframework-{Guid.NewGuid():N}")
-            .Build();
-
-        await network.CreateAsync(cancellationToken)
-            .ConfigureAwait(false);
+        INetwork network = await ContainerNetworkFactory.CreateAsync("testframework", cancellationToken).ConfigureAwait(false);
 
         if (environment is DockerAzureEnvironment runtimeEnvironment)
             runtimeEnvironment.SetRuntimeState(Id, network);

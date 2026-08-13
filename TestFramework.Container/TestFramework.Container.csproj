@@ -1,0 +1,60 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+		<ImplicitUsings>disable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<GenerateDocumentationFile>true</GenerateDocumentationFile>
+		<IsTestProject>false</IsTestProject>
+		<Title>TestFramework.Container</Title>
+		<Version>0.1.0</Version>
+		<Authors>DeadMoon0</Authors>
+		<Product>TestFramework</Product>
+		<Description>Shared Docker building blocks for TestFramework container environments: network creation, host and network endpoint addressing, project output resolution, readiness waits and container log capture.</Description>
+		<PackageProjectUrl>https://github.com/DeadMoon0/TestFramework-Container</PackageProjectUrl>
+		<PackageIcon>Icon.png</PackageIcon>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+		<RepositoryUrl>https://github.com/DeadMoon0/TestFramework-Container.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageTags>Test;UnitTest;IntegrationTest;Framework;Timeline;Docker</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<Copyright>Copyright (c) DeadMoon0 2026</Copyright>
+		<PackageReleaseNotes>Initial release: shared Docker building blocks extracted from TestFramework.Container.Azure</PackageReleaseNotes>
+	</PropertyGroup>
+
+	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+		<TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+	</PropertyGroup>
+
+	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
+		<TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+			<_Parameter1>TestFramework.Container.Tests</_Parameter1>
+		</AssemblyAttribute>
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Microsoft.Data.SqlClient" Version="6.1.2" />
+		<!-- Direct reference overrides the vulnerable SSH.NET 2025.1.0 that Testcontainers pulls in
+		     transitively (GHSA-q939-rpr3-3284). Testcontainers still pins it as of 4.13.0. -->
+		<PackageReference Include="SSH.NET" Version="2026.0.0" />
+		<PackageReference Include="Testcontainers" Version="4.11.0" />
+		<PackageReference Include="Testcontainers.MsSql" Version="4.11.0" />
+		<PackageReference Include="TestFramework.Core" Version="0.1.8" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<None Include="..\Modules\TestFramework-Common\Assets\Icon.png">
+			<Pack>True</Pack>
+			<PackagePath>\</PackagePath>
+		</None>
+		<None Include="README.md">
+			<Pack>True</Pack>
+			<PackagePath>\</PackagePath>
+		</None>
+	</ItemGroup>
+
+</Project>

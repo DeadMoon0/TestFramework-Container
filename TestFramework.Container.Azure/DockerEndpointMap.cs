@@ -70,27 +70,10 @@ internal sealed class DockerEndpointMap
     }
 
     private static Uri BuildHostEndpoint(IContainer container, int internalPort, string scheme, string? path = null)
-    {
-        return BuildEndpoint(container.Hostname, container.GetMappedPublicPort(internalPort), scheme, path);
-    }
+        => ContainerEndpoints.HostEndpoint(container, internalPort, scheme, path);
 
     private static Uri BuildAliasEndpoint(string host, int port, string scheme, string? path = null)
-    {
-        return BuildEndpoint(host, port, scheme, path);
-    }
-
-    private static Uri BuildEndpoint(string host, int port, string scheme, string? path)
-    {
-        UriBuilder builder = new()
-        {
-            Scheme = scheme,
-            Host = host,
-            Port = port,
-            Path = path ?? string.Empty,
-        };
-
-        return builder.Uri;
-    }
+        => ContainerEndpoints.NetworkEndpoint(host, port, scheme, path);
 
     private static string SerializeConnectionString(DbConnectionStringBuilder builder)
     {

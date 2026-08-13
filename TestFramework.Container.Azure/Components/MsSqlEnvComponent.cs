@@ -1,5 +1,4 @@
 using DotNet.Testcontainers.Networks;
-using Microsoft.Data.SqlClient;
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -10,7 +9,6 @@ using TestFramework.Azure.Configuration;
 using TestFramework.Azure.Configuration.SpecificConfigs;
 using TestFramework.Core.Artifacts;
 using TestFramework.Core.Environment;
-using TestFramework.Core.Exceptions;
 using TestFramework.Core.Logging;
 using TestFramework.Core.Variables;
 
@@ -29,18 +27,18 @@ internal sealed class MsSqlEnvComponent : DockerAzureEnvComponent
         DockerAzureEnvironment dockerEnvironment = GetDockerEnvironment(environment);
         ConfigStore<SqlDatabaseConfig>? configStore = EnvComponentConfigStoreGuard.GetRequiredStore<SqlDatabaseConfig>(dockerEnvironment, serviceProvider, dockerEnvironment.UsedSqlIdentifiers, "SQL environment setup");
         INetwork network = dockerEnvironment.GetRequiredRuntimeState<INetwork>(DockerAzureEnvironment.NetworkComponentId);
-        MsSqlBuilder builder = new MsSqlBuilder(dockerEnvironment.GetMsSqlImage())
-            .WithPassword(dockerEnvironment.GetMsSqlPassword())
-            .WithEnvironment("MSSQL_MEMORY_LIMIT_MB", dockerEnvironment.GetMsSqlMemoryLimitMb().ToString())
-            .WithNetwork(network)
-            .WithNetworkAliases(ServiceBusBuilder.DatabaseNetworkAlias);
-
-        MsSqlContainer container = builder.Build();
+        MsSqlContainer container = MsSqlContainerFactory.Create(
+            new MsSqlContainerOptions(
+                dockerEnvironment.GetMsSqlImage(),
+                dockerEnvironment.GetMsSqlPassword(),
+                dockerEnvironment.GetMsSqlMemoryLimitMb(),
+                [ServiceBusBuilder.DatabaseNetworkAlias]),
+            network);
 
         await container.StartAsync(cancellationToken).ConfigureAwait(false);
 
         string connectionString = container.GetConnectionString();
-        await WaitForSqlReadyAsync(connectionString, cancellationToken).ConfigureAwait(false);
+        await ContainerReadiness.WaitForSqlAsync(connectionString, TimeSpan.FromSeconds(30), "the SQL container", cancellationToken).ConfigureAwait(false);
         ConnectionStringGuards.EnsureSql(connectionString);
 
         if (configStore is not null)
@@ -62,24 +60,4 @@ internal sealed class MsSqlEnvComponent : DockerAzureEnvComponent
             await asyncDisposable.DisposeAsync().ConfigureAwait(false);
     }
 
-    private static async Task WaitForSqlReadyAsync(string connectionString, CancellationToken cancellationToken)
-    {
-        for (int attempt = 0; attempt < 30; attempt++)
-        {
-            try
-            {
-                await using SqlConnection connection = new(connectionString);
-                await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-                await using SqlCommand command = new("SELECT 1;", connection);
-                await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
-                return;
-            }
-            catch when (attempt < 29)
-            {
-                await Task.Delay(1000, cancellationToken).ConfigureAwait(false);
-            }
-        }
-
-        throw new FrameworkTimeoutException("The SQL container did not become ready in time.");
-    }
 }

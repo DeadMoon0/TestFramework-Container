@@ -17,6 +17,13 @@ Use the container package when the timeline should stay Azure-shaped, but the ba
 - Starting with a Function App and common local dependencies: prefer the additive helpers such as `DockerAzureEnvironment.ForFunctionAppWithStorage<...>(...)`, `ForFunctionAppWithStorageAndServiceBus<...>(...)`, or `ForFunctionAppWithCommonBindings<...>(...)` before building a larger definition graph.
 - Need real Azure resources or Logic Apps: stay on `TestFramework.Azure`; the container package does not own live Azure bootstrap.
 
+## Packages In This Repository
+
+| Package | Purpose |
+|---|---|
+| `TestFramework.Container` | shared Docker building blocks: network, host and network endpoint addressing, readiness waits, build-output resolution, log capture |
+| `TestFramework.Container.Azure` | Docker-backed Azure emulators for TestFramework timelines, built on the above |
+
 ## Install
 
 ```bash
