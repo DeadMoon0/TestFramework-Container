@@ -7,7 +7,7 @@
 		<GenerateDocumentationFile>true</GenerateDocumentationFile>
 		<IsTestProject>false</IsTestProject>
 		<Title>TestFramework.Container.Web</Title>
-		<Version>0.3.0</Version>
+		<Version>0.4.0</Version>
 		<Authors>DeadMoon0</Authors>
 		<Product>TestFramework</Product>
 		<Description>Docker-backed environment providers for TestFramework.Web timelines: starts a SQL Server container, provisions the databases a run declares, and publishes their connection strings to the running timeline.</Description>
@@ -19,7 +19,7 @@
 		<PackageTags>Test;UnitTest;IntegrationTest;Framework;Timeline;Docker;Web;Sql;SqlServer</PackageTags>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<Copyright>Copyright (c) DeadMoon0 2026</Copyright>
-		<PackageReleaseNotes>Serve stubbed dependencies from containers</PackageReleaseNotes>
+		<PackageReleaseNotes>Build the application under test from a declared project</PackageReleaseNotes>
 	</PropertyGroup>
 
 	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">

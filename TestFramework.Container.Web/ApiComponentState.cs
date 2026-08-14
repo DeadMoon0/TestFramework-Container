@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using DotNet.Testcontainers.Containers;
+using TestFramework.Container.Sources;
 using TestFramework.Core.Exceptions;
 
 namespace TestFramework.Container.Web;
@@ -12,22 +13,18 @@ namespace TestFramework.Container.Web;
 /// <param name="Identifier">The API identifier it serves.</param>
 /// <param name="Container">The running container.</param>
 /// <param name="BaseUrl">The address the test process reaches it at.</param>
-/// <param name="ShippedDirectory">The build output that was copied into it.</param>
-/// <param name="ShippedBuiltAtUtc">When the shipped assembly was last written.</param>
+/// <param name="Plan">What was done to get the application into the container.</param>
 /// <param name="SettingsFileName">The name of the generated settings file.</param>
 /// <param name="SettingsJson">The exact configuration the application was given.</param>
 /// <remarks>
-/// The shipped directory, its age and the settings content are kept so a test can state what
-/// actually ran, rather than having to infer it from a container that may already be gone. Nothing
-/// in this package builds the application, so the timestamp is the only evidence that what ran was
-/// not a stale build.
+/// The plan and the settings content are kept so a test can state what actually ran, rather than
+/// having to infer it from a container that may already be gone.
 /// </remarks>
 public sealed record RunningApi(
     string Identifier,
     IContainer Container,
     Uri BaseUrl,
-    string ShippedDirectory,
-    DateTimeOffset? ShippedBuiltAtUtc,
+    ContainerSourcePlan Plan,
     string SettingsFileName,
     string SettingsJson);
 

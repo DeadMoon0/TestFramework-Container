@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using TestFramework.Container.Sources;
 using TestFramework.Core.Exceptions;
 using TestFramework.Web.Identifier;
 using TestFramework.Web.Sql;
@@ -17,6 +18,11 @@ namespace TestFramework.Container.Web;
 /// a public marker type in the application project is the least intrusive choice: the generated
 /// <c>Program</c> of a minimal-hosting application is internal and cannot be used here.
 /// </typeparam>
+/// <remarks>
+/// Prefer deriving from <see cref="DockerApiDefinition"/> and declaring
+/// <see cref="ContainerSource.Project"/>, which needs no marker type and no reference from the test
+/// project to the application.
+/// </remarks>
 /// <example>
 /// <code>
 /// // in the application project
@@ -37,7 +43,12 @@ public abstract class DockerApiDefinition<TEntryPoint> : DockerApiDefinition
     where TEntryPoint : class
 {
     /// <inheritdoc />
-    public sealed override Type EntryPointType => typeof(TEntryPoint);
+    /// <remarks>
+    /// Inferring the application from a type requires the test project to reference it and guesses
+    /// the output directory from where the assembly was loaded. Declaring
+    /// <see cref="ContainerSource.Project"/> instead needs neither.
+    /// </remarks>
+    public override ContainerSource Source => ContainerSource.EntryPoint<TEntryPoint>();
 }
 
 /// <summary>
@@ -51,9 +62,9 @@ public abstract class DockerApiDefinition : DockerWebDefinition
     public abstract ApiIdentifier Identifier { get; }
 
     /// <summary>
-    /// A type from the application assembly, used to find its build output.
+    /// Where the application comes from: an image, a project the framework builds, or a directory.
     /// </summary>
-    public abstract Type EntryPointType { get; }
+    public abstract ContainerSource Source { get; }
 
     /// <summary>
     /// Declares the settings, dependencies and readiness of the application.

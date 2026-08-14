@@ -2,6 +2,7 @@ using System;
 using System.Net;
 using System.Threading.Tasks;
 using TestFramework.Config;
+using TestFramework.Container.Sources;
 using TestFramework.Container.Web.SampleApi;
 using TestFramework.Core.Timelines;
 using TestFramework.Core.Timelines.Assertions;
@@ -44,21 +45,44 @@ public class ApiContainerSmokeTests
             .WithResetMode(SqlResetMode.RecreateDatabase);
     }
 
-    private sealed class OrdersApiDefinition : DockerApiDefinition<SampleApiMarker>
+    /// <summary>
+    /// The application declared as a project rather than inferred from a marker type.
+    /// </summary>
+    /// <remarks>
+    /// The SDK builds the image from the project, so nothing here depends on the test project having
+    /// built the application or on where its output landed.
+    /// </remarks>
+    private sealed class OrdersApiDefinition : DockerApiDefinition
     {
         public override ApiIdentifier Identifier => "orders";
+
+        public override ContainerSource Source =>
+            ContainerSource.Project("../TestFramework.Container.Web.SampleApi/TestFramework.Container.Web.SampleApi.csproj")
+                .WithTargetFramework(CurrentTargetFramework);
 
         protected override void Configure(DockerApiBuilder builder) => builder
             .WithHealthPath("/health")
             .UseSql<SalesSqlDefinition>("ConnectionStrings:Sales");
     }
 
+    /// <summary>
+    /// The same application, still reached through a marker type.
+    /// </summary>
+    /// <remarks>
+    /// Kept on the inferring road so the path older definitions use stays covered.
+    /// </remarks>
     private sealed class HealthOnlyApiDefinition : DockerApiDefinition<SampleApiMarker>
     {
         public override ApiIdentifier Identifier => "health-only";
 
         protected override void Configure(DockerApiBuilder builder) => builder.WithHealthPath("/health");
     }
+
+    /// <summary>
+    /// The framework the test host runs, which is the one the application is built for too.
+    /// </summary>
+    private static string CurrentTargetFramework =>
+        ContainerOutputResolver.ResolveTargetFramework(typeof(ApiContainerSmokeTests).Assembly);
 
     private static ConfigInstance CreateConfig()
         => ConfigInstance.Create()
@@ -138,7 +162,12 @@ public class ApiContainerSmokeTests
         RunningApi api = state!.GetRequiredApi("orders");
 
         Assert.Equal("appsettings.Testing.json", api.SettingsFileName);
-        Assert.Contains("TestFramework.Container.Web.SampleApi", api.ShippedDirectory, StringComparison.Ordinal);
+
+        // The plan says exactly what ran: the project that was named, and the image built from it.
+        Assert.Equal(ContainerSourceKind.Project, api.Plan.Kind);
+        Assert.EndsWith("TestFramework.Container.Web.SampleApi.csproj", api.Plan.ProjectPath!, StringComparison.Ordinal);
+        Assert.StartsWith("testframework-orders:", api.Plan.Image!, StringComparison.Ordinal);
+        Assert.Equal($"mcr.microsoft.com/dotnet/aspnet:{CurrentTargetFramework[3..]}", api.Plan.RuntimeImage);
 
         // The application is given the network address of the database, never the host-mapped one.
         Assert.Contains($"Data Source={DockerWebDefaults.MsSqlNetworkAlias},1433", api.SettingsJson, StringComparison.Ordinal);

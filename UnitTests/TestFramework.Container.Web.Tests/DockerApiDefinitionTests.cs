@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using TestFramework.Container.Sources;
 using TestFramework.Container.Web.SampleApi;
 using TestFramework.Core.Exceptions;
 using TestFramework.Web.Identifier;
@@ -64,8 +65,34 @@ public class DockerApiDefinitionTests
     }
 
     [Fact]
-    public void EntryPointType_NamesTheApplicationAssembly()
-        => Assert.Equal(typeof(SampleApiMarker), new CompleteApiDefinition().EntryPointType);
+    public void Source_OfAMarkerDefinition_IsTheEntryPointOfThatAssembly()
+    {
+        ContainerSource source = new CompleteApiDefinition().Source;
+
+        Assert.Equal(ContainerSourceKind.EntryPoint, source.Kind);
+        Assert.Equal(typeof(SampleApiMarker), Assert.IsType<EntryPointContainerSource>(source).EntryPointType);
+    }
+
+    [Fact]
+    public void Source_CanBeADeclaredProjectInsteadOfAMarkerType()
+    {
+        ContainerSource source = new ProjectSourcedApiDefinition().Source;
+
+        Assert.Equal(ContainerSourceKind.Project, source.Kind);
+        Assert.EndsWith("TestFramework.Container.Web.SampleApi.csproj", Assert.IsType<ProjectContainerSource>(source).ProjectPath, StringComparison.Ordinal);
+    }
+
+    private sealed class ProjectSourcedApiDefinition : DockerApiDefinition
+    {
+        public override ApiIdentifier Identifier => "orders";
+
+        // No marker type, and no reference from this project to the application.
+        public override ContainerSource Source =>
+            ContainerSource.Project("../TestFramework.Container.Web.SampleApi/TestFramework.Container.Web.SampleApi.csproj")
+                .WithTargetFramework("net8.0");
+
+        protected override void Configure(DockerApiBuilder builder) => builder.WithHealthPath("/health");
+    }
 
     [Fact]
     public void WithoutHealthCheck_LeavesNoPathToProbe()

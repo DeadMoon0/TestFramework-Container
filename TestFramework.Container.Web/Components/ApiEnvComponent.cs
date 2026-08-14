@@ -9,6 +9,7 @@ using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
 using DotNet.Testcontainers.Networks;
 using Microsoft.Extensions.DependencyInjection;
+using TestFramework.Container.Sources;
 using TestFramework.Core.Artifacts;
 using TestFramework.Core.Environment;
 using TestFramework.Core.Exceptions;
@@ -59,44 +60,29 @@ internal sealed class ApiEnvComponent : WebEnvComponentBase
         foreach (DockerApiDefinition definition in definitions)
         {
             DockerApiSpec spec = definition.Build();
-            ContainerOutput output = ResolveOutput(definition, spec);
+            string identifier = definition.Identifier;
+
+            // The plan says what will happen before it happens, and every value in it was either
+            // declared or read from the project. Nothing is inferred from where an assembly sat.
+            ContainerSourcePlan plan = await ContainerSourceResolver.PlanAsync(definition.Source, cancellationToken).ConfigureAwait(false);
+            plan = await ContainerImageBuilder.BuildAsync(plan, identifier, logger, cancellationToken).ConfigureAwait(false);
+
             IReadOnlyDictionary<string, string> settings = ComposeSettings(webEnvironment, definition, spec);
             string settingsJson = ApiSettingsFile.Compose(settings);
             string settingsFileName = ApiSettingsFile.FileName(spec.EnvironmentName);
-            string image = spec.ResolveImage(output.TargetFramework);
 
-            // Stated rather than implied: what is shipped, from where, how old it is, and on what.
-            // Nothing here builds; the timestamp is how a stale output becomes visible.
-            logger.LogInformation(
-                "API '{0}' ships '{1}' ({2}, built {3}) on image '{4}'.",
-                definition.Identifier.ToString(),
-                output.OutputDirectory,
-                output.TargetFramework,
-                output.AssemblyLastWriteTimeUtc?.ToString("u", CultureInfo.InvariantCulture) ?? "unknown",
-                image);
+            logger.LogInformation("API '{0}' settings '{1}':{2}{3}", identifier, settingsFileName, Environment.NewLine, settingsJson);
 
-            if (output.UsedFallbackOutput)
-                logger.LogInformation("API '{0}' used the owning project output. {1}", definition.Identifier.ToString(), output.FallbackReason ?? string.Empty);
-
-            logger.LogInformation("API '{0}' settings '{1}':{2}{3}", definition.Identifier.ToString(), settingsFileName, Environment.NewLine, settingsJson);
-
-            IContainer container = BuildContainer(spec, output, network, settingsFileName, settingsJson, image);
-            await StartAsync(container, definition, image, logger, cancellationToken).ConfigureAwait(false);
+            IContainer container = BuildContainer(spec, plan, network, settingsFileName, settingsJson);
+            await StartAsync(container, definition, plan.Image ?? "(built from output)", logger, cancellationToken).ConfigureAwait(false);
 
             Uri baseUrl = ContainerEndpoints.HostEndpoint(container, spec.InternalPort);
             await WaitForReadinessAsync(container, definition, spec, baseUrl, logger, cancellationToken).ConfigureAwait(false);
 
-            Publish(configStore, definition.Identifier, baseUrl, spec.HealthPath);
-            apis.Add(new RunningApi(
-                definition.Identifier,
-                container,
-                baseUrl,
-                output.OutputDirectory,
-                output.AssemblyLastWriteTimeUtc,
-                settingsFileName,
-                settingsJson));
+            Publish(configStore, identifier, baseUrl, spec.HealthPath);
+            apis.Add(new RunningApi(identifier, container, baseUrl, plan, settingsFileName, settingsJson));
 
-            logger.LogInformation("API '{0}' is reachable at '{1}'.", definition.Identifier.ToString(), baseUrl);
+            logger.LogInformation("API '{0}' is reachable at '{1}'.", identifier, baseUrl);
         }
 
         ApiComponentState state = new(apis);
@@ -117,14 +103,29 @@ internal sealed class ApiEnvComponent : WebEnvComponentBase
             // side without it.
             await ContainerLogCapture.CaptureAsync(api.Container, $"API '{api.Identifier}'", logger, cancellationToken).ConfigureAwait(false);
             await ContainerDockerCommands.ForceRemoveContainerAsync(api.Container, cancellationToken).ConfigureAwait(false);
+
+            // An image the run built is the run's litter. One the caller named is not.
+            if (api.Plan.Kind == ContainerSourceKind.Project && api.Plan.Image is { } builtImage)
+                await ContainerImageBuilder.RemoveImageAsync(builtImage, cancellationToken).ConfigureAwait(false);
+
+            if (api.Plan.Strategy == ContainerBuildStrategy.HostPublish && api.Plan.OutputDirectory is { } published)
+                DeletePublishOutput(published, logger);
         }
     }
 
-    private static ContainerOutput ResolveOutput(DockerApiDefinition definition, DockerApiSpec spec)
-        => spec.OutputDirectory is { } declared
-            ? ContainerOutputResolver.ResolveFrom(definition.EntryPointType, declared, [])
-            // The application's own output, not the test project's copy of its assembly.
-            : ContainerOutputResolver.ResolveProjectOutput(definition.EntryPointType);
+    private static void DeletePublishOutput(string directory, ScopedLogger logger)
+    {
+        try
+        {
+            if (Directory.Exists(directory))
+                Directory.Delete(directory, recursive: true);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // A temporary directory left behind is untidy, never a reason to fail a run.
+            logger.LogWarning($"The published output '{directory}' could not be removed: {exception.Message}");
+        }
+    }
 
     private static IReadOnlyDictionary<string, string> ComposeSettings(DockerWebEnvironment webEnvironment, DockerApiDefinition definition, DockerApiSpec spec)
     {
@@ -152,26 +153,33 @@ internal sealed class ApiEnvComponent : WebEnvComponentBase
 
     private static IContainer BuildContainer(
         DockerApiSpec spec,
-        ContainerOutput output,
+        ContainerSourcePlan plan,
         INetwork network,
         string settingsFileName,
-        string settingsJson,
-        string image)
+        string settingsJson)
     {
         string port = spec.InternalPort.ToString(CultureInfo.InvariantCulture);
+        string image = plan.Image ?? spec.ResolveImage(plan.TargetFramework ?? throw new FrameworkStateException("The plan has neither an image nor a target framework to choose one from."));
 
-        // The output is copied rather than bind-mounted, so the generated settings file can sit
-        // beside it without anything being written back into the project's own bin directory.
         ContainerBuilder builder = new ContainerBuilder(image)
             .WithNetwork(network)
             .WithPortBinding(spec.InternalPort, true)
-            .WithResourceMapping(new DirectoryInfo(output.OutputDirectory), DockerWebDefaults.ApiRoot)
-            .WithResourceMapping(ApiSettingsFile.ToBytes(settingsJson), $"{DockerWebDefaults.ApiRoot}/{settingsFileName}")
             .WithWorkingDirectory(DockerWebDefaults.ApiRoot)
             .WithEnvironment("ASPNETCORE_ENVIRONMENT", spec.EnvironmentName)
             .WithEnvironment("DOTNET_ENVIRONMENT", spec.EnvironmentName)
             .WithEnvironment("ASPNETCORE_HTTP_PORTS", port)
-            .WithCommand("dotnet", $"{DockerWebDefaults.ApiRoot}/{output.AssemblyFileName}");
+            // Container paths are always separated by '/', whatever the host does.
+            .WithResourceMapping(ApiSettingsFile.ToBytes(settingsJson), $"{DockerWebDefaults.ApiRoot}/{settingsFileName}");
+
+        // An image already knows how to start itself. A directory has to be put somewhere and given
+        // a command; it is copied rather than bind-mounted, so the generated settings file can sit
+        // beside it without anything being written back into the project's own output.
+        if (plan.Image is null)
+        {
+            builder = builder
+                .WithResourceMapping(new DirectoryInfo(plan.OutputDirectory!), DockerWebDefaults.ApiRoot)
+                .WithCommand("dotnet", $"{DockerWebDefaults.ApiRoot}/{plan.AssemblyFileName}");
+        }
 
         foreach ((string name, string value) in spec.EnvironmentVariables)
             builder = builder.WithEnvironment(name, value);
