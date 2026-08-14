@@ -121,13 +121,6 @@ public class OfflineBuildTests
     }
 
     [Fact]
-    public void ResolvedPackage_NamesTheFileTheCacheHoldsIt_Under()
-    {
-        // The cache lowercases both the identifier and the version.
-        Assert.Equal("newtonsoft.json.13.0.4.nupkg", new ResolvedPackage("Newtonsoft.Json", "13.0.4").FileName);
-    }
-
-    [Fact]
     public async Task OfflineFeed_CollectsWhatTheHostResolvedForThisProject()
     {
         ProjectFacts facts = await ProjectQuery.ReadAsync(SampleApiProject, CancellationToken.None);

@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using TestFramework.Config;
 using TestFramework.Container.Sources;
@@ -37,7 +38,18 @@ public class InContainerBuildSmokeTests
         protected override void Configure(DockerApiBuilder builder) => builder.WithHealthPath("/health");
     }
 
-    private static string HostSdkTargetFramework => "net10.0";
+    /// <summary>
+    /// The framework generation of the SDK on this machine, which is the only one an offline
+    /// in-container build can produce.
+    /// </summary>
+    private static string HostSdkTargetFramework
+    {
+        get
+        {
+            string? sdk = DotNetCli.ReadSdkMajorMinorAsync(CancellationToken.None).GetAwaiter().GetResult();
+            return sdk is null ? "net10.0" : $"net{sdk.Split('.')[0]}.0";
+        }
+    }
 
     [Fact]
     public async Task ApplicationBuiltInsideDocker_Answers()

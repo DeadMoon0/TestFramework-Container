@@ -18,18 +18,13 @@ namespace TestFramework.Container.Sources;
 public sealed record ResolvedPackage(string Id, string Version)
 {
     /// <summary>
-    /// The file name the package is cached under.
-    /// </summary>
-    public string FileName => $"{Id.ToLowerInvariant()}.{Version.ToLowerInvariant()}.nupkg";
-
-    /// <summary>
     /// Returns a readable description of the package.
     /// </summary>
     public override string ToString() => $"{Id} {Version}";
 }
 
 /// <summary>
-/// The outcome of building an offline feed.
+/// The outcome of handing packages over.
 /// </summary>
 /// <param name="Directory">The directory holding the copied packages.</param>
 /// <param name="Packages">The packages that were copied.</param>
@@ -37,18 +32,20 @@ public sealed record ResolvedPackage(string Id, string Version)
 public sealed record OfflineFeedResult(string Directory, IReadOnlyList<ResolvedPackage> Packages, IReadOnlyList<ResolvedPackage> Missing);
 
 /// <summary>
-/// Builds a package feed out of what the host already restored.
+/// Hands a container the packages the host already restored.
 /// </summary>
 /// <remarks>
 /// This exists so a container build needs no feed credentials. The host restores with the
-/// configuration and credentials that already work; the exact set of packages that produced is
-/// copied into the build context, and the build inside the container resolves from that and nothing
-/// else. It cannot reach a private feed, and it cannot resolve a version the host did not.
+/// configuration and credentials that already work, and the resulting packages are copied into the
+/// build context as a populated cache -- not as a feed. That distinction is the whole trick: a
+/// build handed a feed re-resolves from scratch and then asks for packages the host's restore
+/// pruned as framework-provided, which no feed built from the result can satisfy.
 /// </remarks>
 public static class OfflineFeed
 {
     /// <summary>
-    /// Restores a project on the host and copies the resolved packages into a directory.
+    /// Restores a project on the host and copies the resolved packages into a directory, as the
+    /// extracted layout a package cache uses.
     /// </summary>
     /// <param name="facts">The project to restore.</param>
     /// <param name="targetFramework">The framework being built.</param>

@@ -97,7 +97,6 @@ public sealed class DockerApiBuilder(Type definitionType)
     private string _environmentName = DockerWebDefaults.ApiEnvironmentName;
     private string? _healthPath = DockerWebDefaults.ApiHealthPath;
     private string? _image;
-    private string? _outputDirectory;
     private int _internalPort = DockerWebDefaults.ApiInternalPort;
     private TimeSpan _readinessTimeout = DockerWebDefaults.ApiReadinessTimeout;
 
@@ -140,21 +139,6 @@ public sealed class DockerApiBuilder(Type definitionType)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(image);
         _image = image;
-        return this;
-    }
-
-    /// <summary>
-    /// Ships an explicit directory instead of the one resolved from the entry point assembly.
-    /// </summary>
-    /// <param name="outputDirectory">The directory holding the built application.</param>
-    /// <remarks>
-    /// Resolution walks up from the loaded assembly to find the owning project, which is convenient
-    /// but not obvious. This is the way to say exactly what gets shipped.
-    /// </remarks>
-    public DockerApiBuilder WithOutputDirectory(string outputDirectory)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(outputDirectory);
-        _outputDirectory = outputDirectory;
         return this;
     }
 
@@ -263,7 +247,6 @@ public sealed class DockerApiBuilder(Type definitionType)
 
         return new DockerApiSpec(
             _image,
-            _outputDirectory,
             _environmentName,
             _healthPath,
             _internalPort,
@@ -296,7 +279,6 @@ public sealed record DockerApiStubBinding(StubIdentifier StubIdentifier, string 
 /// How one application is run.
 /// </summary>
 /// <param name="Image">An explicit runtime image, or <see langword="null"/> to follow the built framework.</param>
-/// <param name="OutputDirectory">An explicit build output directory, or <see langword="null"/> to resolve it.</param>
 /// <param name="EnvironmentName">The hosting environment name.</param>
 /// <param name="HealthPath">The readiness path, or <see langword="null"/> to accept any HTTP answer.</param>
 /// <param name="InternalPort">The port the application listens on inside the container.</param>
@@ -307,7 +289,6 @@ public sealed record DockerApiStubBinding(StubIdentifier StubIdentifier, string 
 /// <param name="StubBindings">Configuration values carrying stub addresses.</param>
 public sealed record DockerApiSpec(
     string? Image,
-    string? OutputDirectory,
     string EnvironmentName,
     string? HealthPath,
     int InternalPort,

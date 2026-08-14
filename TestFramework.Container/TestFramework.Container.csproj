@@ -7,7 +7,7 @@
 		<GenerateDocumentationFile>true</GenerateDocumentationFile>
 		<IsTestProject>false</IsTestProject>
 		<Title>TestFramework.Container</Title>
-		<Version>0.1.6</Version>
+		<Version>0.1.0</Version>
 		<Authors>DeadMoon0</Authors>
 		<Product>TestFramework</Product>
 		<Description>Shared Docker building blocks for TestFramework container environments: declaring where an application comes from and building it, network creation, host and network endpoint addressing, readiness waits and container log capture.</Description>
@@ -19,7 +19,7 @@
 		<PackageTags>Test;UnitTest;IntegrationTest;Framework;Timeline;Docker</PackageTags>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<Copyright>Copyright (c) DeadMoon0 2026</Copyright>
-		<PackageReleaseNotes>Build an application inside a container from the packages the host restored</PackageReleaseNotes>
+		<PackageReleaseNotes>Initial release: shared Docker building blocks, and a declared source model for getting an application into a container</PackageReleaseNotes>
 	</PropertyGroup>
 
 	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
@@ -43,7 +43,7 @@
 		<PackageReference Include="SSH.NET" Version="2026.0.0" />
 		<PackageReference Include="Testcontainers" Version="4.11.0" />
 		<PackageReference Include="Testcontainers.MsSql" Version="4.11.0" />
-		<PackageReference Include="TestFramework.Core" Version="0.1.8" />
+		<PackageReference Include="TestFramework.Core" Version="0.1.9" />
 	</ItemGroup>
 
 	<ItemGroup>
