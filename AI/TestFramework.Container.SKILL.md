@@ -4,11 +4,14 @@
 </identity>
 
 <objective>
-    Explain how TestFramework timelines run against Docker-backed local infrastructure through DockerAzureEnvironment, including what the user must configure, what the environment resolves automatically, and how container-backed Azure tests differ from non-container Azure tests.
+    Explain how TestFramework timelines run against Docker-backed local infrastructure, including what the user must configure, what the environment resolves automatically, and how container-backed tests differ from tests against already-running systems.
+    Two environments exist: DockerAzureEnvironment for Azure emulators, and DockerWebEnvironment (TestFramework.Container.Web) for an application, its SQL Server and its stubbed dependencies.
 </objective>
 
 <package_scope>
     Covers DockerAzureEnvironment, DockerAzureDefinition-based composition, Docker-backed Azurite, Cosmos emulator, SQL Server, Service Bus emulator, environment component resolution, connection-string rewriting, and smoke-test usage patterns.
+    Covers DockerWebEnvironment: DockerSqlDefinition with model-derived schema and reset modes, DockerApiDefinition with a declared ContainerSource, StubDefinition served from a container, and the two addresses every resource has.
+    Covers the shared building blocks: ContainerSource and its plan, the three build strategies, the offline package feed, readiness waits, log capture and Docker host normalisation.
 </package_scope>
 
 <key_concepts>
@@ -18,6 +21,13 @@
     The environment starts local Docker infrastructure only for the Azure resources actually required by the timeline artifacts and environment requirements.
     After the containers are ready, the environment rewrites the registered ConfigStore entries to the mapped Docker endpoints so the normal Azure runtime uses the live container endpoints.
     For Cosmos, the environment also infers the partition key path from the typed artifact model and deploys schema before item setup begins.
+    An application's source is declared, not discovered. ContainerSource.Project(path) names a project; MSBuild is then asked what it is - target framework, assembly name, web SDK, project references - so nothing depends on where an assembly was loaded from or on the test project referencing the application.
+    Every source resolves to a ContainerSourcePlan that is logged before anything is built or started, and values that were derived rather than declared say which. Planning has no side effects, so what a run would do is answerable without Docker.
+    A project that targets several frameworks is a hard error, not a silent pick: adding a framework must not quietly change what a test runs.
+    Three build strategies exist. BuiltAsImage lets the SDK build the image and is the default. BuiltOnHost publishes to a temporary directory. BuiltInContainer builds inside Docker and leaves no build output on the host.
+    An in-container build needs no feed credentials: the host restores with the configuration that already works, and the resolved packages are handed over as a pre-populated cache with every NuGet source cleared. It requires the target framework generation to match the SDK on the machine, because which packages count as framework-provided is SDK-version-dependent.
+    Every container has two addresses. The test process uses the host-mapped port; another container uses the network alias. UseSql and UseStub always inject the network form, so that cannot be got backwards.
+    Databases are reused across runs and have reset modes; applications and stubs are per-run, because there is no reset mode for a stale binary or a stale request log.
 </key_concepts>
 
 <best_practices>
@@ -30,6 +40,11 @@
     Keep Service Bus topology configuration explicit on the owning definition, preferably through ConfigureServiceBusTopology(...). Use ServiceBusTopologyConfigPath only when a shared external JSON file is genuinely the better fit.
     Prefer one project-level helper that wires config stores and DockerAzureEnvironment consistently.
     Prefer run assertions and environment assertions on TimelineRun over ad-hoc low-level debugging output.
+    Declare an application with ContainerSource.Project(...) rather than a marker type; it needs no reference from the test project to the application and no inference from a loaded assembly.
+    Read the source plan in the run log first when a container misbehaves. It names the project, the framework, the images and everything that was derived.
+    Choose a build strategy explicitly when the default does not fit: BuiltInContainer for a clean host, BuiltOnHost for speed, Image when a pipeline already produced one.
+    Generate a fixture schema from models only for a database the test owns; mirror a real schema with a script when it is owned elsewhere.
+    Assert that a stub received no unmatched calls; it is the only way a call to an undeclared endpoint becomes visible.
 </best_practices>
 
 <api_hints>
@@ -43,6 +58,18 @@
     - DockerCosmosDefinition<T>
     - DockerServiceBusDefinition
     - DockerFunctionAppDefinition<T>
+    - DockerWebEnvironment.For<TDefinition>().Include<TDefinition>().IncludeStub<TStub>()
+    - DockerWebEnvironment.UseSqlImage|UseSqlPassword|UseSqlMemoryLimit|UseStubImage(...)
+    - DockerSqlDefinition with DockerSqlBuilder: .WithDatabase(...), .WithSchemaFromModels<T...>(), .WithSchemaScript(...), .WithResetScript(...), .WithResetMode(SqlResetMode.None|RunResetScript|RecreateDatabase)
+    - DockerApiDefinition with ContainerSource Source and DockerApiBuilder: .WithEnvironmentName(...), .WithHealthPath(...)|.WithoutHealthCheck(), .WithSetting(...), .WithEnvironmentVariable(...), .UseSql<T>(settingPath), .UseStub<T>(settingPath)
+    - ContainerSource.Image|Project|Directory|EntryPoint<T>; project modifiers .BuiltAsImage()|.BuiltOnHost()|.BuiltInContainer(), .WithTargetFramework(...), .WithConfiguration(...), .WithRuntimeImage(...), .WithSdkImage(...), .WithContext(...)
+    - ContainerSourceResolver.PlanAsync(source, ct) -> ContainerSourcePlan; plan.ToLogLines(identifier)
+    - ContainerImageBuilder.BuildAsync(plan, identifier, logger, ct)
+    - State: SqlServerComponentState.GetRequiredDatabase(id), ApiComponentState.GetRequiredApi(id), StubComponentState.GetRequiredStub(id)
+    - ContainerEndpoints.HostEndpoint|NetworkEndpoint|HostSqlConnectionString|NetworkSqlConnectionString
+    - ContainerReadiness.WaitForHttpAsync|WaitForHttpAnswerAsync|WaitForSqlAsync|WaitForSqlStatementAsync
+    - ContainerOutputResolver.Resolve|ResolveFrom|ResolveProjectOutput|ResolveTargetFramework
+    - ProjectQuery.ReadAsync|ResolveCommonRoot, OfflineFeed.CreateAsync, DockerfileGenerator, ContainerDockerHost.EnsureConfigured
     Component identifiers surfaced by the environment:
     - DockerAzureEnvironment.AzuriteComponentId
     - DockerAzureEnvironment.CosmosDbComponentId

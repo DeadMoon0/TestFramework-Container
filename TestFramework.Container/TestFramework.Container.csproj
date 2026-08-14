@@ -10,7 +10,7 @@
 		<Version>0.1.6</Version>
 		<Authors>DeadMoon0</Authors>
 		<Product>TestFramework</Product>
-		<Description>Shared Docker building blocks for TestFramework container environments: network creation, host and network endpoint addressing, project output resolution, readiness waits and container log capture.</Description>
+		<Description>Shared Docker building blocks for TestFramework container environments: declaring where an application comes from and building it, network creation, host and network endpoint addressing, readiness waits and container log capture.</Description>
 		<PackageProjectUrl>https://github.com/DeadMoon0/TestFramework-Container</PackageProjectUrl>
 		<PackageIcon>Icon.png</PackageIcon>
 		<PackageReadmeFile>README.md</PackageReadmeFile>

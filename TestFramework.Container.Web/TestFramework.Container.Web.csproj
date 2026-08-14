@@ -10,7 +10,7 @@
 		<Version>0.4.0</Version>
 		<Authors>DeadMoon0</Authors>
 		<Product>TestFramework</Product>
-		<Description>Docker-backed environment providers for TestFramework.Web timelines: starts a SQL Server container, provisions the databases a run declares, and publishes their connection strings to the running timeline.</Description>
+		<Description>Docker-backed environment providers for TestFramework.Web timelines: builds and runs the application under test, starts the SQL Server behind it and the stubbed dependencies in front of it, and publishes every address into the running timeline.</Description>
 		<PackageProjectUrl>https://github.com/DeadMoon0/TestFramework-Container</PackageProjectUrl>
 		<PackageIcon>Icon.png</PackageIcon>
 		<PackageReadmeFile>README.md</PackageReadmeFile>

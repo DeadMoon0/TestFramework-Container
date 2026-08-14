@@ -99,13 +99,13 @@ nothing yet to clear.
 Declare the application the same way, pointing a configuration value at the database:
 
 ```csharp
-// in the application project — the generated Program of a minimal-hosting app is internal
-public sealed class OrdersApiMarker;
-
-// in the test project
-internal sealed class OrdersApiDefinition : DockerApiDefinition<OrdersApiMarker>
+internal sealed class OrdersApiDefinition : DockerApiDefinition
 {
     public override ApiIdentifier Identifier => "orders";
+
+    // Named, not discovered. A relative path resolves against this source file.
+    public override ContainerSource Source =>
+        ContainerSource.Project("../Orders.Api/Orders.Api.csproj").WithTargetFramework("net10.0");
 
     protected override void Configure(DockerApiBuilder builder) => builder
         .WithEnvironmentName("Testing")
@@ -114,6 +114,9 @@ internal sealed class OrdersApiDefinition : DockerApiDefinition<OrdersApiMarker>
         .WithSetting("Features:UseFakeClock", "true");
 }
 ```
+
+The test project does **not** reference the application project. That is the point: the application
+stays a black box, addressed only by the paths it exposes.
 
 Both go into the same environment, and the timeline calls the API while asserting on the database
 behind it:
@@ -139,17 +142,32 @@ The response says what the API claims; the row says what actually happened.
 
 ### How the application gets there
 
-The application's **own** build output is copied into an ASP.NET runtime image chosen from the
-framework it was built for — `net10.0` becomes `mcr.microsoft.com/dotnet/aspnet:10.0`. No publish
-step, so a rerun costs a build.
-
-Because resolution is a convenience and not obvious, what was shipped is stated in the run log and
-kept on the component state. When you want no guessing at all, say it outright:
+By default the SDK builds an image from the project — no Dockerfile, and the base image follows the
+project's framework, so `net10.0` becomes `mcr.microsoft.com/dotnet/aspnet:10.0`. Two other
+strategies are one call away:
 
 ```csharp
-builder.WithOutputDirectory(@"C:\src\Orders.Api\bin\Release\net10.0")
-       .WithImage("my-registry/orders-api:local");
+ContainerSource.Project(path)                     // SDK builds the image        ~8 s
+ContainerSource.Project(path).BuiltOnHost()       // publish to temp, copy in    ~2 s
+ContainerSource.Project(path).BuiltInContainer()  // built in Docker, clean host ~6 s
 ```
+
+`BuiltInContainer` leaves no build output on the host at all and needs **no feed credentials**: the
+host restores with the configuration that already works, and the packages that produced are handed
+to the container as a pre-populated cache with every NuGet source cleared. It requires the target
+framework generation to match the SDK on the machine, and says so while planning rather than failing
+inside the container.
+
+Other sources are available where a project is not the right answer:
+
+```csharp
+ContainerSource.Image("orders-api:ci-1234")            // a pipeline already built it
+ContainerSource.Directory(@"C:\out\orders-api")        // this exact folder
+ContainerSource.EntryPoint<OrdersApiMarker>()          // the older inferring road
+```
+
+Whatever the source, the plan is written to the run log before anything starts and kept on the
+component state, so what actually ran is never something you have to infer.
 
 ### How configuration gets there
 
@@ -160,7 +178,7 @@ is written to the run log, and kept on the state:
 ```csharp
 ApiComponentState state = run.EnvironmentContext.GetState<ApiComponentState>(DockerWebEnvironment.ApiComponentId);
 RunningApi api = state.GetRequiredApi("orders");
-// api.SettingsJson, api.ShippedDirectory, api.BaseUrl
+// api.SettingsJson, api.BaseUrl, api.Plan.ProjectPath, api.Plan.Image, api.Plan.BuiltAtUtc
 ```
 
 `WithEnvironmentVariable(...)` remains for the values that really are environment variables.
@@ -263,9 +281,14 @@ DockerWebEnvironment.For<SampleSqlDefinition>()
 | `is not a plain identifier` | A database name goes into a statement verbatim, so only letters, digits and underscores are accepted. |
 | `the SQL Server container did not become usable` | The engine did not start within the readiness window. Check `docker logs`; a low memory limit is the usual cause. |
 | `did not answer within ...` for an API | The application failed to start. Its own log is already captured into the run output — read that before anything else. |
-| `both directly and from a database binding` | A setting is written by `WithSetting` and by `UseSql` at once, so which wins is not obvious. Remove one. |
+| `both directly and from a resource binding` | A setting is written by `WithSetting` and by `UseSql`/`UseStub` at once, so which wins is not obvious. Remove one. |
+| `targets ..., so which one to run is ambiguous` | A multi-targeted project needs `WithTargetFramework(...)`; picking silently would let a project change what a test runs. |
+| `No 'docker' executable was found` | The SDK shells out to the CLI to build an image. Install it, or use `BuiltOnHost()`, which needs none. |
+| `The Docker daemon is serving 'windows' containers` | The .NET base images used here are Linux images. Switch Docker Desktop, or name a matching image. |
+| `needs a .NET N SDK, and this machine restores with M` | An offline in-container build must target the SDK generation that resolved the packages. Target that framework, or use `BuiltAsImage()`. |
+| `The container build for '...' failed` | The build output follows the message and the context is kept at the named path for inspection. |
 | Rows survive between runs | The default reset mode keeps them. Choose `RecreateDatabase`, or supply a reset script. |
-| A code change seems to have no effect | The application container is per-run, so this should not happen — but check that the test project really references the application project, since that is what builds the shipped output. |
+| A code change seems to have no effect | The application container is per-run and the framework builds the project itself, so this should not happen. Check the plan in the run log for which project was built. |
 
 ## Scope
 
