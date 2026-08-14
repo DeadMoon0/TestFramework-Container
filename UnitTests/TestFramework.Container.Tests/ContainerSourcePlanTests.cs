@@ -77,14 +77,15 @@ public class ContainerSourcePlanTests
     public async Task Project_BuiltInContainer_DerivesTheContextAndTheSdkImage()
     {
         ContainerSourcePlan plan = await ContainerSourceResolver.PlanAsync(
-            ContainerSource.Project(SampleApiProject).WithTargetFramework("net8.0").BuiltInContainer(),
+            ContainerSource.Project(SampleApiProject).WithTargetFramework("net10.0").BuiltInContainer(),
             CancellationToken.None);
 
         Assert.Equal(ContainerBuildStrategy.InContainer, plan.Strategy);
         Assert.NotNull(plan.ContextDirectory);
         Assert.StartsWith("mcr.microsoft.com/dotnet/sdk:", plan.SdkImage!, StringComparison.Ordinal);
 
-        // The SDK on this machine already builds the project, so it is the tag that is used.
+        // Matched to the host SDK, because package pruning differs between SDK versions and the
+        // handed-over cache only satisfies a restore that resolves the same set.
         Assert.Contains(plan.Derivations, note => note.Contains("SDK on this machine", StringComparison.Ordinal));
     }
 
@@ -93,7 +94,7 @@ public class ContainerSourcePlanTests
     {
         ContainerSourcePlan plan = await ContainerSourceResolver.PlanAsync(
             ContainerSource.Project(SampleApiProject)
-                .WithTargetFramework("net8.0")
+                .WithTargetFramework("net10.0")
                 .BuiltInContainer()
                 .WithRuntimeImage("my-registry/runtime:1")
                 .WithSdkImage("my-registry/sdk:1")

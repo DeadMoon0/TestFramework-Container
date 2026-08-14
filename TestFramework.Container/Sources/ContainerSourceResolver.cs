@@ -99,6 +99,8 @@ public static class ContainerSourceResolver
         if (source.Strategy != ContainerBuildStrategy.InContainer)
             return plan;
 
+        await EnsureBuildableOfflineAsync(source, targetFramework, cancellationToken).ConfigureAwait(false);
+
         string context = source.ContextDirectory ?? ProjectQuery.ResolveCommonRoot(facts);
         if (source.ContextDirectory is null)
         {
@@ -113,6 +115,37 @@ public static class ContainerSourceResolver
             SdkImage = await ResolveSdkImageAsync(source, targetFramework, derivations, cancellationToken).ConfigureAwait(false),
             Derivations = derivations,
         };
+    }
+
+    private static async Task EnsureBuildableOfflineAsync(ProjectContainerSource source, string targetFramework, CancellationToken cancellationToken)
+    {
+        // An offline build hands the container the packages the host's restore resolved. Which
+        // packages that is depends on what the SDK treats as provided by the framework, and an SDK
+        // building a framework of a different generation resolves a different set -- one the handed
+        // over cache cannot satisfy. Saying so here beats a restore failure inside the container
+        // listing packages nobody asked for.
+        if (source.SdkImage is not null)
+            return;
+
+        string? hostSdk = await DotNetCli.ReadSdkMajorMinorAsync(cancellationToken).ConfigureAwait(false);
+        if (hostSdk is null)
+            return;
+
+        string sdkGeneration = hostSdk.Split('.')[0];
+        string frameworkGeneration = targetFramework.StartsWith("net", StringComparison.OrdinalIgnoreCase)
+            ? targetFramework[3..].Split('.')[0]
+            : string.Empty;
+
+        if (string.Equals(sdkGeneration, frameworkGeneration, StringComparison.Ordinal))
+            return;
+
+        throw new FrameworkConfigurationException(
+            $"Building '{targetFramework}' inside a container needs a .NET {frameworkGeneration} SDK, and this machine restores with {hostSdk}.",
+            [
+                $"Target net{sdkGeneration}.0, so the container builds with the same SDK generation that resolved the packages.",
+                "Or use BuiltAsImage(), which builds on the host and has no such constraint.",
+                "Or name a matching SDK image with WithSdkImage(\"...\"), and make sure the host restores with that generation too.",
+            ]);
     }
 
     private static string ResolveTargetFramework(ProjectContainerSource source, ProjectFacts facts, List<string> derivations)
@@ -174,12 +207,14 @@ public static class ContainerSourceResolver
         if (source.SdkImage is { } declared)
             return declared;
 
-        // The SDK on the path already builds this project, so it is the safest tag to build it with
-        // again; the project's own framework can be older than the SDK that compiles it.
+        // Matched to the SDK on this machine, and that matters more than it looks: which packages a
+        // restore treats as framework-provided depends on the SDK version, so a container running a
+        // different SDK asks for packages the host's restore pruned, and the handed-over cache
+        // cannot satisfy it.
         string? hostSdk = await DotNetCli.ReadSdkMajorMinorAsync(cancellationToken).ConfigureAwait(false);
         if (hostSdk is not null)
         {
-            derivations.Add($"SDK image from the SDK on this machine, {hostSdk}");
+            derivations.Add($"SDK image matched to the SDK on this machine, {hostSdk}, so its restore resolves the same set");
             return $"mcr.microsoft.com/dotnet/sdk:{hostSdk}";
         }
 

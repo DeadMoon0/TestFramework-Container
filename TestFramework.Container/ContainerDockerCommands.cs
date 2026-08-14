@@ -97,11 +97,18 @@ public static class ContainerDockerCommands
         };
 
         process.Start();
-        string standardOutput = await process.StandardOutput.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
-        string standardError = await process.StandardError.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
+
+        // Both streams are drained at once. Reading one to the end first deadlocks as soon as the
+        // other fills its pipe buffer, which a verbose command such as 'docker build' does within a
+        // second: it writes its whole progress report to standard error.
+        Task<string> standardOutput = process.StandardOutput.ReadToEndAsync(cancellationToken);
+        Task<string> standardError = process.StandardError.ReadToEndAsync(cancellationToken);
         await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
 
-        return new CommandResult(process.ExitCode, standardOutput, standardError);
+        return new CommandResult(
+            process.ExitCode,
+            await standardOutput.ConfigureAwait(false),
+            await standardError.ConfigureAwait(false));
     }
 
     /// <summary>

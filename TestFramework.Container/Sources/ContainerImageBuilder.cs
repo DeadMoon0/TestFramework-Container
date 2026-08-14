@@ -48,12 +48,8 @@ public static class ContainerImageBuilder
         {
             ContainerBuildStrategy.SdkContainerPublish => await PublishImageAsync(plan, identifier, logger, cancellationToken).ConfigureAwait(false),
             ContainerBuildStrategy.HostPublish => await PublishToDirectoryAsync(plan, identifier, logger, cancellationToken).ConfigureAwait(false),
-            _ => throw new FrameworkConfigurationException(
-                $"Building '{identifier}' inside a container is not implemented in this version.",
-                [
-                    "Use BuiltAsImage(), which lets the SDK build the image on the host.",
-                    "Or use BuiltOnHost(), which publishes to a temporary directory and ships that.",
-                ]),
+            ContainerBuildStrategy.InContainer => await BuildInContainerAsync(plan, identifier, logger, cancellationToken).ConfigureAwait(false),
+            _ => throw new FrameworkConfigurationException($"The build strategy '{plan.Strategy}' is not supported."),
         };
     }
 
@@ -126,6 +122,20 @@ public static class ContainerImageBuilder
         logger.LogInformation("'{0}' built image '{1}' in {2}.", identifier, image, stopwatch.Elapsed);
 
         return plan with { Image = image, BuiltAtUtc = DateTimeOffset.UtcNow };
+    }
+
+    private static async Task<ContainerSourcePlan> BuildInContainerAsync(
+        ContainerSourcePlan plan,
+        string identifier,
+        ScopedLogger logger,
+        CancellationToken cancellationToken)
+    {
+        await EnsureLinuxContainersAsync(cancellationToken).ConfigureAwait(false);
+
+        // Read again rather than carried on the plan, so the plan stays a description and this stays
+        // the only place that needs the project's own details.
+        ProjectFacts facts = await ProjectQuery.ReadAsync(plan.ProjectPath!, cancellationToken).ConfigureAwait(false);
+        return await InContainerBuild.BuildAsync(plan, facts, identifier, logger, cancellationToken).ConfigureAwait(false);
     }
 
     private static async Task<ContainerSourcePlan> PublishToDirectoryAsync(

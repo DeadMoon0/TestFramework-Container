@@ -7,7 +7,7 @@
 		<GenerateDocumentationFile>true</GenerateDocumentationFile>
 		<IsTestProject>false</IsTestProject>
 		<Title>TestFramework.Container</Title>
-		<Version>0.1.5</Version>
+		<Version>0.1.6</Version>
 		<Authors>DeadMoon0</Authors>
 		<Product>TestFramework</Product>
 		<Description>Shared Docker building blocks for TestFramework container environments: network creation, host and network endpoint addressing, project output resolution, readiness waits and container log capture.</Description>
@@ -19,7 +19,7 @@
 		<PackageTags>Test;UnitTest;IntegrationTest;Framework;Timeline;Docker</PackageTags>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<Copyright>Copyright (c) DeadMoon0 2026</Copyright>
-		<PackageReleaseNotes>Declare where a container application comes from instead of discovering it</PackageReleaseNotes>
+		<PackageReleaseNotes>Build an application inside a container from the packages the host restored</PackageReleaseNotes>
 	</PropertyGroup>
 
 	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
