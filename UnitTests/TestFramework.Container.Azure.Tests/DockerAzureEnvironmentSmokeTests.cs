@@ -25,6 +25,13 @@ using TestFramework.Core.Timelines.Builder.TimelineBuilder;
 using TestFramework.Core.Timelines.Builder.TimelineRunBuilder;
 using TestFramework.Core.Variables;
 using System.Net;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Xunit;
 namespace TestFramework.Container.Azure.Tests;
 
 // README sync note: the README golden sample is backed by the smoke test below.

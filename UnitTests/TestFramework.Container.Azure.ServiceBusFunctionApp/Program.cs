@@ -2,6 +2,7 @@ using Azure.Messaging.ServiceBus;
 using Microsoft.Azure.Functions.Worker.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using System;
 
 var builder = FunctionsApplication.CreateBuilder(args);
 var configuration = builder.Configuration;

@@ -1,6 +1,14 @@
 <Project>
-  <PropertyGroup>
-    <BaseIntermediateOutputPath>..\..\..\artifacts\sbfa-obj\</BaseIntermediateOutputPath>
-    <MSBuildProjectExtensionsPath>$(BaseIntermediateOutputPath)</MSBuildProjectExtensionsPath>
-  </PropertyGroup>
+
+	<!-- MSBuild stops at the nearest Directory.Build.props, so the repository-wide one is imported by
+	     hand. Without this line the conventions above would not reach this project. -->
+	<Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+
+	<PropertyGroup>
+		<!-- The Functions worker SDK generates a nested build under obj, and the combined path exceeds
+		     the Windows limit from this directory. Moving the intermediate output up shortens it. -->
+		<BaseIntermediateOutputPath>..\..\..\artifacts\sbfa-obj\</BaseIntermediateOutputPath>
+		<MSBuildProjectExtensionsPath>$(BaseIntermediateOutputPath)</MSBuildProjectExtensionsPath>
+	</PropertyGroup>
+
 </Project>

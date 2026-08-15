@@ -9,6 +9,12 @@ using TestFramework.Container.Azure;
 using TestFramework.Config;
 using TestFramework.Core.Environment;
 using Xunit;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace TestFramework.Container.Azure.Tests;
 

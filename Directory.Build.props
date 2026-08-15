@@ -1,0 +1,18 @@
+<Project>
+
+	<!--
+	  One place for the settings every project in this repository shares.
+
+	  They were repeated in each csproj, and TreatWarningsAsErrors was repeated twice more per project
+	  behind 'Debug|AnyCPU' and 'Release|AnyCPU' conditions - which meant it silently did not apply to
+	  any other configuration or platform. Here it applies to all of them.
+	-->
+	<PropertyGroup>
+		<!-- Every using is written where it is needed, so a file says what it depends on. -->
+		<ImplicitUsings>disable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+		<LangVersion>latest</LangVersion>
+	</PropertyGroup>
+
+</Project>
