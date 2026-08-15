@@ -41,8 +41,8 @@
 		<PackageReference Include="SSH.NET" Version="2026.0.0" />
 		<PackageReference Include="Testcontainers" Version="4.11.0" />
 		<PackageReference Include="Testcontainers.MsSql" Version="4.11.0" />
-		<PackageReference Include="TestFramework.Config" Version="0.1.5" />
-		<PackageReference Include="TestFramework.Core" Version="0.1.9" />
+		<PackageReference Include="TestFramework.Config" Version="0.1.6" />
+		<PackageReference Include="TestFramework.Core" Version="0.1.10" />
 		<PackageReference Include="TestFramework.Web" Version="0.1.0" />
 	</ItemGroup>
 

@@ -177,7 +177,7 @@ public class DockerAzureEnvironmentTests
     }
 
     [Fact]
-    public void ResolveComponents_FormatsResolutionSummaryWithIdentifiersAndContracts()
+    public async Task ResolveComponents_FormatsResolutionSummaryWithIdentifiersAndContracts()
     {
         DockerAzureEnvironment environment = DockerAzureEnvironment.For<ContractLoggingFunctionAppDefinition>();
         var functionStep = new IsLiveTrigger().FunctionApp("func-contract");
@@ -190,10 +190,10 @@ public class DockerAzureEnvironmentTests
             .GetMethod("LogPendingResolutionSummary", BindingFlags.Instance | BindingFlags.NonPublic)!
             .Invoke(environment, [logger]);
 
-        Assert.Contains(debugger.LogEntries, entry => entry.Message.Contains("Docker Azure resolution: components", StringComparison.Ordinal));
-        Assert.Contains(debugger.LogEntries, entry => entry.Message.Contains("Function Apps: func-contract", StringComparison.Ordinal));
-        Assert.Contains(debugger.LogEntries, entry => entry.Message.Contains("Service Bus: bus", StringComparison.Ordinal));
-        Assert.Contains(debugger.LogEntries, entry => entry.Message.Contains("functionapp:func-contract <= servicebus:bus", StringComparison.Ordinal));
+        Assert.True(await debugger.WaitForLogAsync(entry => entry.Message.Contains("Docker Azure resolution: components", StringComparison.Ordinal)), "Resolution summary was not logged.");
+        Assert.True(await debugger.WaitForLogAsync(entry => entry.Message.Contains("Function Apps: func-contract", StringComparison.Ordinal)), "Function App identifiers were not logged.");
+        Assert.True(await debugger.WaitForLogAsync(entry => entry.Message.Contains("Service Bus: bus", StringComparison.Ordinal)), "Service Bus identifiers were not logged.");
+        Assert.True(await debugger.WaitForLogAsync(entry => entry.Message.Contains("functionapp:func-contract <= servicebus:bus", StringComparison.Ordinal)), "Contract edge was not logged.");
     }
 
     [Fact]
@@ -810,14 +810,43 @@ public class DockerAzureEnvironmentTests
 
     private sealed class RecordingRunDebugger : IRunDebugger
     {
-        public List<DebugLogEntry> LogEntries { get; } = [];
+        private readonly object logGate = new();
+        private readonly List<DebugLogEntry> logEntries = [];
+
+        public IReadOnlyList<DebugLogEntry> LogEntries
+        {
+            get { lock (logGate) { return [.. logEntries]; } }
+        }
+
+        /// <summary>
+        /// Waits until a log entry matching <paramref name="predicate"/> has been delivered.
+        /// </summary>
+        /// <remarks>
+        /// The run session queues log entries and drains them on a single consumer, so asserting
+        /// immediately after the code under test races that delivery.
+        /// </remarks>
+        public async Task<bool> WaitForLogAsync(Func<DebugLogEntry, bool> predicate, TimeSpan? timeout = null)
+        {
+            DateTime deadline = DateTime.UtcNow.Add(timeout ?? TimeSpan.FromSeconds(5));
+            while (true)
+            {
+                if (LogEntries.Any(predicate))
+                    return true;
+
+                if (DateTime.UtcNow >= deadline)
+                    return false;
+
+                await Task.Delay(15).ConfigureAwait(false);
+            }
+        }
 
         public Task SignalInitTimelineRunAsync(string sessionId, string name, string projectPath, TimelineRunStructure runStructure) => Task.CompletedTask;
         public Task SignalEntityTransitionAsync(string sessionId, DebugEntityKind entityKind, string? stage, int? stepId, DebugLifecycleState state, DebugLifecycleState? previousState = null, DebugLifecycleState? outcomeState = null) => Task.CompletedTask;
         public Task SignalValueUpdateAsync(string sessionId, string name, DebugValueKind valueKind, string? stage, int? stepId, DebugValueEnvelope value) => Task.CompletedTask;
         public Task SignalLogEntryAsync(string sessionId, DebugLogEntry entry)
         {
-            LogEntries.Add(entry);
+            // Written from the session's drain thread, read from the test thread.
+            lock (logGate) { logEntries.Add(entry); }
             return Task.CompletedTask;
         }
         public Task SignalAssertionAsync(string sessionId, DebugAssertionEntry entry) => Task.CompletedTask;

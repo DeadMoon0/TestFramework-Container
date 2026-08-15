@@ -31,7 +31,7 @@ public sealed class DockerAzureHostedEnvironment : IAsyncDisposable
     /// <summary>
     /// Starts a hosted Docker Azure environment that can be reused across multiple runs.
     /// </summary>
-    public static Task<DockerAzureHostedEnvironment> StartAsync(
+    public static async Task<DockerAzureHostedEnvironment> StartAsync(
         DockerAzureEnvironment environment,
         ConfigInstance persistentConfig,
         IReadOnlyCollection<EnvironmentRequirement> persistentRequirements,
@@ -46,8 +46,16 @@ public sealed class DockerAzureHostedEnvironment : IAsyncDisposable
 
         IServiceProvider bootstrapServiceProvider = persistentConfig.BuildServiceProvider();
         DockerAzurePersistentSetup setup = new(environment, persistentConfig, persistentRequirements, persistentSetupTimeout ?? TimeSpan.FromMinutes(2));
-        PersistentEnvironmentContext<DockerAzurePersistentSetup> persistentContext = new(setup, bootstrapServiceProvider, disposePersistentServiceProvider: true);
-        return Task.FromResult(new DockerAzureHostedEnvironment(persistentContext, persistentConfig, bootstrapServiceProvider));
+
+        // Awaited rather than constructed: bootstrapping starts containers, so doing it in a
+        // constructor blocked the caller for the whole setup timeout and deadlocked under a
+        // synchronization context. This also makes the cancellation token mean something.
+        PersistentEnvironmentContext<DockerAzurePersistentSetup> persistentContext =
+            await PersistentEnvironmentContext<DockerAzurePersistentSetup>
+                .CreateAsync(setup, bootstrapServiceProvider, disposePersistentServiceProvider: true, cancellationToken)
+                .ConfigureAwait(false);
+
+        return new DockerAzureHostedEnvironment(persistentContext, persistentConfig, bootstrapServiceProvider);
     }
 
     /// <summary>

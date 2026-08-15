@@ -78,7 +78,7 @@ internal sealed class CosmosDbEnvComponent : DockerAzureEnvComponent
                 configStore.AddConfig(identifier, updated);
 
                 if (dockerEnvironment.CosmosPartitionKeyPaths.TryGetValue(identifier, out string? partitionKeyPath))
-                    await DeploySchemaAsync(updated.ConnectionString, identifier, updated, partitionKeyPath, logger, cancellationToken).ConfigureAwait(false);
+                    await DeploySchemaAsync(identifier, updated, partitionKeyPath, logger, cancellationToken).ConfigureAwait(false);
             }
         }
 
@@ -125,12 +125,14 @@ internal sealed class CosmosDbEnvComponent : DockerAzureEnvComponent
             lastError);
     }
 
-    private static async Task DeploySchemaAsync(string connectionString, string identifier, CosmosContainerDbConfig config, string partitionKeyPath, ScopedLogger logger, CancellationToken cancellationToken)
+    private static async Task DeploySchemaAsync(string identifier, CosmosContainerDbConfig config, string partitionKeyPath, ScopedLogger logger, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
+        // The config already carries the container's mapped connection string, so it is the single
+        // source of the endpoint the schema is deployed against.
         Stopwatch stopwatch = Stopwatch.StartNew();
-        await CosmosSchemaRestClient.EnsureDatabaseAndContainerExistAsync(connectionString, config.DatabaseName, config.ContainerName, partitionKeyPath, cancellationToken).ConfigureAwait(false);
+        await CosmosSchemaRestClient.EnsureDatabaseAndContainerExistAsync(config, partitionKeyPath, cancellationToken).ConfigureAwait(false);
         logger.LogInformation($"Deployed the Cosmos schema for '{identifier}': {config.DatabaseName}/{config.ContainerName} ({partitionKeyPath}) in {stopwatch.Elapsed:g}.");
     }
 

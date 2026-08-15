@@ -190,7 +190,7 @@ internal sealed class AzureResetEnvComponent(DockerAzureEnvironment owner) : Doc
             try
             {
                 await DeleteCosmosContainerAsync(config, logger, cancellationToken).ConfigureAwait(false);
-                await CosmosSchemaRestClient.EnsureDatabaseAndContainerExistAsync(config.ConnectionString, config.DatabaseName, config.ContainerName, partitionKeyPath, cancellationToken).ConfigureAwait(false);
+                await CosmosSchemaRestClient.EnsureDatabaseAndContainerExistAsync(config, partitionKeyPath, cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
