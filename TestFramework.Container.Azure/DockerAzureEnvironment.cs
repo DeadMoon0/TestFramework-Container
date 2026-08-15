@@ -51,7 +51,7 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
     public DockerAzureEnvironment()
     {
         AddComponent(new Components.DockerNetworkEnvComponent());
-        AddComponent(new Components.FunctionAppEnvComponent());
+        AddComponent(new Components.FunctionAppEnvComponent(this));
         AddComponent(new Components.MsSqlEnvComponent());
         AddComponent(new Components.AzuriteEnvComponent());
         AddComponent(new Components.CosmosDbEnvComponent());
@@ -231,6 +231,60 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
     internal FunctionAppDefinitionDescriptor GetRequiredFunctionAppDescriptor(FunctionAppIdentifier identifier)
     {
         return _definitionState.GetRequiredFunctionAppDescriptor(identifier);
+    }
+
+    /// <summary>
+    /// Builds the component set a Function App container actually needs, derived from the resource bindings the
+    /// Function App declared instead of from a hardcoded list of every emulator this environment can host.
+    /// </summary>
+    /// <remarks>
+    /// This reads resolution state. Before <see cref="ResolveComponents"/> has run there are no resolved Function Apps,
+    /// so the result degrades to the network component alone — which is safe because
+    /// <c>FunctionAppEnvComponent.CreateAsync</c> early-returns when no Function App resolved.
+    /// </remarks>
+    internal IReadOnlyList<EnvComponentIdentifier> GetFunctionAppComponentDependencies()
+    {
+        HashSet<EnvComponentIdentifier> dependencies = [NetworkComponentId];
+        foreach (string identifier in UsedFunctionAppIdentifiers)
+        {
+            foreach (EnvComponentIdentifier component in GetFunctionAppResourceComponents(identifier))
+                dependencies.Add(component);
+        }
+
+        return [.. dependencies];
+    }
+
+    /// <summary>
+    /// Maps the resource bindings of a single Function App onto the environment components that back them.
+    /// </summary>
+    /// <remarks>
+    /// MsSql is deliberately absent: the Service Bus component already names it as a dependency and the component
+    /// graph walks dependencies transitively.
+    /// </remarks>
+    internal IReadOnlyCollection<EnvComponentIdentifier> GetFunctionAppResourceComponents(FunctionAppIdentifier identifier)
+    {
+        if (!_definitionState.TryGetFunctionAppDescriptor(identifier, out FunctionAppDefinitionDescriptor? descriptor) || descriptor is null)
+            return [];
+
+        HashSet<EnvComponentIdentifier> components = [];
+        foreach (FunctionAppResourceBinding binding in descriptor.ResourceBindings)
+        {
+            switch (binding.Kind)
+            {
+                case FunctionAppResourceBindingKind.Storage:
+                    components.Add(AzuriteComponentId);
+                    break;
+                case FunctionAppResourceBindingKind.Cosmos:
+                    components.Add(CosmosDbComponentId);
+                    break;
+                case FunctionAppResourceBindingKind.ServiceBusTrigger:
+                case FunctionAppResourceBindingKind.ServiceBusReply:
+                    components.Add(ServiceBusComponentId);
+                    break;
+            }
+        }
+
+        return components;
     }
 
     internal IReadOnlyCollection<ComponentContractBinding> GetContractBindings()

@@ -25,6 +25,12 @@ internal sealed class AzuriteEnvComponent : DockerAzureEnvComponent
     public override async Task<object?> CreateAsync(IEnvironmentProvider environment, IServiceProvider serviceProvider, VariableStore variableStore, ArtifactStore artifactStore, ScopedLogger logger, CancellationToken cancellationToken)
     {
         DockerAzureEnvironment dockerEnvironment = GetDockerEnvironment(environment);
+        if (dockerEnvironment.UsedStorageIdentifiers.Count == 0)
+        {
+            logger.LogInformation("Skipping Azurite environment setup because no storage identifiers were requested.");
+            return null;
+        }
+
         ConfigStore<StorageAccountConfig>? configStore = EnvComponentConfigStoreGuard.GetRequiredStore<StorageAccountConfig>(dockerEnvironment, serviceProvider, dockerEnvironment.UsedStorageIdentifiers, "Azurite environment setup");
         INetwork network = dockerEnvironment.GetRequiredRuntimeState<INetwork>(DockerAzureEnvironment.NetworkComponentId);
         IContainer container = new ContainerBuilder(dockerEnvironment.GetAzuriteImage())

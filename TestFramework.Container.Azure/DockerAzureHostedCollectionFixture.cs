@@ -128,7 +128,7 @@ public class DockerAzureHostedCollectionFixture<TState> : IAsyncLifetime
         public ConfigInstance CreatePersistentConfig() => _persistentConfig;
 
         public IReadOnlyCollection<EnvComponentIdentifier> GetPersistentComponentIdentifiers()
-            => DockerAzurePersistentRootMapper.Map(_persistentRequirements);
+            => DockerAzurePersistentRootMapper.Map(_environment, _persistentRequirements);
 
         public TimeSpan GetPersistentSetupTimeout() => _persistentSetupTimeout;
     }

@@ -8,16 +8,21 @@ namespace TestFramework.Container.Azure;
 
 internal static class DockerAzurePersistentRootMapper
 {
-    public static IReadOnlyCollection<EnvComponentIdentifier> Map(IReadOnlyCollection<EnvironmentRequirement> requirements)
+    /// <summary>
+    /// Maps persistent requirements onto the components that must be hosted for the whole collection.
+    /// </summary>
+    /// <param name="environment">The environment holding the Function App definitions, used to derive what a Function App requirement really needs.</param>
+    /// <param name="requirements">The persistent requirements declared by the fixture.</param>
+    public static IReadOnlyCollection<EnvComponentIdentifier> Map(DockerAzureEnvironment environment, IReadOnlyCollection<EnvironmentRequirement> requirements)
     {
         HashSet<EnvComponentIdentifier> persistentRoots = [DockerAzureEnvironment.NetworkComponentId];
         foreach (EnvironmentRequirement requirement in requirements)
-            AddRequirementRoots(persistentRoots, requirement);
+            AddRequirementRoots(environment, persistentRoots, requirement);
 
         return [.. persistentRoots];
     }
 
-    private static void AddRequirementRoots(HashSet<EnvComponentIdentifier> persistentRoots, EnvironmentRequirement requirement)
+    private static void AddRequirementRoots(DockerAzureEnvironment environment, HashSet<EnvComponentIdentifier> persistentRoots, EnvironmentRequirement requirement)
     {
         switch (requirement.ResourceKind)
         {
@@ -34,10 +39,11 @@ internal static class DockerAzurePersistentRootMapper
                 persistentRoots.Add(DockerAzureEnvironment.ServiceBusComponentId);
                 return;
             case AzureEnvironmentResourceKinds.FunctionApp:
-                persistentRoots.Add(DockerAzureEnvironment.AzuriteComponentId);
-                persistentRoots.Add(DockerAzureEnvironment.CosmosDbComponentId);
-                persistentRoots.Add(DockerAzureEnvironment.ServiceBusComponentId);
-                persistentRoots.Add(DockerAzureEnvironment.MsSqlComponentId);
+                // Only the emulators this Function App actually binds to. The Function App component itself is PerRun,
+                // so it must never become a persistent root — ValidatePersistentRoots would throw. MsSql is pulled in
+                // behind Service Bus by PersistentEnvironmentContext.ValidatePersistentClosure.
+                foreach (EnvComponentIdentifier component in environment.GetFunctionAppResourceComponents(requirement.ResourceIdentifier))
+                    persistentRoots.Add(component);
                 return;
             default:
                 throw new UnsupportedFrameworkValueException($"Unsupported persistent Azure resource kind '{requirement.ResourceKind}'.");

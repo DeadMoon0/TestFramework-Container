@@ -20,21 +20,22 @@ using TestFramework.Core.Variables;
 
 namespace TestFramework.Container.Azure.Components;
 
-internal sealed class FunctionAppEnvComponent : DockerAzureEnvComponent
+internal sealed class FunctionAppEnvComponent(DockerAzureEnvironment owner) : DockerAzureEnvComponent
 {
     private const string FunctionAppRoot = "/home/site/wwwroot";
     private static readonly TimeSpan FunctionAppReadyTimeout = TimeSpan.FromMinutes(4);
 
     public override EnvComponentIdentifier Id => DockerAzureEnvironment.FunctionAppComponentId;
 
-    public override IReadOnlyList<EnvComponentIdentifier> Dependencies =>
-    [
-        DockerAzureEnvironment.NetworkComponentId,
-        DockerAzureEnvironment.AzuriteComponentId,
-        DockerAzureEnvironment.CosmosDbComponentId,
-        DockerAzureEnvironment.ServiceBusComponentId,
-        DockerAzureEnvironment.MsSqlComponentId,
-    ];
+    /// <summary>
+    /// The emulators the resolved Function Apps actually bind to, plus the network.
+    /// </summary>
+    /// <remarks>
+    /// This property reads resolution state and must not be consulted before
+    /// <see cref="DockerAzureEnvironment.ResolveComponents"/> has run: it then degrades to the network component alone.
+    /// That is safe because <see cref="CreateAsync"/> early-returns when no Function App resolved.
+    /// </remarks>
+    public override IReadOnlyList<EnvComponentIdentifier> Dependencies => owner.GetFunctionAppComponentDependencies();
 
     public override async Task<object?> CreateAsync(IEnvironmentProvider environment, IServiceProvider serviceProvider, VariableStore variableStore, ArtifactStore artifactStore, ScopedLogger logger, CancellationToken cancellationToken)
     {

@@ -662,6 +662,11 @@ internal sealed class DockerAzureDefinitionState
         throw new FrameworkConfigurationException($"No Docker Function App registration was configured for identifier '{identifier}'.");
     }
 
+    public bool TryGetFunctionAppDescriptor(FunctionAppIdentifier identifier, out FunctionAppDefinitionDescriptor? descriptor)
+    {
+        return _functionAppDescriptors.TryGetValue(identifier, out descriptor);
+    }
+
     public bool TryGetDefaultConfig(Type configType, string identifier, out object? config)
     {
         if (!_definitionMetadataByIdentity.TryGetValue(GetRealizedIdentity(configType, identifier), out DockerAzureDefinitionMetadata? metadata))

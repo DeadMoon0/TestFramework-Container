@@ -32,6 +32,12 @@ internal sealed class CosmosDbEnvComponent : DockerAzureEnvComponent
     public override async Task<object?> CreateAsync(IEnvironmentProvider environment, IServiceProvider serviceProvider, VariableStore variableStore, ArtifactStore artifactStore, ScopedLogger logger, CancellationToken cancellationToken)
     {
         DockerAzureEnvironment dockerEnvironment = GetDockerEnvironment(environment);
+        if (dockerEnvironment.UsedCosmosIdentifiers.Count == 0)
+        {
+            logger.LogInformation("Skipping Cosmos environment setup because no Cosmos identifiers were requested.");
+            return null;
+        }
+
         ConfigStore<CosmosContainerDbConfig>? configStore = EnvComponentConfigStoreGuard.GetRequiredStore<CosmosContainerDbConfig>(dockerEnvironment, serviceProvider, dockerEnvironment.UsedCosmosIdentifiers, "Cosmos environment setup");
         INetwork network = dockerEnvironment.GetRequiredRuntimeState<INetwork>(DockerAzureEnvironment.NetworkComponentId);
         string cosmosImage = dockerEnvironment.GetCosmosDbImage();

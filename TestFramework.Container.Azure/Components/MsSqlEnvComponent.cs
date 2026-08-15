@@ -25,6 +25,14 @@ internal sealed class MsSqlEnvComponent : DockerAzureEnvComponent
     public override async Task<object?> CreateAsync(IEnvironmentProvider environment, IServiceProvider serviceProvider, VariableStore variableStore, ArtifactStore artifactStore, ScopedLogger logger, CancellationToken cancellationToken)
     {
         DockerAzureEnvironment dockerEnvironment = GetDockerEnvironment(environment);
+
+        // The Service Bus emulator is backed by this very container, so a SQL-only guard would break every Service Bus run.
+        if (dockerEnvironment.UsedSqlIdentifiers.Count == 0 && dockerEnvironment.UsedServiceBusIdentifiers.Count == 0)
+        {
+            logger.LogInformation("Skipping SQL environment setup because neither SQL nor Service Bus identifiers were requested.");
+            return null;
+        }
+
         ConfigStore<SqlDatabaseConfig>? configStore = EnvComponentConfigStoreGuard.GetRequiredStore<SqlDatabaseConfig>(dockerEnvironment, serviceProvider, dockerEnvironment.UsedSqlIdentifiers, "SQL environment setup");
         INetwork network = dockerEnvironment.GetRequiredRuntimeState<INetwork>(DockerAzureEnvironment.NetworkComponentId);
         MsSqlContainer container = MsSqlContainerFactory.Create(
