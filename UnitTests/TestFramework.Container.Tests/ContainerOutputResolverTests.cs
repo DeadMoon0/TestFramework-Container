@@ -159,6 +159,98 @@ public class ContainerOutputResolverTests
         }
     }
 
+    [Fact]
+    public void Resolve_UsesTheSegmentAfterBin_SoANonStandardConfigurationWorks()
+    {
+        string root = Path.Combine(Path.GetTempPath(), $"tf-output-{Guid.NewGuid():N}");
+        string projectDirectory = Path.Combine(root, "App");
+        string loaded = Path.Combine(root, "Other", "bin", "Staging", CurrentTargetFramework);
+        string stagingOutput = Path.Combine(projectDirectory, "bin", "Staging", CurrentTargetFramework);
+
+        Directory.CreateDirectory(loaded);
+        Directory.CreateDirectory(stagingOutput);
+
+        try
+        {
+            File.WriteAllText(Path.Combine(root, "Repository.sln"), string.Empty);
+            File.WriteAllText(Path.Combine(projectDirectory, $"{AssemblyName}.csproj"), "<Project />");
+            File.WriteAllText(Path.Combine(stagingOutput, "host.json"), "{}");
+            File.WriteAllText(Path.Combine(stagingOutput, $"{AssemblyName}.dll"), string.Empty);
+
+            ContainerOutput resolved = ContainerOutputResolver.ResolveFrom(typeof(ContainerOutputResolverTests), loaded, ["host.json"]);
+
+            Assert.Equal(stagingOutput, resolved.OutputDirectory);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+                Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Resolve_NamesTheAmbiguity_WhenTwoProjectsShareTheAssemblyName()
+    {
+        // Two matches used to read as "keep climbing", which walked the search to the drive root.
+        string root = Path.Combine(Path.GetTempPath(), $"tf-output-{Guid.NewGuid():N}");
+        string first = Path.Combine(root, "One");
+        string second = Path.Combine(root, "Two");
+        string loaded = Path.Combine(root, "Host", "bin", "Debug", CurrentTargetFramework);
+
+        Directory.CreateDirectory(first);
+        Directory.CreateDirectory(second);
+        Directory.CreateDirectory(loaded);
+
+        try
+        {
+            File.WriteAllText(Path.Combine(root, "Repository.sln"), string.Empty);
+            File.WriteAllText(Path.Combine(first, $"{AssemblyName}.csproj"), "<Project />");
+            File.WriteAllText(Path.Combine(second, $"{AssemblyName}.csproj"), "<Project />");
+            File.WriteAllText(Path.Combine(loaded, $"{AssemblyName}.dll"), string.Empty);
+
+            FrameworkConfigurationException exception = Assert.Throws<FrameworkConfigurationException>(
+                () => ContainerOutputResolver.ResolveFrom(typeof(ContainerOutputResolverTests), loaded, []));
+
+            Assert.Contains("ambiguous", exception.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains(first, exception.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains(second, exception.Message, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+                Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Resolve_StopsAtTheRepositoryBoundary_AndListsWhatItSearched()
+    {
+        string root = Path.Combine(Path.GetTempPath(), $"tf-output-{Guid.NewGuid():N}");
+        string repository = Path.Combine(root, "Repository");
+        string loaded = Path.Combine(repository, "Host", "bin", "Debug", CurrentTargetFramework);
+
+        Directory.CreateDirectory(loaded);
+
+        try
+        {
+            // A worktree or a submodule has .git as a file, not a directory, and both mark the top.
+            File.WriteAllText(Path.Combine(repository, ".git"), "gitdir: elsewhere");
+            File.WriteAllText(Path.Combine(loaded, $"{AssemblyName}.dll"), string.Empty);
+
+            FrameworkConfigurationException exception = Assert.Throws<FrameworkConfigurationException>(
+                () => ContainerOutputResolver.ResolveFrom(typeof(ContainerOutputResolverTests), loaded, []));
+
+            Assert.Contains(repository, exception.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain(root + Path.DirectorySeparatorChar + "\"", exception.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("repository boundary", exception.Message, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+                Directory.Delete(root, recursive: true);
+        }
+    }
+
     private static string AssemblyName => typeof(ContainerOutputResolverTests).Assembly.GetName().Name!;
 
     private static string ExpectedConfiguration =>

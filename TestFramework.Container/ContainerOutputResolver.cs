@@ -206,24 +206,131 @@ public static class ContainerOutputResolver
     private static bool LooksComplete(string directory, IReadOnlyList<string> requiredFiles)
         => Directory.Exists(directory) && requiredFiles.All(file => File.Exists(Path.Combine(directory, file)));
 
+    /// <summary>
+    /// How deep below a candidate directory a project file is still looked for.
+    /// </summary>
+    /// <remarks>
+    /// A project's own <c>bin/Configuration/tfm[/runtime]</c> is four levels; a solution folder above it
+    /// adds a couple more. Beyond that the answer would not be this project's file anyway, and the depth
+    /// is what keeps the search from walking a whole drive.
+    /// </remarks>
+    private const int ProjectSearchDepth = 8;
+
+    private static readonly EnumerationOptions ProjectSearchOptions = new()
+    {
+        RecurseSubdirectories = true,
+
+        // The default overload maps to EnumerationOptions.Compatible, which throws on the first
+        // directory the process may not read. One protected system directory anywhere below the search
+        // root would end the run with an UnauthorizedAccessException nothing in this class catches.
+        IgnoreInaccessible = true,
+
+        // A junction or symlink pointing back up turns the walk into a loop.
+        AttributesToSkip = FileAttributes.Hidden | FileAttributes.System | FileAttributes.ReparsePoint,
+        MaxRecursionDepth = ProjectSearchDepth,
+    };
+
     private static string ResolveBuildConfiguration(string outputDirectory)
     {
+        // The segment right after 'bin' is the configuration, whatever it is called. A project built
+        // as 'Staging' has no 'Release' anywhere in its path and is not a Debug build either.
+        string[] segments = outputDirectory.Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar], StringSplitOptions.RemoveEmptyEntries);
+        for (int index = 0; index < segments.Length - 1; index++)
+        {
+            if (string.Equals(segments[index], "bin", StringComparison.OrdinalIgnoreCase))
+                return segments[index + 1];
+        }
+
+        // An output that does not sit under 'bin' at all still usually says which configuration it is.
         if (outputDirectory.Contains($"{Path.DirectorySeparatorChar}Release{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase))
             return "Release";
 
         return "Debug";
     }
 
+    /// <summary>
+    /// Walks up from the build output looking for the project file that produced it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The climb stops at the repository boundary. Above it the search would only find other people's
+    /// projects, and without a stop it runs to the drive root — which is where the old version went
+    /// whenever the assembly name differed from the project name, because "no match" and "too many
+    /// matches" were both treated as "keep climbing".
+    /// </para>
+    /// <para>
+    /// More than one match is now an error rather than a reason to climb: climbing widens the search, so
+    /// a level that found two files will only ever find those two and more.
+    /// </para>
+    /// </remarks>
     private static string ResolveProjectDirectory(string assemblyName, string startDirectory)
     {
+        List<string> searched = [];
+
         for (DirectoryInfo? current = new(startDirectory); current is not null; current = current.Parent)
         {
-            string[] matches = Directory.GetFiles(current.FullName, $"{assemblyName}.csproj", SearchOption.AllDirectories);
+            searched.Add(current.FullName);
+
+            string[] matches = FindProjectFiles(current.FullName, assemblyName);
             if (matches.Length == 1)
                 return Path.GetDirectoryName(matches[0])!;
+
+            if (matches.Length > 1)
+            {
+                throw new FrameworkConfigurationException(
+                    $"More than one '{assemblyName}.csproj' exists below '{current.FullName}', so the project directory for assembly '{assemblyName}' is ambiguous: "
+                    + string.Join(", ", matches.OrderBy(match => match, StringComparer.OrdinalIgnoreCase))
+                    + ". Name the project explicitly instead of letting it be discovered.");
+            }
+
+            if (IsRepositoryBoundary(current))
+                break;
         }
 
-        throw new DirectoryNotFoundException($"Could not locate the project directory for assembly '{assemblyName}'.");
+        throw new FrameworkConfigurationException(
+            $"Could not locate the project directory for assembly '{assemblyName}'. No '{assemblyName}.csproj' was found below any of: "
+            + string.Join(", ", searched)
+            + ". The search stops at the repository boundary, so a project outside the repository has to be named explicitly.");
+    }
+
+    private static string[] FindProjectFiles(string directory, string assemblyName)
+    {
+        try
+        {
+            return Directory.GetFiles(directory, $"{assemblyName}.csproj", ProjectSearchOptions);
+        }
+        catch (Exception exception) when (exception is UnauthorizedAccessException or IOException)
+        {
+            // A directory that cannot be read is not a reason to stop climbing.
+            return [];
+        }
+    }
+
+    /// <summary>
+    /// Whether a directory is the top of a repository, so the climb should not go past it.
+    /// </summary>
+    /// <remarks>
+    /// <c>.git</c> is a directory in a normal clone and a file in a worktree or a submodule, so both are
+    /// accepted. A solution file or a <c>global.json</c> marks the same boundary for a checkout that has
+    /// no <c>.git</c> at all.
+    /// </remarks>
+    private static bool IsRepositoryBoundary(DirectoryInfo directory)
+    {
+        try
+        {
+            string gitPath = Path.Combine(directory.FullName, ".git");
+            if (Directory.Exists(gitPath) || File.Exists(gitPath))
+                return true;
+
+            if (File.Exists(Path.Combine(directory.FullName, "global.json")))
+                return true;
+
+            return directory.EnumerateFiles("*.sln").Any() || directory.EnumerateFiles("*.slnx").Any();
+        }
+        catch (Exception exception) when (exception is UnauthorizedAccessException or IOException)
+        {
+            return false;
+        }
     }
 
     private static FrameworkConfigurationException CreateMissingOutputException(
