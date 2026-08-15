@@ -20,6 +20,7 @@ using TestFramework.Azure.Configuration.SpecificConfigs;
 using TestFramework.Azure.DB.CosmosDB;
 using TestFramework.Core.Artifacts;
 using TestFramework.Core.Environment;
+using TestFramework.Core.Exceptions;
 using TestFramework.Core.Logging;
 using TestFramework.Core.Variables;
 
@@ -186,8 +187,29 @@ internal sealed class AzureResetEnvComponent(DockerAzureEnvironment owner) : Doc
 
             // Dropping the container and putting it back beats deleting items one at a time by a wide
             // margin, and it puts the schema back through the path that created it in the first place.
-            await DeleteCosmosContainerAsync(config, logger, cancellationToken).ConfigureAwait(false);
-            await CosmosSchemaRestClient.EnsureDatabaseAndContainerExistAsync(config.ConnectionString, config.DatabaseName, config.ContainerName, partitionKeyPath, cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await DeleteCosmosContainerAsync(config, logger, cancellationToken).ConfigureAwait(false);
+                await CosmosSchemaRestClient.EnsureDatabaseAndContainerExistAsync(config.ConnectionString, config.DatabaseName, config.ContainerName, partitionKeyPath, cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                // Which endpoint was tried is the whole question when this fails, and the emulator key
+                // that sits beside it in the connection string must not reach a run log.
+                throw new FrameworkStateException(
+                    $"The Cosmos purge for identifier '{identifier}' failed against {DescribeCosmosEndpoint(config.ConnectionString)}.",
+                    [
+                        "Recreating a container is heavy on the Linux Cosmos emulator; a machine short of memory can lose the emulator during it.",
+                        $"Call {nameof(DockerAzureEnvironment.UseResetMode)}({nameof(AzureResetMode)}.{nameof(AzureResetMode.None)}) to skip the purge and keep the previous run's data.",
+                    ],
+                    null,
+                    exception);
+            }
+
             logger.LogInformation($"Recreated the Cosmos container for '{identifier}': {config.DatabaseName}/{config.ContainerName}.");
         }
     }
@@ -345,6 +367,21 @@ internal sealed class AzureResetEnvComponent(DockerAzureEnvironment owner) : Doc
         return databaseName is "master" or "model" or "msdb" or "tempdb"
             || databaseName.StartsWith("SbEmulator", StringComparison.OrdinalIgnoreCase)
             || databaseName.Contains("ServiceBus", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Reduces a Cosmos connection string to its account endpoint, so a message can name the address
+    /// without carrying the key beside it.
+    /// </summary>
+    private static string DescribeCosmosEndpoint(string connectionString)
+    {
+        foreach (string part in connectionString.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (part.StartsWith("AccountEndpoint=", StringComparison.OrdinalIgnoreCase))
+                return part["AccountEndpoint=".Length..];
+        }
+
+        return "(unknown endpoint)";
     }
 
     private static string ToServerConnectionString(string connectionString)

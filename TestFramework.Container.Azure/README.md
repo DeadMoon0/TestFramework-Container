@@ -468,7 +468,13 @@ The environment therefore purges the resources it declared before each run touch
 Only declared resources are in scope, and only a run that was handed already-running containers pays for
 the purge: a run that started its own emulators skips it, because they came up empty seconds earlier.
 
-Turn it off with `UseResetMode` when a suite deliberately builds state across runs:
+One caveat is worth knowing before you rely on the default. Recreating a Cosmos container is cheap
+against real Cosmos and heavy against the Linux emulator, and on a machine short of memory the emulator
+has been observed to go away during it — the purge then fails the run with the endpoint it was talking
+to. If you see that, either give Docker more memory or turn the reset off for that suite.
+
+Turn it off with `UseResetMode` when a suite deliberately builds state across runs, or when the Cosmos
+purge is too heavy for the machine:
 
 ```csharp
 public DockerAzureEnvironment CreateEnvironment()
