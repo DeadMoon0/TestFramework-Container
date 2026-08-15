@@ -34,7 +34,24 @@ Targets `net8.0` and `net10.0`.
 | `ContainerLogCapture` | writes a container's output into the run log before it is removed |
 | `ContainerDockerCommands` | runs the Docker CLI and removes containers and networks reliably |
 | `ContainerDockerHost` | points the client at the Docker Desktop named pipe a Windows machine uses |
+| `ContainerRuntime` | does that once per process, and both network components call it first |
+| `ContainerPortBinding` | publishes ports on `127.0.0.1` when the daemon is on this machine |
+| `ContainerStartCoordinator` | starts one component's containers at once and cleans up a failed batch |
 | `MsSqlContainerFactory` | builds a SQL Server container from shared settings |
+
+## Two Things That Happen Without Being Asked
+
+`ContainerRuntime.EnsureInitialized` runs as the first statement of the network component in both the
+Azure and the Web environment, which is the root every other component depends on. On Windows it points
+`DOCKER_HOST` at whichever Docker Desktop named pipe exists, because the client library does not probe
+for it and the name differs between installations. It changes nothing when `DOCKER_HOST` is already set,
+and it logs the pipe it chose.
+
+`ContainerPortBinding` publishes every port on `127.0.0.1` rather than on all interfaces, so a SQL
+Server or a storage emulator a test brought up is not reachable from the rest of the network for the
+length of the run. It falls back to `0.0.0.0` when the daemon is remote or in Docker-in-Docker, where
+the test process reaches the container over the network. Set `TESTFRAMEWORK_CONTAINER_HOST_IP` to decide
+explicitly.
 
 ## The One Rule Worth Knowing
 

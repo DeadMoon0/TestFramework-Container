@@ -20,6 +20,10 @@ internal sealed class WebNetworkEnvComponent : WebEnvComponentBase
 
     public override async Task<object?> CreateAsync(IEnvironmentProvider environment, IServiceProvider serviceProvider, VariableStore variableStore, ArtifactStore artifactStore, ScopedLogger logger, CancellationToken cancellationToken)
     {
+        // Everything else in this environment depends on the network, so this is the first thing the
+        // run does with Docker and the right place to make sure the client can reach it at all.
+        ContainerRuntime.EnsureInitialized(logger);
+
         INetwork network = await ContainerNetworkFactory.CreateAsync(DockerWebDefaults.NetworkNamePrefix, cancellationToken).ConfigureAwait(false);
         GetWebEnvironment(environment).SetRuntimeState(Id, network);
         return network;
