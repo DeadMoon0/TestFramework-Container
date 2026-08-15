@@ -49,11 +49,33 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
     private string _generatedMsSqlPassword = MsSqlContainerFactory.CreateMsSqlPassword();
     private AzureResetMode _resetMode = AzureResetMode.PurgeDeclaredResources;
     private readonly HashSet<EnvComponentIdentifier> _reusedPersistentComponents = [];
-    public HashSet<string> UsedStorageIdentifiers { get; } = [];
-    public HashSet<string> UsedCosmosIdentifiers { get; } = [];
-    public HashSet<string> UsedSqlIdentifiers { get; } = [];
-    public HashSet<string> UsedServiceBusIdentifiers { get; } = [];
-    public HashSet<string> UsedFunctionAppIdentifiers { get; } = [];
+    private readonly HashSet<string> _usedStorageIdentifiers = [];
+    private readonly HashSet<string> _usedCosmosIdentifiers = [];
+    private readonly HashSet<string> _usedSqlIdentifiers = [];
+    private readonly HashSet<string> _usedServiceBusIdentifiers = [];
+    private readonly HashSet<string> _usedFunctionAppIdentifiers = [];
+
+    /// <summary>
+    /// The storage identifiers the last resolution decided this run needs.
+    /// </summary>
+    /// <remarks>
+    /// Read-only, because <see cref="ResolveComponents"/> clears and refills it. Anything a caller added
+    /// by hand would disappear on the next resolution, which is not a thing a public collection should
+    /// let you attempt.
+    /// </remarks>
+    public IReadOnlyCollection<string> UsedStorageIdentifiers => _usedStorageIdentifiers;
+
+    /// <inheritdoc cref="UsedStorageIdentifiers" />
+    public IReadOnlyCollection<string> UsedCosmosIdentifiers => _usedCosmosIdentifiers;
+
+    /// <inheritdoc cref="UsedStorageIdentifiers" />
+    public IReadOnlyCollection<string> UsedSqlIdentifiers => _usedSqlIdentifiers;
+
+    /// <inheritdoc cref="UsedStorageIdentifiers" />
+    public IReadOnlyCollection<string> UsedServiceBusIdentifiers => _usedServiceBusIdentifiers;
+
+    /// <inheritdoc cref="UsedStorageIdentifiers" />
+    public IReadOnlyCollection<string> UsedFunctionAppIdentifiers => _usedFunctionAppIdentifiers;
     internal Dictionary<string, string> CosmosPartitionKeyPaths { get; } = [];
 
     public DockerAzureEnvironment()
@@ -156,11 +178,11 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
 
     public override IReadOnlyCollection<EnvComponentIdentifier> ResolveComponents(IEnumerable<ArtifactInstanceGeneric> artifacts, IEnumerable<EnvironmentRequirement> requirements)
     {
-        UsedStorageIdentifiers.Clear();
-        UsedCosmosIdentifiers.Clear();
-        UsedSqlIdentifiers.Clear();
-        UsedServiceBusIdentifiers.Clear();
-        UsedFunctionAppIdentifiers.Clear();
+        _usedStorageIdentifiers.Clear();
+        _usedCosmosIdentifiers.Clear();
+        _usedSqlIdentifiers.Clear();
+        _usedServiceBusIdentifiers.Clear();
+        _usedFunctionAppIdentifiers.Clear();
         CosmosPartitionKeyPaths.Clear();
         _synthesizedConfigStores.Clear();
         _resolutionSummaryLogged = false;
@@ -455,22 +477,22 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
         Type referenceType = reference.GetType();
         if (reference is StorageAccountBlobArtifactReference blobReference)
         {
-            UsedStorageIdentifiers.Add(blobReference.Identifier);
+            _usedStorageIdentifiers.Add(blobReference.Identifier);
             return;
         }
 
         if (TryReadIdentifier(reference, referenceType, "Identifier", out string? storageIdentifier))
-            UsedStorageIdentifiers.Add(storageIdentifier);
+            _usedStorageIdentifiers.Add(storageIdentifier);
 
         if (TryReadIdentifier(reference, referenceType, "DbIdentifier", out string? databaseIdentifier))
         {
             if (MatchesGenericType(referenceType, typeof(CosmosDbItemArtifactReference<>)))
             {
-                UsedCosmosIdentifiers.Add(databaseIdentifier);
+                _usedCosmosIdentifiers.Add(databaseIdentifier);
                 RegisterCosmosSchema(databaseIdentifier, referenceType.GetGenericArguments()[0]);
             }
             else if (MatchesGenericType(referenceType, typeof(SqlRowArtifactReference<>)))
-                UsedSqlIdentifiers.Add(databaseIdentifier);
+                _usedSqlIdentifiers.Add(databaseIdentifier);
         }
     }
 
@@ -509,21 +531,21 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
             switch (metadata.Definition)
             {
                 case DockerStorageDefinition storage:
-                    UsedStorageIdentifiers.Add(storage.Identifier);
+                    _usedStorageIdentifiers.Add(storage.Identifier);
                     break;
                 case DockerCosmosDefinition cosmos:
-                    UsedCosmosIdentifiers.Add(cosmos.Identifier);
+                    _usedCosmosIdentifiers.Add(cosmos.Identifier);
                     if (cosmos.ModelType is not null)
                         RegisterCosmosSchema(cosmos.Identifier, cosmos.ModelType);
                     break;
                 case DockerSqlDefinition sql:
-                    UsedSqlIdentifiers.Add(sql.Identifier);
+                    _usedSqlIdentifiers.Add(sql.Identifier);
                     break;
                 case DockerServiceBusDefinition serviceBus:
-                    UsedServiceBusIdentifiers.Add(serviceBus.Identifier);
+                    _usedServiceBusIdentifiers.Add(serviceBus.Identifier);
                     break;
                 case DockerFunctionAppDefinition functionApp:
-                    UsedFunctionAppIdentifiers.Add(functionApp.Identifier);
+                    _usedFunctionAppIdentifiers.Add(functionApp.Identifier);
                     break;
             }
         }
@@ -591,19 +613,19 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
         switch (requirement.ResourceKind)
         {
             case AzureEnvironmentResourceKinds.Storage:
-                UsedStorageIdentifiers.Add(requirement.ResourceIdentifier);
+                _usedStorageIdentifiers.Add(requirement.ResourceIdentifier);
                 break;
             case AzureEnvironmentResourceKinds.Cosmos:
-                UsedCosmosIdentifiers.Add(requirement.ResourceIdentifier);
+                _usedCosmosIdentifiers.Add(requirement.ResourceIdentifier);
                 break;
             case AzureEnvironmentResourceKinds.Sql:
-                UsedSqlIdentifiers.Add(requirement.ResourceIdentifier);
+                _usedSqlIdentifiers.Add(requirement.ResourceIdentifier);
                 break;
             case AzureEnvironmentResourceKinds.ServiceBus:
-                UsedServiceBusIdentifiers.Add(requirement.ResourceIdentifier);
+                _usedServiceBusIdentifiers.Add(requirement.ResourceIdentifier);
                 break;
             case AzureEnvironmentResourceKinds.FunctionApp:
-                UsedFunctionAppIdentifiers.Add(requirement.ResourceIdentifier);
+                _usedFunctionAppIdentifiers.Add(requirement.ResourceIdentifier);
                 break;
             case AzureEnvironmentResourceKinds.LogicApp:
                 throw new UnsupportedFrameworkValueException($"DockerAzureEnvironment no longer supports Logic App resource '{requirement.ResourceIdentifier}'. Use a live Azure-hosted Logic App instead of Docker container hosting.");
