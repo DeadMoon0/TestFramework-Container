@@ -1,0 +1,101 @@
+name: Release TestFramework.Container.Azure
+
+# Publishes ONE package: TestFramework.Container.Azure.
+#
+# Trigger: push a package-prefixed tag, e.g.
+#     git tag ContainerAzure-v<version> && git push origin ContainerAzure-v<version>
+#
+# This repo produces three packages, each with its own pipeline and its own tag prefix
+# (Container-v*, ContainerAzure-v*, ContainerWeb-v*), so one can ship without the others.
+#
+# The tag is the source of truth: the job refuses to publish unless the packed project's
+# <Version> matches the version in the tag.
+#
+# Publish order matters: TestFramework.Container must already be on nuget.org before the
+# Azure and Web container packages ship, and both depend on TestFramework.Core as well.
+#
+# AUTHENTICATION - Trusted Publishing (OIDC). There is no long-lived API key.
+# The job requests a short-lived GitHub OIDC token and exchanges it with nuget.org for a
+# temporary key valid for this run only. Two things must be set up once:
+#   1. On nuget.org: Account -> Trusted Publishing -> add a policy for this package naming
+#      the GitHub owner (DeadMoon0), the repository, and this workflow file name.
+#   2. `id-token: write` below - without it the OIDC token is never issued.
+# The nuget.org account name can be overridden with a `NUGET_USER` repository variable.
+
+on:
+  push:
+    tags:
+      - 'ContainerAzure-v*'
+
+permissions:
+  contents: read
+  # Required for Trusted Publishing: lets the runner request an OIDC token.
+  id-token: write
+
+concurrency:
+  group: release-containerazure-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PACKAGE_PREFIX: ContainerAzure
+  PROJECT: TestFramework.Container.Azure/TestFramework.Container.Azure.csproj
+  TEST_PROJECT: UnitTests/TestFramework.Container.Azure.Tests/TestFramework.Container.Azure.Tests.csproj
+
+jobs:
+  publish:
+    name: publish
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Required: the packed icon comes from Modules/TestFramework-Common.
+          # Without this the pack fails with NuGet's opaque "icon file does not exist".
+          submodules: recursive
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
+      - name: Verify tag matches the project version
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME#${PACKAGE_PREFIX}-v}"
+          version="$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' "$PROJECT" | head -n1)"
+          echo "Tag version:     $tag"
+          echo "Project version: $version"
+          if [ "$tag" = "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag '$GITHUB_REF_NAME' does not start with '${PACKAGE_PREFIX}-v'"
+            exit 1
+          fi
+          if [ "$version" != "$tag" ]; then
+            echo "::error file=$PROJECT::Version '$version' does not match tag '$tag'"
+            exit 1
+          fi
+
+      - name: Test
+        run: dotnet test "$TEST_PROJECT" --configuration Release --logger "trx"
+
+      - name: Pack
+        run: dotnet pack "$PROJECT" -c Release -p:ContinuousIntegrationBuild=true -o out
+
+      - name: Authenticate to nuget.org via Trusted Publishing
+        id: nuget-login
+        uses: NuGet/login@v1
+        with:
+          user: ${{ vars.NUGET_USER || 'DeadMoon0' }}
+
+      - name: Push
+        run: |
+          # The key below is short-lived and issued for this run only; it is never stored.
+          # --skip-duplicate makes a re-run of the same tag idempotent.
+          dotnet nuget push "out/*.nupkg" \
+            --source https://api.nuget.org/v3/index.json \
+            --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}" \
+            --skip-duplicate
