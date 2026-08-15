@@ -480,6 +480,20 @@ public static class DockerAzureDefaults
     public const string CosmosDbImage = "mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview";
     public const string CosmosDbEmulatorAccountKey = "C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==";
     public const string ServiceBusImage = "mcr.microsoft.com/azure-messaging/servicebus-emulator:latest";
+    /// <summary>
+    /// The <c>sa</c> password the environment used to start every SQL Server with.
+    /// </summary>
+    /// <remarks>
+    /// A constant shipped in a package is a credential everyone who installs the package knows, and
+    /// the port it guards was published on every interface until the loopback binding landed. The
+    /// environment now generates a password per instance instead.
+    /// <para>
+    /// This member survives only because a <see langword="const"/> is copied into the assemblies that
+    /// read it: removing it would break them at load time and changing its value would not reach the
+    /// ones already compiled. Nothing in this package reads it any more.
+    /// </para>
+    /// </remarks>
+    [Obsolete("The environment generates a password per instance. Read DockerAzureEnvironment's password instead of this constant, or set DockerAzureInfrastructureDefinition.MsSqlPassword to pin one.")]
     public const string MsSqlPassword = "TestFramework_Container1!";
     public static readonly string ServiceBusTopologyConfigPath = Path.Combine("Configurations", "ServiceBus", "config.json");
     public static readonly string DefaultAzuriteConnectionString = $"DefaultEndpointsProtocol=http;AccountName={AzuriteAccountName};AccountKey={AzuriteAccountKey};BlobEndpoint=http://127.0.0.1:10000/{AzuriteAccountName};QueueEndpoint=http://127.0.0.1:10001/{AzuriteAccountName};TableEndpoint=http://127.0.0.1:10002/{AzuriteAccountName};";

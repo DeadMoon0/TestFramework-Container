@@ -41,6 +41,7 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
     private readonly Dictionary<Type, DockerAzureDefinition> _includedDefinitions = [];
     private DockerAzureResolutionSnapshot _lastResolutionSnapshot = DockerAzureResolutionSnapshot.Empty;
     private bool _resolutionSummaryLogged;
+    private string _generatedMsSqlPassword = MsSqlContainerFactory.CreateMsSqlPassword();
     public HashSet<string> UsedStorageIdentifiers { get; } = [];
     public HashSet<string> UsedCosmosIdentifiers { get; } = [];
     public HashSet<string> UsedSqlIdentifiers { get; } = [];
@@ -328,9 +329,16 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
         return _definitionState.ServiceBusImage ?? DockerAzureDefaults.ServiceBusImage;
     }
 
+    /// <summary>
+    /// The <c>sa</c> password this environment's SQL Server runs with.
+    /// </summary>
+    /// <remarks>
+    /// An explicit <see cref="DockerAzureInfrastructureDefinition.MsSqlPassword"/> wins; otherwise the
+    /// environment uses the one it generated for itself.
+    /// </remarks>
     internal string GetMsSqlPassword()
     {
-        return _definitionState.MsSqlPassword ?? DockerAzureDefaults.MsSqlPassword;
+        return _definitionState.MsSqlPassword ?? _generatedMsSqlPassword;
     }
 
     internal ConfigStore<TConfig>? GetOrCreateConfigStore<TConfig>(IServiceProvider serviceProvider, IReadOnlyCollection<string> identifiers, string componentName)
@@ -527,6 +535,12 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
     internal DockerAzureEnvironment CloneDefinitions()
     {
         DockerAzureEnvironment clone = new();
+
+        // The hosted fixture clones once to bootstrap the persistent containers and again for every
+        // run. A clone that generated its own password would authenticate against the SQL Server the
+        // bootstrap started with a secret that server has never heard of.
+        clone._generatedMsSqlPassword = _generatedMsSqlPassword;
+
         foreach (DockerAzureDefinition definition in _includedDefinitions.Values)
             clone.Include(definition);
 

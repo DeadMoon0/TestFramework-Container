@@ -18,12 +18,19 @@ public static class DockerWebDefaults
     public const int MsSqlMemoryLimitMb = 1536;
 
     /// <summary>
-    /// The <c>sa</c> password of the started server.
+    /// The <c>sa</c> password the environment used to start every SQL Server with.
     /// </summary>
     /// <remarks>
-    /// This is a throwaway credential for a container that exists for the length of a test run. It
-    /// is a constant so that a reused container is reachable across runs.
+    /// A constant shipped in a package is a credential everyone who installs the package knows, and
+    /// the port it guards was published on every interface until the loopback binding landed.
+    /// <see cref="DockerWebEnvironment.SqlPassword"/> is now generated per environment.
+    /// <para>
+    /// This member survives only because a <see langword="const"/> is copied into the assemblies that
+    /// read it: removing it would break them at load time and changing its value would not reach the
+    /// ones already compiled. Nothing in this package reads it any more.
+    /// </para>
     /// </remarks>
+    [Obsolete("The environment generates a password per instance. Read DockerWebEnvironment.SqlPassword instead of this constant, or call UseSqlPassword to pin one.")]
     public const string MsSqlPassword = "TestFramework_Container1!";
 
     /// <summary>

@@ -494,6 +494,34 @@ public class DockerAzureEnvironmentTests
     }
 
     [Fact]
+    public void GetMsSqlPassword_WithoutOverride_IsGeneratedPerEnvironment()
+    {
+        string first = InvokeGetMsSqlPassword(new DockerAzureEnvironment());
+        string second = InvokeGetMsSqlPassword(new DockerAzureEnvironment());
+
+        Assert.NotEqual(first, second);
+        Assert.DoesNotContain("TestFramework_Container1!", first, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void CloneDefinitions_CarriesTheGeneratedPassword()
+    {
+        // The hosted fixture clones for the bootstrap and again per run; a clone that regenerated the
+        // password would authenticate against the persistent server with the wrong secret.
+        DockerAzureEnvironment environment = new();
+        DockerAzureEnvironment clone = (DockerAzureEnvironment)typeof(DockerAzureEnvironment)
+            .GetMethod("CloneDefinitions", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(environment, [])!;
+
+        Assert.Equal(InvokeGetMsSqlPassword(environment), InvokeGetMsSqlPassword(clone));
+    }
+
+    private static string InvokeGetMsSqlPassword(DockerAzureEnvironment environment)
+        => (string)typeof(DockerAzureEnvironment)
+            .GetMethod("GetMsSqlPassword", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(environment, [])!;
+
+    [Fact]
     public void Include_ThrowsWhenInfrastructureOverridesConflict()
     {
         FrameworkConfigurationException exception = Assert.Throws<FrameworkConfigurationException>(() => DockerAzureEnvironment.For<TestInfrastructureDefinition>()

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Security.Cryptography;
 using DotNet.Testcontainers.Networks;
 using Testcontainers.MsSql;
 
@@ -30,6 +31,34 @@ public sealed record MsSqlContainerOptions(string Image, string Password, int? M
 /// </remarks>
 public static class MsSqlContainerFactory
 {
+    // Ambiguous glyphs are left out so a password that ends up in a log can be read back, and every
+    // character that means something inside a connection string is left out so it never has to be
+    // escaped.
+    private const string PasswordAlphabet = "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+    /// <summary>
+    /// Creates a password for one environment's SQL Server.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A constant password published in a package means every machine that runs the suite runs a
+    /// server whose <c>sa</c> login is public knowledge. Generating one per environment costs nothing:
+    /// the password only has to outlive the container, and everything that needs it is handed it.
+    /// </para>
+    /// <para>
+    /// The shape satisfies SQL Server's complexity policy by construction — upper case, lower case, a
+    /// digit and a symbol are all present regardless of what the random part draws.
+    /// </para>
+    /// </remarks>
+    public static string CreateMsSqlPassword()
+    {
+        char[] characters = new char[24];
+        for (int index = 0; index < characters.Length; index++)
+            characters[index] = PasswordAlphabet[RandomNumberGenerator.GetInt32(PasswordAlphabet.Length)];
+
+        return $"Tf{new string(characters)}1!";
+    }
+
     /// <summary>
     /// Builds a SQL Server container. The caller starts it.
     /// </summary>

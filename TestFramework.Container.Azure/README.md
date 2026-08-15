@@ -419,6 +419,11 @@ Move to `DockerAzureHostedCollectionFixture<TState>` only when suite scale or ru
 
 Use an infrastructure definition when you need explicit emulator-level overrides.
 
+`MsSqlPassword` is the only one you can safely leave alone: without it the environment generates a
+password per instance, and ports are published on `127.0.0.1` when the daemon is local, so nothing on
+the network can reach the running server. Override it only when something outside the run has to log
+in with a password you already know.
+
 ```csharp
 public sealed class CustomInfrastructure : DockerAzureInfrastructureDefinition
 {
@@ -426,7 +431,7 @@ public sealed class CustomInfrastructure : DockerAzureInfrastructureDefinition
 	public override string? CosmosDbImage => "mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview";
 	public override string? MsSqlImage => "mcr.microsoft.com/mssql/server:2022-CU14-ubuntu-22.04";
 	public override string? ServiceBusImage => "mcr.microsoft.com/azure-messaging/servicebus-emulator:latest";
-	public override string? MsSqlPassword => "TestFramework_Container1!";
+	public override string? MsSqlPassword => "Your_Own_Password1!";
 
 	protected override void ConfigureServiceBusTopology(DockerServiceBusTopologyBuilder builder)
 	{

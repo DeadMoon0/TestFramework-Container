@@ -99,7 +99,11 @@ public class DockerWebEnvironment : EnvironmentProviderBase
     /// <summary>
     /// The <c>sa</c> password of the SQL Server container.
     /// </summary>
-    public string SqlPassword { get; private set; } = DockerWebDefaults.MsSqlPassword;
+    /// <remarks>
+    /// Generated per environment, so the login of a running test server is not something a package
+    /// download tells you. Call <see cref="UseSqlPassword"/> to pin one instead.
+    /// </remarks>
+    public string SqlPassword { get; private set; } = MsSqlContainerFactory.CreateMsSqlPassword();
 
     /// <summary>
     /// The memory limit handed to the SQL Server engine.
