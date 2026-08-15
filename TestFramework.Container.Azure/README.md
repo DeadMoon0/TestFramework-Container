@@ -310,6 +310,21 @@ External JSON files are still supported for compatibility through `TopologyConfi
 - If that fallback path is used, the environment now logs an explicit warning that includes the copied assembly output path and the owning-project output path it selected instead.
 - If you are choosing between local-only, Docker-backed, and live Azure paths, use [../../TestFramework-Showroom/Documentation/LocalToDockerToLive.md](../../TestFramework-Showroom/Documentation/LocalToDockerToLive.md) as the narrative guide instead of mixing the three mental models ad hoc.
 
+### Housekeeping
+
+The first Docker work a run does also starts a detached sweep for what a killed test host left behind.
+Ryuk reaps containers, networks and volumes and nothing else, so images this framework built, its
+published output under `tf-*` in the temp directory, and the Service Bus topology files it generates
+under `%TEMP%/TestFramework/servicebus-topologies` would otherwise stay forever. Anything of those older
+than 24 hours goes.
+
+Note that `docker image prune --filter until=` measures the image's creation time rather than its last
+use, so an image built by a run that has already lasted more than a day is eligible while that run is
+still going. Docker refuses to remove an image a running container came from, so the prune skips it.
+
+Set `TESTFRAMEWORK_CONTAINER_NO_SWEEP` to turn housekeeping off. See the `TestFramework.Container`
+README for the exact set of labels and names it touches.
+
 ### Queue, Topic, And Subscription Example
 
 Use one fluent topology when a sample or shared stack needs multiple entities at once:

@@ -103,6 +103,12 @@ public static class ContainerImageBuilder
             "-p:EnableSdkContainerSupport=true",
             $"-p:ContainerRepository={repository}",
             $"-p:ContainerImageTag={tag}",
+
+            // ContainerLabel is an MSBuild item, and an item cannot be supplied from the command line.
+            // ContainerVendor is a property and the SDK turns it into the OCI vendor annotation, so it
+            // is the one label an SDK publish can be given here — and the sweep needs a label to find
+            // this image by after a killed run.
+            $"-p:ContainerVendor={ContainerLeftovers.VendorLabelValue}",
         ];
 
         if (plan.RuntimeImage is { } runtimeImage)

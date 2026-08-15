@@ -1,4 +1,6 @@
 using System;
+using System.Threading;
+using System.Threading.Tasks;
 using TestFramework.Core.Logging;
 
 namespace TestFramework.Container;
@@ -64,6 +66,36 @@ public static class ContainerRuntime
 
             if (_configuredHost is { } configured)
                 logger?.LogInformation($"DOCKER_HOST was not set, so the Docker client was pointed at '{configured}'.");
+
+            StartHousekeeping(logger);
+        }
+    }
+
+    /// <summary>
+    /// Starts the leftover sweep without waiting for it.
+    /// </summary>
+    /// <remarks>
+    /// It runs here because this is the earliest point at which the Docker client knows where the daemon
+    /// is, and it runs detached because a run must not wait on housekeeping. Anything it throws is
+    /// swallowed inside <see cref="ContainerLeftovers.SweepAsync"/>; the extra continuation is there for
+    /// the case where scheduling itself fails.
+    /// </remarks>
+    private static void StartHousekeeping(ScopedLogger? logger)
+    {
+        if (ContainerLeftovers.IsDisabled())
+        {
+            logger?.LogInformation($"Housekeeping is off because {ContainerLeftovers.NoSweepVariable} is set.");
+            return;
+        }
+
+        try
+        {
+            _ = Task.Run(() => ContainerLeftovers.SweepAsync(logger, CancellationToken.None))
+                .ContinueWith(static _ => { }, TaskScheduler.Default);
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            logger?.LogWarning($"Housekeeping could not be started: {exception.Message}");
         }
     }
 

@@ -138,8 +138,12 @@ public static class InContainerBuild
         // The CLI is used rather than the client library because a failing build is only actionable
         // with the compiler and restore output, and the library reports a build failure as "the
         // image was not created".
+        // The label is what makes this image findable again after a killed run: Ryuk reaps containers,
+        // not images, so nothing else would ever remove it.
         ContainerDockerCommands.CommandResult result = await ContainerDockerCommands
-            .RunAsync($"build -t {image} -f \"{Path.Combine(contextRoot, "Dockerfile")}\" \"{contextRoot}\"", cancellationToken)
+            .RunAsync(
+                $"build -t {image} --label {ContainerLeftovers.BuildLabel}={ContainerLeftovers.BuildLabelValue} -f \"{Path.Combine(contextRoot, "Dockerfile")}\" \"{contextRoot}\"",
+                cancellationToken)
             .ConfigureAwait(false);
 
         if (result.ExitCode == 0)

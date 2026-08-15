@@ -39,7 +39,7 @@ Targets `net8.0` and `net10.0`.
 | `ContainerStartCoordinator` | starts one component's containers at once and cleans up a failed batch |
 | `MsSqlContainerFactory` | builds a SQL Server container from shared settings |
 
-## Two Things That Happen Without Being Asked
+## Three Things That Happen Without Being Asked
 
 `ContainerRuntime.EnsureInitialized` runs as the first statement of the network component in both the
 Azure and the Web environment, which is the root every other component depends on. On Windows it points
@@ -52,6 +52,29 @@ Server or a storage emulator a test brought up is not reachable from the rest of
 length of the run. It falls back to `0.0.0.0` when the daemon is remote or in Docker-in-Docker, where
 the test process reaches the container over the network. Set `TESTFRAMEWORK_CONTAINER_HOST_IP` to decide
 explicitly.
+
+`ContainerLeftovers.SweepAsync` starts from the same place, detached, and removes what a killed test
+host leaves behind. Ryuk reaps containers, networks and volumes and nothing else, so a run that is
+killed rather than torn down leaves its built images, its published output and its generated emulator
+topology on the machine with nothing that knows to come back for them.
+
+It removes, and only removes:
+
+- images labelled `com.testframework.container=true` (built from a generated Dockerfile) or
+  `org.opencontainers.image.vendor=testframework-container` (published by the SDK), created more than
+  24 hours ago
+- directories named `tf-*` directly under the temp directory, last written more than 24 hours ago
+- `*.json` under `%TEMP%/TestFramework/servicebus-topologies`, last written more than 24 hours ago
+
+Two things are worth knowing. `docker image prune --filter until=` measures the image's **creation**
+time, not its last use, so an image built by a run that has already lasted more than a day is eligible
+while that run is still going; Docker refuses to remove an image a running container came from, so the
+prune skips it rather than breaking the run. And an in-container build deliberately keeps its context
+after a failure so the generated Dockerfile and offline feed can be inspected — the expiry is what
+eventually clears those, because the code that decided to keep the context is the code that just failed.
+
+The sweep never throws, never delays a run, and never looks outside the two names above. Set
+`TESTFRAMEWORK_CONTAINER_NO_SWEEP` to any value to turn it off.
 
 ## The One Rule Worth Knowing
 
