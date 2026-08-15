@@ -67,6 +67,7 @@ public static class ContainerSourceResolver
             OutputDirectory = output.OutputDirectory,
             AssemblyFileName = output.AssemblyFileName,
             BuiltAtUtc = output.AssemblyLastWriteTimeUtc,
+            FallbackReason = output.UsedFallbackOutput ? output.FallbackReason ?? "a fallback output was used" : null,
             Derivations =
             [
                 $"project from the loaded assembly of '{source.EntryPointType.Name}'",

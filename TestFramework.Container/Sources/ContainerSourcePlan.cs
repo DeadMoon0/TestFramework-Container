@@ -81,6 +81,16 @@ public sealed record ContainerSourcePlan
     public IReadOnlyList<string> Derivations { get; init; } = [];
 
     /// <summary>
+    /// Why the preferred output was unusable, when a second candidate had to be shipped instead.
+    /// </summary>
+    /// <remarks>
+    /// Only an entry-point source can have one: it is the only kind whose output is discovered rather
+    /// than declared, and a fallback there means the plan is shipping something other than the project's
+    /// own build output. That is worth a warning rather than a line in a derivation list.
+    /// </remarks>
+    public string? FallbackReason { get; init; }
+
+    /// <summary>
     /// Renders the plan as a block of log lines.
     /// </summary>
     /// <param name="identifier">The identifier the plan belongs to.</param>

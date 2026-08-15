@@ -41,6 +41,11 @@ public static class ContainerImageBuilder
         foreach (string line in plan.ToLogLines(identifier))
             logger.LogInformation(line);
 
+        // Shipping something other than the project's own output is the difference between testing this
+        // build and testing whatever a test host happened to copy, so it does not hide in the plan.
+        if (plan.FallbackReason is { } fallbackReason)
+            logger.LogWarning($"'{identifier}' is not shipping its project's own build output. {fallbackReason}");
+
         if (plan.Kind != ContainerSourceKind.Project)
             return plan;
 
