@@ -31,7 +31,10 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<ProjectReference Include="..\TestFramework.Container\TestFramework.Container.csproj" />
+		<!-- Container is consumed as a published package, not as a project, so the dependency this
+		     package declares is exactly the one a consumer resolves. Container must be published
+		     before this package ships against it. -->
+		<PackageReference Include="TestFramework.Container" Version="0.1.0" />
 	</ItemGroup>
 
 	<ItemGroup>
