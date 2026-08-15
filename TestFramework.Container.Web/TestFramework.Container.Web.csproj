@@ -17,7 +17,11 @@
 		<PackageTags>Test;UnitTest;IntegrationTest;Framework;Timeline;Docker;Web;Sql;SqlServer</PackageTags>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<Copyright>Copyright (c) DeadMoon0 2026</Copyright>
-		<PackageReleaseNotes>Initial release: container-backed SQL Server, application and stubbed dependencies for web timelines</PackageReleaseNotes>
+		<PackageReleaseNotes>Initial release: container-backed SQL Server, application and stubbed dependencies for web timelines.
+Worth knowing up front:
+- A container reused across runs keeps whatever the previous run wrote, so SqlResetMode decides what happens to the database between runs - recreate it, run a reset script, or leave it alone.
+- Published ports bind to 127.0.0.1 rather than every interface, and the SQL Server password is generated per environment instead of being a constant shipped in the package. Use UseSqlPassword(...) to pin it, which a reused container needs.
+- Where the application under test comes from is declared rather than guessed, through the same ContainerSource model as TestFramework.Container: an image, a project path, or a directory. The resolved plan is logged before anything is built.</PackageReleaseNotes>
 	</PropertyGroup>
 
 	<ItemGroup>

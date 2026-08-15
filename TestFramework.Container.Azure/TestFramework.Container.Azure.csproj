@@ -21,7 +21,12 @@
 		<PackageTags>Test;UnitTest;IntegrationTest;Framework;Timeline;Docker;Azure</PackageTags>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<Copyright>Copyright (c) DeadMoon0 2026</Copyright>
-		<PackageReleaseNotes>Multi-target net8.0 and net10.0, and build on the shared TestFramework.Container blocks</PackageReleaseNotes>
+		<PackageReleaseNotes>Multi-target net8.0 and net10.0, and build on the shared TestFramework.Container blocks.
+BREAKING: DockerAzureHostedCollectionFixture no longer implements xunit's IAsyncLifetime, so add the interface to your own fixture - the InitializeAsync/DisposeAsync it already has satisfy it. This is what removes xunit as a runtime dependency of this package, and it is what lets an xunit v3 consumer adapt the fixture at all; previously the base class hard-bound v2.
+Faster: a Function App run now starts only the emulators its declared resource bindings need. It used to start Azurite, Cosmos, SQL Server and Service Bus every time, so a storage-only Function App paid for the Cosmos emulator - by far the slowest container in the stack - for nothing.
+Isolation: a hosted environment reuses its containers across runs, which meant one run could see the blobs, tables, items and messages the previous run left behind. Declared resources are now purged between runs; set DockerAzureEnvironment.UseResetMode(AzureResetMode.None) to keep the old behaviour. A hosted collection must still disable test parallelization, or one run purges another's data.
+Security: published ports bind to 127.0.0.1 rather than every interface, and the SQL Server password is generated per environment instead of being the constant shipped inside this package. That constant is now obsolete but still present, because a const is baked into consumers at compile time.
+Also: a Function App's payload source can be declared with ContainerSource instead of inferred from a marker type, and the inference that remains no longer scans toward the drive root or fails on a directory it cannot read. Where it still infers, it now prefers the project's own output over the loaded one.</PackageReleaseNotes>
 	</PropertyGroup>
 
 	<ItemGroup>
