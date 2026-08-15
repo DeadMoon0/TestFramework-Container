@@ -18,7 +18,9 @@ public sealed class DockerAzureSmokeCollectionDefinition : ICollectionFixture<Do
     public const string CollectionName = "DockerAzureHosted.Smoke";
 }
 
-public sealed class DockerAzureSmokeCollectionFixture : DockerAzureHostedCollectionFixture<DockerAzureSmokeState>;
+// The base class deliberately does not implement IAsyncLifetime, so that the package does not carry a
+// runtime dependency on xunit. Its InitializeAsync/DisposeAsync satisfy the interface implicitly.
+public sealed class DockerAzureSmokeCollectionFixture : DockerAzureHostedCollectionFixture<DockerAzureSmokeState>, IAsyncLifetime;
 
 public sealed class DockerAzureSmokeState : IDockerAzureHostedFixtureState
 {

@@ -10,7 +10,6 @@ using TestFramework.Config.Builder.InstanceBuilder;
 using TestFramework.Core.Artifacts;
 using TestFramework.Core.Environment;
 using TestFramework.Core.Exceptions;
-using Xunit;
 
 namespace TestFramework.Container.Azure;
 
@@ -25,7 +24,38 @@ public interface IDockerAzureHostedFixtureState
     ConfigInstance CreatePersistentConfig();
 }
 
-public class DockerAzureHostedCollectionFixture<TState> : IAsyncLifetime
+/// <summary>
+/// Boots one persistent container stack for a whole test collection and hands out fresh run
+/// environments on top of it.
+/// </summary>
+/// <typeparam name="TState">Describes the environment shape and the persistent configuration.</typeparam>
+/// <remarks>
+/// <para>
+/// This deliberately does not implement <c>Xunit.IAsyncLifetime</c>. Doing so would make xunit a runtime
+/// dependency of a library that is not a test project: a consumer's runtime would have to supply that
+/// exact type, and xunit v3 moved it to <c>xunit.v3.core</c> with <c>ValueTask</c> returns, so a v3
+/// consumer would meet a <c>TypeLoadException</c> rather than a build error.
+/// </para>
+/// <para>
+/// <see cref="InitializeAsync"/> and <see cref="DisposeAsync"/> are still here with the signatures v2
+/// expects, so adding the interface on your own fixture is a one-line change and the methods satisfy it
+/// implicitly:
+/// </para>
+/// <code>
+/// public sealed class MyFixture : DockerAzureHostedCollectionFixture&lt;MyState&gt;, IAsyncLifetime;
+/// </code>
+/// <para>
+/// A xunit v3 consumer writes the adapter instead, which the hard binding used to make impossible:
+/// </para>
+/// <code>
+/// public sealed class MyFixture : DockerAzureHostedCollectionFixture&lt;MyState&gt;, IAsyncLifetime
+/// {
+///     ValueTask IAsyncLifetime.InitializeAsync() =&gt; new(InitializeAsync());
+///     ValueTask IAsyncDisposable.DisposeAsync() =&gt; new(DisposeAsync());
+/// }
+/// </code>
+/// </remarks>
+public class DockerAzureHostedCollectionFixture<TState>
     where TState : IDockerAzureHostedFixtureState, new()
 {
     private readonly TState _state = new();
@@ -33,6 +63,9 @@ public class DockerAzureHostedCollectionFixture<TState> : IAsyncLifetime
     private ConfigInstance? _persistentConfig;
     private IServiceProvider? _persistentServiceProvider;
 
+    /// <summary>
+    /// Boots the persistent container stack. Signature-compatible with <c>Xunit.IAsyncLifetime</c> v2.
+    /// </summary>
     public async Task InitializeAsync()
     {
         ConfigInstance persistentConfig = _state.CreatePersistentConfig();
@@ -49,6 +82,9 @@ public class DockerAzureHostedCollectionFixture<TState> : IAsyncLifetime
         await Task.CompletedTask.ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Tears the persistent container stack down. Signature-compatible with <c>Xunit.IAsyncLifetime</c> v2.
+    /// </summary>
     public async Task DisposeAsync()
     {
         if (_persistentContext is not null)

@@ -400,7 +400,9 @@ public sealed class DockerAzureHostedFixtureState : IDockerAzureHostedFixtureSta
 		=> BuildPersistentConfig();
 }
 
-public sealed class DockerAzureHostedFixture : DockerAzureHostedCollectionFixture<DockerAzureHostedFixtureState>;
+// The base class does not implement IAsyncLifetime; you add it. That keeps xunit out of the package's
+// runtime dependencies, and it is what lets a xunit v3 consumer write a ValueTask adapter instead.
+public sealed class DockerAzureHostedFixture : DockerAzureHostedCollectionFixture<DockerAzureHostedFixtureState>, IAsyncLifetime;
 
 [Collection(DockerAzureHostedCollectionDefinition.CollectionName)]
 public sealed class HostedSuite(DockerAzureHostedFixture fixture)
@@ -415,6 +417,22 @@ public sealed class HostedSuite(DockerAzureHostedFixture fixture)
 
 		run.EnsureRanToCompletion();
 	}
+}
+```
+
+Note the `, IAsyncLifetime` on your own fixture. `DockerAzureHostedCollectionFixture<TState>` does not
+implement it: this package is not a test project, and a public base class that implements
+`Xunit.IAsyncLifetime` forces every consumer's runtime to supply that exact type. xunit v3 moved it to
+`xunit.v3.core` with `ValueTask` returns, so a v3 consumer would meet a `TypeLoadException` rather than
+a build error. `InitializeAsync` and `DisposeAsync` are still there with the v2 signatures and satisfy
+the interface implicitly, and a v3 consumer can now write the adapter that the hard binding used to make
+impossible:
+
+```csharp
+public sealed class DockerAzureHostedFixture : DockerAzureHostedCollectionFixture<DockerAzureHostedFixtureState>, IAsyncLifetime
+{
+	ValueTask IAsyncLifetime.InitializeAsync() => new(InitializeAsync());
+	ValueTask IAsyncDisposable.DisposeAsync() => new(DisposeAsync());
 }
 ```
 

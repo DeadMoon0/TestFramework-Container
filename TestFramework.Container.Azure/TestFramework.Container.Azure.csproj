@@ -5,6 +5,11 @@
 		<ImplicitUsings>disable</ImplicitUsings>
 		<Nullable>enable</Nullable>
 		<IsTestProject>false</IsTestProject>
+		<GenerateDocumentationFile>true</GenerateDocumentationFile>
+		<!-- This project's public surface is largely undocumented, and TreatWarningsAsErrors would turn
+		     every missing comment into a build failure. Removing this line is the forcing function for
+		     the documentation pass; it is a bridge, not a decision. -->
+		<NoWarn>$(NoWarn);CS1591</NoWarn>
 		<Title>TestFramework.Container.Azure</Title>
 		<Version>0.1.7</Version>
 		<Authors>DeadMoon0</Authors>
@@ -67,7 +72,6 @@
 		<PackageReference Include="TestFramework.Azure" Version="0.1.13" />
 		<PackageReference Include="TestFramework.Config" Version="0.1.5" />
 		<PackageReference Include="TestFramework.Core" Version="0.1.9" />
-		<PackageReference Include="xunit" Version="2.5.3" />
 	</ItemGroup>
 
 	<ItemGroup>
