@@ -28,6 +28,11 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
     public static readonly EnvComponentIdentifier AzuriteComponentId = "azurite";
     public static readonly EnvComponentIdentifier CosmosDbComponentId = "cosmos-emulator";
     public static readonly EnvComponentIdentifier ServiceBusComponentId = "servicebus-emulator";
+
+    /// <summary>
+    /// The per-run component that empties the emulators before anything is started against them.
+    /// </summary>
+    public static readonly EnvComponentIdentifier AzureResetComponentId = "azure-reset";
     public const string AzuriteNetworkAlias = "azurite";
     public const string CosmosDbNetworkAlias = "cosmos-emulator";
     public const string ServiceBusNetworkAlias = "servicebus-emulator";
@@ -42,6 +47,8 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
     private DockerAzureResolutionSnapshot _lastResolutionSnapshot = DockerAzureResolutionSnapshot.Empty;
     private bool _resolutionSummaryLogged;
     private string _generatedMsSqlPassword = MsSqlContainerFactory.CreateMsSqlPassword();
+    private AzureResetMode _resetMode = AzureResetMode.PurgeDeclaredResources;
+    private readonly HashSet<EnvComponentIdentifier> _reusedPersistentComponents = [];
     public HashSet<string> UsedStorageIdentifiers { get; } = [];
     public HashSet<string> UsedCosmosIdentifiers { get; } = [];
     public HashSet<string> UsedSqlIdentifiers { get; } = [];
@@ -57,6 +64,7 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
         AddComponent(new Components.AzuriteEnvComponent());
         AddComponent(new Components.CosmosDbEnvComponent());
         AddComponent(new Components.ServiceBusEnvComponent());
+        AddComponent(new Components.AzureResetEnvComponent(this));
 
         MapResourceKind(AzureEnvironmentResourceKinds.FunctionApp, FunctionAppComponentId);
         MapResourceKind(AzureEnvironmentResourceKinds.Storage, AzuriteComponentId);
@@ -181,6 +189,10 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
         if (UsedServiceBusIdentifiers.Count > 0)
             resolved.Add(ServiceBusComponentId);
 
+        // Whatever emulator resolved may be carrying a previous run's data.
+        if (UsedStorageIdentifiers.Count > 0 || UsedCosmosIdentifiers.Count > 0 || UsedSqlIdentifiers.Count > 0 || UsedServiceBusIdentifiers.Count > 0)
+            resolved.Add(AzureResetComponentId);
+
         ValidateFunctionAppRegistrations();
         _lastResolutionSnapshot = CreateResolutionSnapshot(resolved, contractBindings);
 
@@ -205,6 +217,10 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
 
     public void SetPersistentState(EnvComponentIdentifier identifier, object? state)
     {
+        // Being handed state is the one signal that this component was created by an earlier run.
+        lock (_runtimeStateGate)
+            _reusedPersistentComponents.Add(identifier);
+
         SetRuntimeState(identifier, state);
     }
 
@@ -252,6 +268,11 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
                 dependencies.Add(component);
         }
 
+        // An application started against stores a previous run filled would read that run's data before
+        // the purge ever got to it.
+        if (dependencies.Count > 1)
+            dependencies.Add(AzureResetComponentId);
+
         return [.. dependencies];
     }
 
@@ -286,6 +307,58 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
         }
 
         return components;
+    }
+
+    /// <summary>
+    /// The emulators the per-run reset has to wait for before it can purge them.
+    /// </summary>
+    /// <remarks>
+    /// Only the ones that resolved. Naming all four unconditionally would start all four, which is the
+    /// cost this environment went to some trouble to stop paying.
+    /// </remarks>
+    internal IReadOnlyList<EnvComponentIdentifier> GetResetComponentDependencies()
+    {
+        List<EnvComponentIdentifier> dependencies = [NetworkComponentId];
+        if (UsedStorageIdentifiers.Count > 0)
+            dependencies.Add(AzuriteComponentId);
+        if (UsedCosmosIdentifiers.Count > 0)
+            dependencies.Add(CosmosDbComponentId);
+        if (UsedSqlIdentifiers.Count > 0)
+            dependencies.Add(MsSqlComponentId);
+        if (UsedServiceBusIdentifiers.Count > 0)
+            dependencies.Add(ServiceBusComponentId);
+
+        return dependencies;
+    }
+
+    /// <summary>
+    /// Chooses what happens to emulator contents a previous run left behind.
+    /// </summary>
+    /// <param name="mode">The reset mode to use.</param>
+    /// <returns>The same environment, so calls can be chained.</returns>
+    public DockerAzureEnvironment UseResetMode(AzureResetMode mode)
+    {
+        _resetMode = mode;
+        return this;
+    }
+
+    internal AzureResetMode GetResetMode() => _resetMode;
+
+    /// <summary>
+    /// Whether this run was handed emulator containers that were already running.
+    /// </summary>
+    /// <remarks>
+    /// A run that started its own containers has nothing to purge, so the reset can be skipped whole.
+    /// The persistent context seeds the reused state before any component of the run executes, which is
+    /// what makes this readable at the point the reset needs it.
+    /// </remarks>
+    internal bool HasReusedPersistentComponents
+    {
+        get
+        {
+            lock (_runtimeStateGate)
+                return _reusedPersistentComponents.Count > 0;
+        }
     }
 
     internal IReadOnlyCollection<ComponentContractBinding> GetContractBindings()
@@ -540,6 +613,7 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
         // run. A clone that generated its own password would authenticate against the SQL Server the
         // bootstrap started with a secret that server has never heard of.
         clone._generatedMsSqlPassword = _generatedMsSqlPassword;
+        clone._resetMode = _resetMode;
 
         foreach (DockerAzureDefinition definition in _includedDefinitions.Values)
             clone.Include(definition);
