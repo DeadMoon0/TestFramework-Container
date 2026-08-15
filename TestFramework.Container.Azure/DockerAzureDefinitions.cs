@@ -5,6 +5,7 @@ using System.Linq;
 using TestFramework.Azure.Configuration.SpecificConfigs;
 using TestFramework.Azure.Identifier;
 using TestFramework.Container.Azure.Contracts;
+using TestFramework.Container.Sources;
 using TestFramework.Core.Environment;
 using TestFramework.Core.Exceptions;
 
@@ -266,6 +267,28 @@ public abstract class DockerFunctionAppDefinition : DockerAzureDefinition
 
     public virtual string Image => DockerAzureDefaults.FunctionAppImage;
 
+    /// <summary>
+    /// Where the payload mounted into the Functions host comes from.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Defaults to the build output behind <see cref="FunctionType"/>, which is what the generic
+    /// <see cref="DockerFunctionAppDefinition{TFunctionApp}"/> supplies and what every definition
+    /// written before sources existed relies on.
+    /// </para>
+    /// <para>
+    /// Override it with <c>ContainerSource.Project(...)</c> to name the project instead of inferring it
+    /// from where an assembly happened to be loaded from — the test project then does not have to
+    /// reference the Function App at all. Because the payload is mounted into the Functions host image
+    /// rather than run as an image of its own, a project source has to publish on the host:
+    /// <c>ContainerSource.Project("../App/App.csproj").BuiltOnHost()</c>.
+    /// </para>
+    /// </remarks>
+    public virtual ContainerSource Source => ContainerSource.EntryPoint(
+        FunctionType ?? throw new FrameworkConfigurationException(
+            $"Function App '{Identifier}' declares neither a function type nor a container source, so there is no payload to mount.",
+            ["Override Source with ContainerSource.Project(\"...\").BuiltOnHost() or ContainerSource.Directory(\"...\")."]));
+
     protected virtual FunctionAppConfig? CreateDefaultConfig() => new()
     {
         BaseUrl = SynthesizedBaseUrl,
@@ -298,6 +321,7 @@ public abstract class DockerFunctionAppDefinition : DockerAzureDefinition
         DockerFunctionAppRegistration registration = DockerFunctionAppRegistration.Create(
             Identifier,
             FunctionType,
+            Source,
             registrationBuilder =>
             {
                 if (!string.Equals(Image, DockerAzureDefaults.FunctionAppImage, StringComparison.Ordinal))
@@ -310,7 +334,14 @@ public abstract class DockerFunctionAppDefinition : DockerAzureDefinition
         return new FunctionAppDefinitionDescriptor(registration, builder.ServiceBusTopologySources, builder.Dependencies, builder.ResourceBindings);
     }
 
-    internal abstract Type FunctionType { get; }
+    /// <summary>
+    /// A type from the Function App assembly, when the payload is described by one.
+    /// </summary>
+    /// <remarks>
+    /// Null is allowed so a definition can name its project through <see cref="Source"/> instead, with
+    /// no reference from the test project to the application.
+    /// </remarks>
+    internal virtual Type? FunctionType => null;
 }
 
 public abstract class DockerFunctionAppDefinition<TFunctionApp> : DockerFunctionAppDefinition

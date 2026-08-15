@@ -13,7 +13,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using TestFramework.Azure.Configuration;
 using TestFramework.Azure.Configuration.SpecificConfigs;
+using TestFramework.Container.Sources;
 using TestFramework.Core.Artifacts;
+using TestFramework.Core.Exceptions;
 using TestFramework.Core.Environment;
 using TestFramework.Core.Logging;
 using TestFramework.Core.Variables;
@@ -41,7 +43,7 @@ internal sealed class FunctionAppEnvComponent(DockerAzureEnvironment owner) : Do
     {
         DockerAzureEnvironment dockerEnvironment = GetDockerEnvironment(environment);
         if (dockerEnvironment.UsedFunctionAppIdentifiers.Count == 0)
-            return Array.Empty<IContainer>();
+            return new FunctionAppComponentState([]);
 
         ConfigStore<FunctionAppConfig>? functionStore = EnvComponentConfigStoreGuard.GetRequiredStore<FunctionAppConfig>(dockerEnvironment, serviceProvider, dockerEnvironment.UsedFunctionAppIdentifiers, "Function App environment setup");
         INetwork network = dockerEnvironment.GetRequiredRuntimeState<INetwork>(DockerAzureEnvironment.NetworkComponentId);
@@ -53,7 +55,7 @@ internal sealed class FunctionAppEnvComponent(DockerAzureEnvironment owner) : Do
         // not on access, and it costs nothing next to a container start.
         List<PlannedFunctionApp> planned = [];
         foreach (string identifier in dockerEnvironment.UsedFunctionAppIdentifiers.OrderBy(x => x, StringComparer.Ordinal))
-            planned.Add(PrepareFunctionApp(dockerEnvironment, serviceProvider, identifier, logger));
+            planned.Add(await PrepareFunctionAppAsync(dockerEnvironment, serviceProvider, identifier, logger, cancellationToken).ConfigureAwait(false));
 
         IReadOnlyList<StartedFunctionApp> started = await ContainerStartCoordinator.StartAllAsync(
             planned,
@@ -62,26 +64,35 @@ internal sealed class FunctionAppEnvComponent(DockerAzureEnvironment owner) : Do
             cancellationToken).ConfigureAwait(false);
 
         // Publishing is a config-store write, so it happens once every start has settled.
-        List<IContainer> containers = [];
         foreach (StartedFunctionApp app in started)
         {
             FunctionAppConfig current = functionStore!.GetConfig(app.Identifier);
             functionStore.AddConfig(app.Identifier, current with { BaseUrl = app.BaseUrl });
-            containers.Add(app.Container);
         }
 
-        return containers;
+        return new FunctionAppComponentState(started);
     }
 
-    private static PlannedFunctionApp PrepareFunctionApp(DockerAzureEnvironment dockerEnvironment, IServiceProvider serviceProvider, string identifier, ScopedLogger logger)
+    private static async Task<PlannedFunctionApp> PrepareFunctionAppAsync(
+        DockerAzureEnvironment dockerEnvironment,
+        IServiceProvider serviceProvider,
+        string identifier,
+        ScopedLogger logger,
+        CancellationToken cancellationToken)
     {
         FunctionAppDefinitionDescriptor descriptor = dockerEnvironment.GetRequiredFunctionAppDescriptor(identifier);
         DockerFunctionAppRegistration registration = descriptor.Registration;
 
-        ContainerOutput location = ContainerOutputResolver.Resolve(registration.FunctionType, "host.json");
-        logger.LogInformation("Function App '{0}' resolved type '{1}' to project '{2}' and output '{3}'.", identifier, registration.FunctionType.FullName ?? registration.FunctionType.Name, location.ProjectDirectory, location.OutputDirectory);
-        if (location.UsedFallbackOutput)
-            logger.LogInformation("Function App '{0}' used the owning project output. {1}", identifier, location.FallbackReason ?? string.Empty);
+        // The plan states where the payload comes from, and names the derivation behind every value it
+        // worked out, before anything is published or mounted.
+        ContainerSourcePlan plan = await ContainerSourceResolver.PlanAsync(registration.Source, cancellationToken).ConfigureAwait(false);
+        EnsureMountable(plan, identifier);
+        plan = await ContainerImageBuilder.BuildAsync(plan, identifier, logger, cancellationToken).ConfigureAwait(false);
+
+        string payloadDirectory = plan.OutputDirectory
+            ?? throw new FrameworkConfigurationException($"The source of Function App '{identifier}' ({registration.DescribeSource()}) produced no directory to mount into the Functions host.");
+
+        EnsureFunctionAppPayload(payloadDirectory, identifier);
 
         Dictionary<string, string> appSettings = BuildAppSettings(dockerEnvironment, serviceProvider, descriptor, logger);
         appSettings["AzureFunctionsJobHost__Logging__Console__IsEnabled"] = "true";
@@ -92,7 +103,56 @@ internal sealed class FunctionAppEnvComponent(DockerAzureEnvironment owner) : Do
         appSettings["WEBSITES_PORT"] = "80";
         logger.LogInformation("Function App '{0}' app settings keys: {1}", identifier, string.Join(", ", appSettings.Keys.OrderBy(x => x, StringComparer.Ordinal)));
 
-        return new PlannedFunctionApp(identifier, registration.Image, location.OutputDirectory, appSettings);
+        return new PlannedFunctionApp(identifier, registration.Image, payloadDirectory, appSettings, plan);
+    }
+
+    /// <summary>
+    /// Rejects a source whose result could not be mounted into the Functions host.
+    /// </summary>
+    /// <remarks>
+    /// A Function App is not an application that starts itself. The Functions host image is the thing
+    /// that runs, and the application is mounted into it at <c>/home/site/wwwroot</c>. A strategy that
+    /// produces an image rather than a directory therefore has nothing this component can use, and a
+    /// source that names an existing image has the same problem.
+    /// </remarks>
+    private static void EnsureMountable(ContainerSourcePlan plan, string identifier)
+    {
+        if (plan.Kind == ContainerSourceKind.Image)
+        {
+            throw new FrameworkConfigurationException(
+                $"Function App '{identifier}' declares an image source, and a Function App payload is mounted into the Functions host image rather than run as one.",
+                [
+                    "Declare the payload with ContainerSource.Project(\"...\").BuiltOnHost() or ContainerSource.Directory(\"...\").",
+                    "To change the Functions host image itself, override Image on the definition.",
+                ]);
+        }
+
+        if (plan.Kind == ContainerSourceKind.Project && plan.Strategy != ContainerBuildStrategy.HostPublish)
+        {
+            throw new FrameworkConfigurationException(
+                $"Function App '{identifier}' builds its project with '{plan.Strategy}', which produces an image, and a Function App payload has to be a directory to mount into the Functions host.",
+                ["Call BuiltOnHost() on the source, which publishes to a directory."]);
+        }
+    }
+
+    /// <summary>
+    /// Refuses to mount a directory the Functions host would reject.
+    /// </summary>
+    /// <remarks>
+    /// A host started on a payload with no <c>host.json</c> comes up and then reports no functions at
+    /// all, which reads as a broken test rather than a missing file.
+    /// </remarks>
+    private static void EnsureFunctionAppPayload(string payloadDirectory, string identifier)
+    {
+        if (File.Exists(Path.Combine(payloadDirectory, "host.json")))
+            return;
+
+        throw new FrameworkConfigurationException(
+            $"The payload for Function App '{identifier}' at '{payloadDirectory}' has no host.json, so the Functions host would start with no functions.",
+            [
+                "Check that the project is an Azure Functions project and that host.json is copied to the output.",
+                "Build or publish the project before starting the container environment.",
+            ]);
     }
 
     private static async Task<StartedFunctionApp> StartFunctionAppAsync(
@@ -106,13 +166,13 @@ internal sealed class FunctionAppEnvComponent(DockerAzureEnvironment owner) : Do
             .WithNetwork(network)
             .WithPortBinding(80, true)
             .WithCreateParameterModifier(ContainerPortBinding.Apply)
-            .WithBindMount(plan.OutputDirectory, FunctionAppRoot, AccessMode.ReadOnly);
+            .WithBindMount(plan.PayloadDirectory, FunctionAppRoot, AccessMode.ReadOnly);
 
         foreach ((string key, string value) in plan.AppSettings)
             builder = builder.WithEnvironment(key, value);
 
         IContainer container = builder.Build();
-        logger.LogInformation("Function App '{0}' starting image '{1}' with mount '{2}' -> '{3}'.", plan.Identifier, plan.Image, plan.OutputDirectory, FunctionAppRoot);
+        logger.LogInformation("Function App '{0}' starting image '{1}' with mount '{2}' -> '{3}'.", plan.Identifier, plan.Image, plan.PayloadDirectory, FunctionAppRoot);
 
         await container.StartAsync(cancellationToken).ConfigureAwait(false);
         logger.LogInformation("Function App '{0}' container '{1}' started. Waiting for host readiness.", plan.Identifier, container.Id);
@@ -121,22 +181,43 @@ internal sealed class FunctionAppEnvComponent(DockerAzureEnvironment owner) : Do
         await ContainerReadiness.WaitForHttpAsync(new Uri(baseUrl), "admin/host/status", FunctionAppReadyTimeout, $"Function App '{plan.Identifier}'", logger, cancellationToken).ConfigureAwait(false);
         logger.LogInformation("Function App '{0}' is reachable at '{1}'.", plan.Identifier, baseUrl);
 
-        return new StartedFunctionApp(plan.Identifier, container, baseUrl);
+        return new StartedFunctionApp(plan.Identifier, container, baseUrl, plan.PayloadDirectory, plan.Plan);
     }
 
-    private sealed record PlannedFunctionApp(string Identifier, string Image, string OutputDirectory, IReadOnlyDictionary<string, string> AppSettings);
+    private sealed record PlannedFunctionApp(string Identifier, string Image, string PayloadDirectory, IReadOnlyDictionary<string, string> AppSettings, ContainerSourcePlan Plan);
 
-    private sealed record StartedFunctionApp(string Identifier, IContainer Container, string BaseUrl);
+    private sealed record StartedFunctionApp(string Identifier, IContainer Container, string BaseUrl, string PayloadDirectory, ContainerSourcePlan Plan);
+
+    private sealed record FunctionAppComponentState(IReadOnlyList<StartedFunctionApp> Apps);
 
     public override async Task DeconstructAsync(object? state, IEnvironmentProvider environment, IServiceProvider serviceProvider, VariableStore variableStore, ArtifactStore artifactStore, ScopedLogger logger, CancellationToken cancellationToken)
     {
-        if (state is IEnumerable<IContainer> containers)
+        if (state is not FunctionAppComponentState functionAppState)
+            return;
+
+        foreach (StartedFunctionApp app in functionAppState.Apps)
         {
-            foreach (IContainer container in containers)
-            {
-                await ContainerLogCapture.CaptureAsync(container, "Function App", logger, cancellationToken).ConfigureAwait(false);
-                await container.DisposeAsync().ConfigureAwait(false);
-            }
+            await ContainerLogCapture.CaptureAsync(app.Container, $"Function App '{app.Identifier}'", logger, cancellationToken).ConfigureAwait(false);
+            await app.Container.DisposeAsync().ConfigureAwait(false);
+
+            // A publish this run made into the temp directory is the run's litter. A directory the
+            // caller named, or a project's own build output, is not.
+            if (app.Plan.Kind == ContainerSourceKind.Project && app.Plan.Strategy == ContainerBuildStrategy.HostPublish)
+                DeletePublishOutput(app.PayloadDirectory, logger);
+        }
+    }
+
+    private static void DeletePublishOutput(string directory, ScopedLogger logger)
+    {
+        try
+        {
+            if (Directory.Exists(directory))
+                Directory.Delete(directory, recursive: true);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // A temporary directory left behind is untidy, never a reason to fail a run.
+            logger.LogWarning($"The published output '{directory}' could not be removed: {exception.Message}");
         }
     }
 
