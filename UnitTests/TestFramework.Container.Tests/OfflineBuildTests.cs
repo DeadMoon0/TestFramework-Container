@@ -139,8 +139,22 @@ public class OfflineBuildTests
             int versionFolders = Directory.GetDirectories(destination).Sum(id => Directory.GetDirectories(id).Length);
             Assert.Equal(feed.Packages.Count, versionFolders);
 
-            // The targeting packs travel too, because an SDK image only bundles its own generation.
-            Assert.Contains(feed.Packages, package => package.Id.Contains("app.ref", StringComparison.OrdinalIgnoreCase));
+            // The targeting packs have to travel too, because an SDK image only bundles its own
+            // generation. Whether the host resolves them *as packages* is not universal though: a
+            // machine with the matching SDK installed already has them on disk and never downloads
+            // them, which is exactly the case on a CI runner that installed both 8.0 and 10.0.
+            // So this asserts the rule that holds everywhere - whatever the host resolved is carried
+            // over, which Missing being empty already establishes - and only checks the ref packs
+            // when this host actually had some.
+            IReadOnlyList<string> referencePacks =
+                [.. feed.Packages.Select(package => package.Id).Where(id => id.Contains("app.ref", StringComparison.OrdinalIgnoreCase))];
+
+            if (referencePacks.Count > 0)
+            {
+                Assert.All(referencePacks, id => Assert.Contains(
+                    Directory.GetDirectories(destination).Select(Path.GetFileName),
+                    folder => string.Equals(folder, id, StringComparison.OrdinalIgnoreCase)));
+            }
         }
         finally
         {
