@@ -46,54 +46,86 @@ internal sealed class FunctionAppEnvComponent(DockerAzureEnvironment owner) : Do
         ConfigStore<FunctionAppConfig>? functionStore = EnvComponentConfigStoreGuard.GetRequiredStore<FunctionAppConfig>(dockerEnvironment, serviceProvider, dockerEnvironment.UsedFunctionAppIdentifiers, "Function App environment setup");
         INetwork network = dockerEnvironment.GetRequiredRuntimeState<INetwork>(DockerAzureEnvironment.NetworkComponentId);
         DockerEndpointMap endpointMap = dockerEnvironment.GetEndpointMap();
-        List<IContainer> containers = [];
 
         dockerEnvironment.LogPendingResolutionSummary(logger);
 
-        foreach (string identifier in dockerEnvironment.UsedFunctionAppIdentifiers)
+        // Preparation stays serial: it reads and seeds config stores, which are guarded on creation but
+        // not on access, and it costs nothing next to a container start.
+        List<PlannedFunctionApp> planned = [];
+        foreach (string identifier in dockerEnvironment.UsedFunctionAppIdentifiers.OrderBy(x => x, StringComparer.Ordinal))
+            planned.Add(PrepareFunctionApp(dockerEnvironment, serviceProvider, identifier, logger));
+
+        IReadOnlyList<StartedFunctionApp> started = await ContainerStartCoordinator.StartAllAsync(
+            planned,
+            (plan, token) => StartFunctionAppAsync(plan, network, endpointMap, logger, token),
+            result => result.Container,
+            cancellationToken).ConfigureAwait(false);
+
+        // Publishing is a config-store write, so it happens once every start has settled.
+        List<IContainer> containers = [];
+        foreach (StartedFunctionApp app in started)
         {
-            FunctionAppDefinitionDescriptor descriptor = dockerEnvironment.GetRequiredFunctionAppDescriptor(identifier);
-            DockerFunctionAppRegistration registration = descriptor.Registration;
-
-            ContainerOutput location = ContainerOutputResolver.Resolve(registration.FunctionType, "host.json");
-            logger.LogInformation("Function App '{0}' resolved type '{1}' to project '{2}' and output '{3}'.", identifier, registration.FunctionType.FullName ?? registration.FunctionType.Name, location.ProjectDirectory, location.OutputDirectory);
-            if (location.UsedFallbackOutput)
-                logger.LogInformation("Function App '{0}' used the owning project output. {1}", identifier, location.FallbackReason ?? string.Empty);
-            Dictionary<string, string> appSettings = BuildAppSettings(dockerEnvironment, serviceProvider, descriptor, logger);
-            appSettings["AzureFunctionsJobHost__Logging__Console__IsEnabled"] = "true";
-            appSettings["AzureWebJobsScriptRoot"] = FunctionAppRoot;
-            appSettings["FUNCTIONS_WORKER_RUNTIME"] = "dotnet-isolated";
-            appSettings["ASPNETCORE_URLS"] = "http://0.0.0.0:80";
-            appSettings["PORT"] = "80";
-            appSettings["WEBSITES_PORT"] = "80";
-            logger.LogInformation("Function App '{0}' app settings keys: {1}", identifier, string.Join(", ", appSettings.Keys.OrderBy(x => x, StringComparer.Ordinal)));
-
-            ContainerBuilder builder = new ContainerBuilder(registration.Image)
-                .WithNetwork(network)
-                .WithPortBinding(80, true)
-                .WithBindMount(location.OutputDirectory, FunctionAppRoot, AccessMode.ReadOnly);
-            logger.LogInformation("Function App '{0}' starting image '{1}' with mount '{2}' -> '{3}'.", identifier, registration.Image, location.OutputDirectory, FunctionAppRoot);
-
-            foreach ((string key, string value) in appSettings)
-                builder = builder.WithEnvironment(key, value);
-
-            IContainer container = builder.Build();
-
-            await container.StartAsync(cancellationToken).ConfigureAwait(false);
-            logger.LogInformation("Function App '{0}' container '{1}' started. Waiting for host readiness.", identifier, container.Id);
-
-            string baseUrl = endpointMap.GetFunctionAppBaseUrl(container);
-            await ContainerReadiness.WaitForHttpAsync(new Uri(baseUrl), "admin/host/status", FunctionAppReadyTimeout, $"Function App '{identifier}'", logger, cancellationToken).ConfigureAwait(false);
-            logger.LogInformation("Function App '{0}' is reachable at '{1}'.", identifier, baseUrl);
-
-            FunctionAppConfig current = functionStore!.GetConfig(identifier);
-            functionStore.AddConfig(identifier, current with { BaseUrl = baseUrl });
-
-            containers.Add(container);
+            FunctionAppConfig current = functionStore!.GetConfig(app.Identifier);
+            functionStore.AddConfig(app.Identifier, current with { BaseUrl = app.BaseUrl });
+            containers.Add(app.Container);
         }
 
         return containers;
     }
+
+    private static PlannedFunctionApp PrepareFunctionApp(DockerAzureEnvironment dockerEnvironment, IServiceProvider serviceProvider, string identifier, ScopedLogger logger)
+    {
+        FunctionAppDefinitionDescriptor descriptor = dockerEnvironment.GetRequiredFunctionAppDescriptor(identifier);
+        DockerFunctionAppRegistration registration = descriptor.Registration;
+
+        ContainerOutput location = ContainerOutputResolver.Resolve(registration.FunctionType, "host.json");
+        logger.LogInformation("Function App '{0}' resolved type '{1}' to project '{2}' and output '{3}'.", identifier, registration.FunctionType.FullName ?? registration.FunctionType.Name, location.ProjectDirectory, location.OutputDirectory);
+        if (location.UsedFallbackOutput)
+            logger.LogInformation("Function App '{0}' used the owning project output. {1}", identifier, location.FallbackReason ?? string.Empty);
+
+        Dictionary<string, string> appSettings = BuildAppSettings(dockerEnvironment, serviceProvider, descriptor, logger);
+        appSettings["AzureFunctionsJobHost__Logging__Console__IsEnabled"] = "true";
+        appSettings["AzureWebJobsScriptRoot"] = FunctionAppRoot;
+        appSettings["FUNCTIONS_WORKER_RUNTIME"] = "dotnet-isolated";
+        appSettings["ASPNETCORE_URLS"] = "http://0.0.0.0:80";
+        appSettings["PORT"] = "80";
+        appSettings["WEBSITES_PORT"] = "80";
+        logger.LogInformation("Function App '{0}' app settings keys: {1}", identifier, string.Join(", ", appSettings.Keys.OrderBy(x => x, StringComparer.Ordinal)));
+
+        return new PlannedFunctionApp(identifier, registration.Image, location.OutputDirectory, appSettings);
+    }
+
+    private static async Task<StartedFunctionApp> StartFunctionAppAsync(
+        PlannedFunctionApp plan,
+        INetwork network,
+        DockerEndpointMap endpointMap,
+        ScopedLogger logger,
+        CancellationToken cancellationToken)
+    {
+        ContainerBuilder builder = new ContainerBuilder(plan.Image)
+            .WithNetwork(network)
+            .WithPortBinding(80, true)
+            .WithBindMount(plan.OutputDirectory, FunctionAppRoot, AccessMode.ReadOnly);
+
+        foreach ((string key, string value) in plan.AppSettings)
+            builder = builder.WithEnvironment(key, value);
+
+        IContainer container = builder.Build();
+        logger.LogInformation("Function App '{0}' starting image '{1}' with mount '{2}' -> '{3}'.", plan.Identifier, plan.Image, plan.OutputDirectory, FunctionAppRoot);
+
+        await container.StartAsync(cancellationToken).ConfigureAwait(false);
+        logger.LogInformation("Function App '{0}' container '{1}' started. Waiting for host readiness.", plan.Identifier, container.Id);
+
+        string baseUrl = endpointMap.GetFunctionAppBaseUrl(container);
+        await ContainerReadiness.WaitForHttpAsync(new Uri(baseUrl), "admin/host/status", FunctionAppReadyTimeout, $"Function App '{plan.Identifier}'", logger, cancellationToken).ConfigureAwait(false);
+        logger.LogInformation("Function App '{0}' is reachable at '{1}'.", plan.Identifier, baseUrl);
+
+        return new StartedFunctionApp(plan.Identifier, container, baseUrl);
+    }
+
+    private sealed record PlannedFunctionApp(string Identifier, string Image, string OutputDirectory, IReadOnlyDictionary<string, string> AppSettings);
+
+    private sealed record StartedFunctionApp(string Identifier, IContainer Container, string BaseUrl);
 
     public override async Task DeconstructAsync(object? state, IEnvironmentProvider environment, IServiceProvider serviceProvider, VariableStore variableStore, ArtifactStore artifactStore, ScopedLogger logger, CancellationToken cancellationToken)
     {

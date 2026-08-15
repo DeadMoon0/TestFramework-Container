@@ -50,29 +50,27 @@ internal sealed class StubEnvComponent : WebEnvComponentBase
 
         WebConfigStore<StubConfig> configStore = GetRequiredConfigStore(serviceProvider);
         INetwork network = webEnvironment.GetRequiredRuntimeState<INetwork>(DockerWebEnvironment.NetworkComponentId);
+
+        // Declaration order in, declaration order out, however the starts interleave.
+        IReadOnlyList<StubDefinition> ordered = [.. definitions.OrderBy(definition => definition.Identifier.ToString(), StringComparer.Ordinal)];
+
+        IReadOnlyList<StartedStub> started = await ContainerStartCoordinator.StartAllAsync(
+            ordered,
+            (definition, token) => StartStubAsync(webEnvironment, definition, network, logger, token),
+            result => result.Container,
+            cancellationToken).ConfigureAwait(false);
+
+        // The admin client reads the published address, so counting has to follow publishing, and
+        // publishing is a config-store write that stays serial.
         List<RunningStub> stubs = [];
-
-        foreach (StubDefinition definition in definitions)
+        foreach (StartedStub stub in started)
         {
-            IReadOnlyList<StubMapping> mappings = definition.Build();
-            string alias = NetworkAlias(definition.Identifier);
-            IContainer container = BuildContainer(webEnvironment, definition.Identifier, mappings, network, alias);
+            Publish(configStore, stub.Identifier, stub.HostBaseUrl);
+            int loaded = await CountLoadedMappingsAsync(serviceProvider, stub.Identifier, cancellationToken).ConfigureAwait(false);
+            await EnsureMappingsLoadedAsync(stub.Container, stub.Identifier, stub.DeclaredMappings, loaded, logger, cancellationToken).ConfigureAwait(false);
 
-            logger.LogInformation("Stub '{0}' starts with {1} mapping(s) on image '{2}'.", definition.Identifier.ToString(), mappings.Count, webEnvironment.StubImage);
-
-            await StartAsync(container, definition.Identifier, webEnvironment.StubImage, logger, cancellationToken).ConfigureAwait(false);
-
-            Uri hostBaseUrl = ContainerEndpoints.HostEndpoint(container, DockerWebDefaults.StubInternalPort);
-            Uri networkBaseUrl = ContainerEndpoints.NetworkEndpoint(alias, DockerWebDefaults.StubInternalPort);
-
-            await WaitForReadinessAsync(container, definition.Identifier, hostBaseUrl, logger, cancellationToken).ConfigureAwait(false);
-
-            Publish(configStore, definition.Identifier, hostBaseUrl);
-            int loaded = await CountLoadedMappingsAsync(serviceProvider, definition.Identifier, cancellationToken).ConfigureAwait(false);
-            await EnsureMappingsLoadedAsync(container, definition.Identifier, mappings.Count, loaded, logger, cancellationToken).ConfigureAwait(false);
-
-            stubs.Add(new RunningStub(definition.Identifier, container, hostBaseUrl, networkBaseUrl, loaded));
-            logger.LogInformation("Stub '{0}' is reachable at '{1}' with {2} mapping(s) loaded.", definition.Identifier.ToString(), hostBaseUrl, loaded);
+            stubs.Add(new RunningStub(stub.Identifier, stub.Container, stub.HostBaseUrl, stub.NetworkBaseUrl, loaded));
+            logger.LogInformation("Stub '{0}' is reachable at '{1}' with {2} mapping(s) loaded.", stub.Identifier, stub.HostBaseUrl, loaded);
         }
 
         StubComponentState state = new(stubs);
@@ -99,6 +97,31 @@ internal sealed class StubEnvComponent : WebEnvComponentBase
     /// </summary>
     /// <param name="identifier">The stub identifier.</param>
     internal static string NetworkAlias(string identifier) => $"stub-{identifier}";
+
+    private static async Task<StartedStub> StartStubAsync(
+        DockerWebEnvironment webEnvironment,
+        StubDefinition definition,
+        INetwork network,
+        ScopedLogger logger,
+        CancellationToken cancellationToken)
+    {
+        IReadOnlyList<StubMapping> mappings = definition.Build();
+        string alias = NetworkAlias(definition.Identifier);
+        IContainer container = BuildContainer(webEnvironment, definition.Identifier, mappings, network, alias);
+
+        logger.LogInformation("Stub '{0}' starts with {1} mapping(s) on image '{2}'.", definition.Identifier, mappings.Count, webEnvironment.StubImage);
+
+        await StartAsync(container, definition.Identifier, webEnvironment.StubImage, logger, cancellationToken).ConfigureAwait(false);
+
+        Uri hostBaseUrl = ContainerEndpoints.HostEndpoint(container, DockerWebDefaults.StubInternalPort);
+        Uri networkBaseUrl = ContainerEndpoints.NetworkEndpoint(alias, DockerWebDefaults.StubInternalPort);
+
+        await WaitForReadinessAsync(container, definition.Identifier, hostBaseUrl, logger, cancellationToken).ConfigureAwait(false);
+
+        return new StartedStub(definition.Identifier, container, hostBaseUrl, networkBaseUrl, mappings.Count);
+    }
+
+    private sealed record StartedStub(string Identifier, IContainer Container, Uri HostBaseUrl, Uri NetworkBaseUrl, int DeclaredMappings);
 
     private static IContainer BuildContainer(
         DockerWebEnvironment webEnvironment,

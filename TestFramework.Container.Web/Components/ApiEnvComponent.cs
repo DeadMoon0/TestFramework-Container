@@ -55,9 +55,15 @@ internal sealed class ApiEnvComponent : WebEnvComponentBase
 
         WebConfigStore<ApiConfig> configStore = GetRequiredConfigStore(serviceProvider);
         INetwork network = webEnvironment.GetRequiredRuntimeState<INetwork>(DockerWebEnvironment.NetworkComponentId);
-        List<RunningApi> apis = [];
 
-        foreach (DockerApiDefinition definition in definitions)
+        // Declaration order in, declaration order out, however the starts interleave.
+        IReadOnlyList<DockerApiDefinition> ordered = [.. definitions.OrderBy(definition => definition.Identifier.ToString(), StringComparer.Ordinal)];
+
+        // Phase one is serial on purpose. Planning reads the project and building runs 'dotnet publish'
+        // or 'docker build'; neither has been shown safe to run concurrently against the same project
+        // or the same package cache, and a wrong answer there is a wrong image, not a slow one.
+        List<PlannedApi> planned = [];
+        foreach (DockerApiDefinition definition in ordered)
         {
             DockerApiSpec spec = definition.Build();
             string identifier = definition.Identifier;
@@ -73,16 +79,23 @@ internal sealed class ApiEnvComponent : WebEnvComponentBase
 
             logger.LogInformation("API '{0}' settings '{1}':{2}{3}", identifier, settingsFileName, Environment.NewLine, settingsJson);
 
-            IContainer container = BuildContainer(spec, plan, network, settingsFileName, settingsJson);
-            await StartAsync(container, definition, plan.Image ?? "(built from output)", logger, cancellationToken).ConfigureAwait(false);
+            planned.Add(new PlannedApi(definition, spec, plan, settingsFileName, settingsJson));
+        }
 
-            Uri baseUrl = ContainerEndpoints.HostEndpoint(container, spec.InternalPort);
-            await WaitForReadinessAsync(container, definition, spec, baseUrl, logger, cancellationToken).ConfigureAwait(false);
+        // Phase two races: creating the container, starting it and waiting it out are independent per
+        // application, and the readiness waits are what the run actually spends its time on.
+        IReadOnlyList<StartedApi> started = await ContainerStartCoordinator.StartAllAsync(
+            planned,
+            (plan, token) => StartApiAsync(plan, network, logger, token),
+            result => result.Container,
+            cancellationToken).ConfigureAwait(false);
 
-            Publish(configStore, identifier, baseUrl, spec.HealthPath);
-            apis.Add(new RunningApi(identifier, container, baseUrl, plan, settingsFileName, settingsJson));
-
-            logger.LogInformation("API '{0}' is reachable at '{1}'.", identifier, baseUrl);
+        List<RunningApi> apis = [];
+        foreach (StartedApi api in started)
+        {
+            Publish(configStore, api.Planned.Definition.Identifier, api.BaseUrl, api.Planned.Spec.HealthPath);
+            apis.Add(new RunningApi(api.Planned.Definition.Identifier, api.Container, api.BaseUrl, api.Planned.Plan, api.Planned.SettingsFileName, api.Planned.SettingsJson));
+            logger.LogInformation("API '{0}' is reachable at '{1}'.", api.Planned.Definition.Identifier, api.BaseUrl);
         }
 
         ApiComponentState state = new(apis);
@@ -112,6 +125,21 @@ internal sealed class ApiEnvComponent : WebEnvComponentBase
                 DeletePublishOutput(published, logger);
         }
     }
+
+    private static async Task<StartedApi> StartApiAsync(PlannedApi planned, INetwork network, ScopedLogger logger, CancellationToken cancellationToken)
+    {
+        IContainer container = BuildContainer(planned.Spec, planned.Plan, network, planned.SettingsFileName, planned.SettingsJson);
+        await StartAsync(container, planned.Definition, planned.Plan.Image ?? "(built from output)", logger, cancellationToken).ConfigureAwait(false);
+
+        Uri baseUrl = ContainerEndpoints.HostEndpoint(container, planned.Spec.InternalPort);
+        await WaitForReadinessAsync(container, planned.Definition, planned.Spec, baseUrl, logger, cancellationToken).ConfigureAwait(false);
+
+        return new StartedApi(planned, container, baseUrl);
+    }
+
+    private sealed record PlannedApi(DockerApiDefinition Definition, DockerApiSpec Spec, ContainerSourcePlan Plan, string SettingsFileName, string SettingsJson);
+
+    private sealed record StartedApi(PlannedApi Planned, IContainer Container, Uri BaseUrl);
 
     private static void DeletePublishOutput(string directory, ScopedLogger logger)
     {
