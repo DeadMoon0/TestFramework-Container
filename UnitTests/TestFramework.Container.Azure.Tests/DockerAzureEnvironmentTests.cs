@@ -384,31 +384,41 @@ public class DockerAzureEnvironmentTests
     [Fact]
     public void ServiceBusConfigLocator_ResolvesOutputRelativeFile()
     {
-        string relativePath = Path.Combine("Configurations", "ServiceBus", "config.json");
-
-        string resolved = typeof(DockerAzureEnvironment).Assembly
-            .GetType("TestFramework.Container.Azure.ServiceBusConfigLocator")!
-            .GetMethod("Resolve", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!
-            .Invoke(null, [relativePath])!
-            .ToString()!;
+        string resolved = InvokeServiceBusConfigLocator(Path.Combine("Configurations", "ServiceBus", "config.json"));
 
         Assert.True(File.Exists(resolved));
     }
 
     [Fact]
-    public void ServiceBusConfigLocator_ResolvesLegacyAzureDockerRelativeFile()
+    public void ServiceBusConfigLocator_NamesEveryCandidateWhenNothingMatches()
     {
-        string relativePath = Path.Combine("AzureDocker", "Configurations", "ServiceBus", "config.json");
+        // Climbing to the drive root used to let a coincidentally named file outside the repository win
+        // in silence; a miss now says exactly where it looked.
+        Exception exception = Assert.Throws<System.Reflection.TargetInvocationException>(
+            () => InvokeServiceBusConfigLocator(Path.Combine("Configurations", "ServiceBus", "definitely-absent.json")));
 
-        string resolved = typeof(DockerAzureEnvironment).Assembly
+        FrameworkConfigurationException configurationException = Assert.IsType<FrameworkConfigurationException>(exception.InnerException);
+        Assert.Contains("definitely-absent.json", configurationException.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("repository boundary", configurationException.ToString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ServiceBusConfigLocator_RejectsAnAbsolutePathThatDoesNotExist()
+    {
+        string absent = Path.Combine(Path.GetTempPath(), $"tf-absent-{Guid.NewGuid():N}.json");
+
+        Exception exception = Assert.Throws<System.Reflection.TargetInvocationException>(
+            () => InvokeServiceBusConfigLocator(absent));
+
+        Assert.IsType<FrameworkConfigurationException>(exception.InnerException);
+    }
+
+    private static string InvokeServiceBusConfigLocator(string relativePath)
+        => typeof(DockerAzureEnvironment).Assembly
             .GetType("TestFramework.Container.Azure.ServiceBusConfigLocator")!
             .GetMethod("Resolve", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!
-            .Invoke(null, [relativePath])!
+            .Invoke(null, [relativePath, null])!
             .ToString()!;
-
-        Assert.True(File.Exists(resolved));
-        Assert.EndsWith(Path.Combine("Configurations", "ServiceBus", "config.json"), resolved, StringComparison.OrdinalIgnoreCase);
-    }
 
     [Fact]
     public void ResolveComponents_ThrowsWhenFunctionAppRegistrationIsMissing()
@@ -553,7 +563,7 @@ public class DockerAzureEnvironmentTests
         object materialized = typeof(DockerAzureEnvironment).Assembly
             .GetType("TestFramework.Container.Azure.ServiceBusTopologyMaterializer")!
             .GetMethod("Materialize", BindingFlags.Static | BindingFlags.NonPublic)!
-            .Invoke(null, [topologySource])!;
+            .Invoke(null, [topologySource, null])!;
 
         string configPath = (string)materialized.GetType().GetProperty("ConfigPath")!.GetValue(materialized)!;
         bool isTemporary = (bool)materialized.GetType().GetProperty("IsTemporary")!.GetValue(materialized)!;

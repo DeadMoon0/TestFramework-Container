@@ -35,7 +35,7 @@ internal sealed class ServiceBusEnvComponent : DockerAzureEnvComponent
         ConfigStore<ServiceBusConfig>? configStore = EnvComponentConfigStoreGuard.GetRequiredStore<ServiceBusConfig>(dockerEnvironment, serviceProvider, dockerEnvironment.UsedServiceBusIdentifiers, "Service Bus environment setup");
         INetwork network = dockerEnvironment.GetRequiredRuntimeState<INetwork>(DockerAzureEnvironment.NetworkComponentId);
         MsSqlContainer msSqlContainer = dockerEnvironment.GetRequiredRuntimeState<MsSqlContainer>(DockerAzureEnvironment.MsSqlComponentId);
-        MaterializedServiceBusTopology materializedTopology = ServiceBusTopologyMaterializer.Materialize(dockerEnvironment.GetServiceBusTopologySource());
+        MaterializedServiceBusTopology materializedTopology = ServiceBusTopologyMaterializer.Materialize(dockerEnvironment.GetServiceBusTopologySource(), logger);
 
         ServiceBusContainer container = new ServiceBusBuilder(dockerEnvironment.GetServiceBusImage())
             .WithAcceptLicenseAgreement(true)

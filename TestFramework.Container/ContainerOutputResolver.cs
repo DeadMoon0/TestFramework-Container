@@ -283,7 +283,7 @@ public static class ContainerOutputResolver
                     + ". Name the project explicitly instead of letting it be discovered.");
             }
 
-            if (IsRepositoryBoundary(current))
+            if (ContainerRepositoryBoundary.IsBoundary(current))
                 break;
         }
 
@@ -306,32 +306,6 @@ public static class ContainerOutputResolver
         }
     }
 
-    /// <summary>
-    /// Whether a directory is the top of a repository, so the climb should not go past it.
-    /// </summary>
-    /// <remarks>
-    /// <c>.git</c> is a directory in a normal clone and a file in a worktree or a submodule, so both are
-    /// accepted. A solution file or a <c>global.json</c> marks the same boundary for a checkout that has
-    /// no <c>.git</c> at all.
-    /// </remarks>
-    private static bool IsRepositoryBoundary(DirectoryInfo directory)
-    {
-        try
-        {
-            string gitPath = Path.Combine(directory.FullName, ".git");
-            if (Directory.Exists(gitPath) || File.Exists(gitPath))
-                return true;
-
-            if (File.Exists(Path.Combine(directory.FullName, "global.json")))
-                return true;
-
-            return directory.EnumerateFiles("*.sln").Any() || directory.EnumerateFiles("*.slnx").Any();
-        }
-        catch (Exception exception) when (exception is UnauthorizedAccessException or IOException)
-        {
-            return false;
-        }
-    }
 
     private static FrameworkConfigurationException CreateMissingOutputException(
         Type entryPointType,

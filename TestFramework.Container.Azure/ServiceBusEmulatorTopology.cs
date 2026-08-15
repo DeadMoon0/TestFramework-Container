@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 using TestFramework.Core.Exceptions;
+using TestFramework.Core.Logging;
 using Testcontainers.ServiceBus;
 
 namespace TestFramework.Container.Azure;
@@ -153,14 +154,14 @@ internal sealed record MaterializedServiceBusTopology(string ConfigPath, bool Is
 
 internal static class ServiceBusTopologyMaterializer
 {
-    internal static MaterializedServiceBusTopology Materialize(ServiceBusTopologySource source)
+    internal static MaterializedServiceBusTopology Materialize(ServiceBusTopologySource source, ScopedLogger? logger = null)
     {
         ArgumentNullException.ThrowIfNull(source);
 
         if (source.ConfigPath is not null)
-            return new MaterializedServiceBusTopology(ServiceBusConfigLocator.Resolve(source.ConfigPath), false);
+            return new MaterializedServiceBusTopology(ServiceBusConfigLocator.Resolve(source.ConfigPath, logger), false);
 
-        string topologyDirectory = Path.Combine(Path.GetTempPath(), "TestFramework", "servicebus-topologies");
+        string topologyDirectory = ContainerLeftovers.TopologyDirectory;
         Directory.CreateDirectory(topologyDirectory);
 
         string topologyPath = Path.Combine(topologyDirectory, $"{Guid.NewGuid():N}.json");
