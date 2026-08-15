@@ -308,7 +308,7 @@ External JSON files are still supported for compatibility through `TopologyConfi
 - If graph validation fails, debug the definition graph first and the timeline second.
 - If a Function App host cannot be resolved under referenced build output, the current resolution order prefers the owning project directory and then checks the matching `bin/<Configuration>/net8.0` output. Build the owning Function App project before assuming the timeline binding is wrong.
 - If that fallback path is used, the environment now logs an explicit warning that includes the copied assembly output path and the owning-project output path it selected instead.
-- If you are choosing between local-only, Docker-backed, and live Azure paths, use [../../TestFramework-Showroom/Documentation/LocalToDockerToLive.md](../../TestFramework-Showroom/Documentation/LocalToDockerToLive.md) as the narrative guide instead of mixing the three mental models ad hoc.
+- If you are choosing between the local-only, Docker-backed, and live Azure paths, decide once per suite rather than per test, and decide on what the test needs to prove. A test about your own code's logic belongs on the local path, where nothing is started and a run costs milliseconds. A test about how your code behaves against a real storage account, Cosmos container, queue or SQL database belongs here, where the emulators behave like the service without the account. A test about configuration, identity or a service feature no emulator implements belongs on the live path with `TestFramework.Azure` against a real subscription. Mixing the three mental models inside one suite is what makes container tests feel slow and live tests feel flaky.
 
 ### Housekeeping
 
