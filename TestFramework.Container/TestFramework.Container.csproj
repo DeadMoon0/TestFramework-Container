@@ -17,7 +17,13 @@
 		<PackageTags>Test;UnitTest;IntegrationTest;Framework;Timeline;Docker</PackageTags>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<Copyright>Copyright (c) DeadMoon0 2026</Copyright>
-		<PackageReleaseNotes>Initial release: shared Docker building blocks, and a declared source model for getting an application into a container</PackageReleaseNotes>
+		<PackageReleaseNotes>Initial release: shared Docker building blocks, and a declared source model for getting an application into a container.
+Worth knowing up front:
+- Where a container's application comes from is declared, not guessed: Image(...), Project(...) - resolved against the file that declares it - or Directory(...). Project facts come from MSBuild rather than from inspecting paths, a multi-targeted project is a hard error instead of a silent pick, and the whole resolved plan is logged before anything is built, so a failure can be read against what was going to happen.
+- Published ports bind to 127.0.0.1, not to every interface. A test SQL Server or emulator is no longer reachable from the rest of the network while a suite runs. Set TESTFRAMEWORK_CONTAINER_HOST_IP when the Docker daemon is remote and the loopback default would make the port unreachable.
+- Docker host detection runs before the first connection. Docker Desktop on Windows exposes the engine under more than one named pipe, and picking the wrong one produced a connection failure on a machine where Docker was working fine.
+- Images and temporary build output this package creates are labelled and swept when they are more than a day old, because a killed test host leaves them behind and the container reaper does not cover them. Set TESTFRAMEWORK_CONTAINER_NO_SWEEP to disable.
+- Docker CLI invocations are bounded by a timeout, so a wedged CLI fails teardown instead of hanging it forever.</PackageReleaseNotes>
 	</PropertyGroup>
 
 	<ItemGroup>
