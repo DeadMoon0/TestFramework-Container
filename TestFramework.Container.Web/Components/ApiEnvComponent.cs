@@ -192,6 +192,7 @@ internal sealed class ApiEnvComponent : WebEnvComponentBase
         ContainerBuilder builder = new ContainerBuilder(image)
             .WithNetwork(network)
             .WithPortBinding(spec.InternalPort, true)
+            .WithCreateParameterModifier(ContainerPortBinding.Apply)
             .WithWorkingDirectory(DockerWebDefaults.ApiRoot)
             .WithEnvironment("ASPNETCORE_ENVIRONMENT", spec.EnvironmentName)
             .WithEnvironment("DOTNET_ENVIRONMENT", spec.EnvironmentName)

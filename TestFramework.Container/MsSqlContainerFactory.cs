@@ -40,7 +40,8 @@ public static class MsSqlContainerFactory
         ArgumentNullException.ThrowIfNull(options);
 
         MsSqlBuilder builder = new MsSqlBuilder(options.Image)
-            .WithPassword(options.Password);
+            .WithPassword(options.Password)
+            .WithCreateParameterModifier(ContainerPortBinding.Apply);
 
         if (options.MemoryLimitMb is { } memoryLimit)
             builder = builder.WithEnvironment("MSSQL_MEMORY_LIMIT_MB", memoryLimit.ToString(CultureInfo.InvariantCulture));

@@ -39,6 +39,7 @@ internal sealed class AzuriteEnvComponent : DockerAzureEnvComponent
             .WithPortBinding(10000, true)
             .WithPortBinding(10001, true)
             .WithPortBinding(10002, true)
+            .WithCreateParameterModifier(ContainerPortBinding.Apply)
             .WithCommand("azurite", "--blobHost", "0.0.0.0", "--queueHost", "0.0.0.0", "--tableHost", "0.0.0.0", "--skipApiVersionCheck")
             .Build();
 

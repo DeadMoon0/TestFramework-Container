@@ -42,6 +42,7 @@ internal sealed class ServiceBusEnvComponent : DockerAzureEnvComponent
             .WithMsSqlContainer(network, msSqlContainer, ServiceBusBuilder.DatabaseNetworkAlias, dockerEnvironment.GetMsSqlPassword())
             .WithConfig(materializedTopology.ConfigPath)
             .WithNetworkAliases(DockerAzureEnvironment.ServiceBusNetworkAlias)
+            .WithCreateParameterModifier(ContainerPortBinding.Apply)
             .Build();
 
         await container.StartAsync(cancellationToken).ConfigureAwait(false);

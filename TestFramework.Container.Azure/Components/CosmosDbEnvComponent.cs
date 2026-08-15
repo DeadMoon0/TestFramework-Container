@@ -46,7 +46,8 @@ internal sealed class CosmosDbEnvComponent : DockerAzureEnvComponent
             .WithNetworkAliases(DockerAzureEnvironment.CosmosDbNetworkAlias)
             .WithPortBinding(8080, true)
             .WithPortBinding(8081, true)
-            .WithPortBinding(1234, true);
+            .WithPortBinding(1234, true)
+            .WithCreateParameterModifier(ContainerPortBinding.Apply);
 
         if (cosmosImage.Contains("vnext-preview", StringComparison.OrdinalIgnoreCase))
             builder = builder.WithCommand("--protocol", "https");

@@ -134,6 +134,7 @@ internal sealed class StubEnvComponent : WebEnvComponentBase
             .WithNetwork(network)
             .WithNetworkAliases(alias)
             .WithPortBinding(DockerWebDefaults.StubInternalPort, true)
+            .WithCreateParameterModifier(ContainerPortBinding.Apply)
             // The server ignores its mapping folder unless it is told to read it, and says nothing
             // about the files it never looked at.
             .WithCommand("--ReadStaticMappings", "true", "--WireMockLogger", "WireMockConsoleLogger");

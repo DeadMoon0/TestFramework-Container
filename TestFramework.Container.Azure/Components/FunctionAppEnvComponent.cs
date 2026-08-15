@@ -105,6 +105,7 @@ internal sealed class FunctionAppEnvComponent(DockerAzureEnvironment owner) : Do
         ContainerBuilder builder = new ContainerBuilder(plan.Image)
             .WithNetwork(network)
             .WithPortBinding(80, true)
+            .WithCreateParameterModifier(ContainerPortBinding.Apply)
             .WithBindMount(plan.OutputDirectory, FunctionAppRoot, AccessMode.ReadOnly);
 
         foreach ((string key, string value) in plan.AppSettings)
