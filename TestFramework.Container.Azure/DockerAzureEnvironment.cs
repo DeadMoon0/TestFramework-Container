@@ -397,6 +397,11 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
         return _definitionState.MsSqlMemoryLimitMb ?? DockerAzureDefaults.MsSqlMemoryLimitMb;
     }
 
+    internal TimeSpan GetMsSqlReadinessTimeout()
+    {
+        return _definitionState.MsSqlReadinessTimeout ?? DockerAzureDefaults.MsSqlReadinessTimeout;
+    }
+
     internal string GetServiceBusImage()
     {
         return _definitionState.ServiceBusImage ?? DockerAzureDefaults.ServiceBusImage;

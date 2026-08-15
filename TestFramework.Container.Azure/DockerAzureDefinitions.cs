@@ -53,6 +53,15 @@ public abstract class DockerAzureInfrastructureDefinition : DockerAzureDefinitio
 
     public virtual int? MsSqlMemoryLimitMb => null;
 
+    /// <summary>
+    /// How long to wait for the started SQL Server to answer.
+    /// </summary>
+    /// <remarks>
+    /// A first start on a cold image, a loaded CI agent or a machine that is also building can all push
+    /// SQL Server past the default. The Web package allows ninety seconds for the same pinned image.
+    /// </remarks>
+    public virtual TimeSpan? MsSqlReadinessTimeout => null;
+
     public virtual string? ServiceBusImage => null;
 
     public virtual string? MsSqlPassword => null;
@@ -505,6 +514,16 @@ public static class DockerAzureDefaults
     public const string PlaceholderConnectionString = "placeholder://container-managed";
     public const string MsSqlImage = "mcr.microsoft.com/mssql/server:2022-CU14-ubuntu-22.04";
     public const int MsSqlMemoryLimitMb = 1536;
+
+    /// <summary>
+    /// How long to wait for the started SQL Server to answer.
+    /// </summary>
+    /// <remarks>
+    /// The same as the Web package allows for the same pinned image. Thirty seconds was enough on a warm
+    /// machine and nowhere near enough on a first start or a loaded CI agent. Override it with
+    /// <see cref="DockerAzureInfrastructureDefinition.MsSqlReadinessTimeout"/>.
+    /// </remarks>
+    public static readonly TimeSpan MsSqlReadinessTimeout = TimeSpan.FromSeconds(90);
     public const string AzuriteImage = "mcr.microsoft.com/azure-storage/azurite:3.33.0";
     public const string AzuriteAccountName = "devstoreaccount1";
     public const string AzuriteAccountKey = "Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==";
@@ -584,6 +603,7 @@ internal sealed class DockerAzureDefinitionState
     public string? CosmosDbImage { get; private set; }
     public string? MsSqlImage { get; private set; }
     public int? MsSqlMemoryLimitMb { get; private set; }
+    public TimeSpan? MsSqlReadinessTimeout { get; private set; }
     public string? ServiceBusImage { get; private set; }
     public string? MsSqlPassword { get; private set; }
     public IReadOnlyCollection<ComponentContractBinding> LastContractBindings { get; private set; } = [];
@@ -614,6 +634,7 @@ internal sealed class DockerAzureDefinitionState
                 CosmosDbImage = ResolveOverride(CosmosDbImage, infrastructure.CosmosDbImage, nameof(DockerAzureInfrastructureDefinition.CosmosDbImage));
                 MsSqlImage = ResolveOverride(MsSqlImage, infrastructure.MsSqlImage, nameof(DockerAzureInfrastructureDefinition.MsSqlImage));
                 MsSqlMemoryLimitMb = ResolveOverride(MsSqlMemoryLimitMb, infrastructure.MsSqlMemoryLimitMb, nameof(DockerAzureInfrastructureDefinition.MsSqlMemoryLimitMb));
+                MsSqlReadinessTimeout = ResolveOverride(MsSqlReadinessTimeout, infrastructure.MsSqlReadinessTimeout, nameof(DockerAzureInfrastructureDefinition.MsSqlReadinessTimeout));
                 ServiceBusImage = ResolveOverride(ServiceBusImage, infrastructure.ServiceBusImage, nameof(DockerAzureInfrastructureDefinition.ServiceBusImage));
                 MsSqlPassword = ResolveOverride(MsSqlPassword, infrastructure.MsSqlPassword, nameof(DockerAzureInfrastructureDefinition.MsSqlPassword));
                 if (infrastructure.GetServiceBusTopologySource() is ServiceBusTopologySource infrastructureTopologySource)
@@ -805,7 +826,8 @@ internal sealed class DockerAzureDefinitionState
         return current;
     }
 
-    private static int? ResolveOverride(int? current, int? value, string propertyName)
+    private static T? ResolveOverride<T>(T? current, T? value, string propertyName)
+        where T : struct
     {
         if (value is null)
             return current;
@@ -813,7 +835,7 @@ internal sealed class DockerAzureDefinitionState
         if (current is null)
             return value;
 
-        if (current != value)
+        if (!EqualityComparer<T>.Default.Equals(current.Value, value.Value))
             throw new FrameworkConfigurationException($"Multiple values were configured for {propertyName}: '{current}' and '{value}'.");
 
         return current;

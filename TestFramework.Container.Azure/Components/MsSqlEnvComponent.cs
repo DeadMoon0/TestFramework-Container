@@ -46,7 +46,7 @@ internal sealed class MsSqlEnvComponent : DockerAzureEnvComponent
         await container.StartAsync(cancellationToken).ConfigureAwait(false);
 
         string connectionString = container.GetConnectionString();
-        await ContainerReadiness.WaitForSqlAsync(connectionString, TimeSpan.FromSeconds(30), "the SQL container", cancellationToken).ConfigureAwait(false);
+        await ContainerReadiness.WaitForSqlAsync(connectionString, dockerEnvironment.GetMsSqlReadinessTimeout(), "the SQL container", cancellationToken).ConfigureAwait(false);
         ConnectionStringGuards.EnsureSql(connectionString);
 
         if (configStore is not null)
