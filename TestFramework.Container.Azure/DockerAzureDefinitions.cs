@@ -508,8 +508,28 @@ public static class DockerAzureDefaults
     public const string AzuriteImage = "mcr.microsoft.com/azure-storage/azurite:3.33.0";
     public const string AzuriteAccountName = "devstoreaccount1";
     public const string AzuriteAccountKey = "Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==";
+    /// <summary>
+    /// The Cosmos DB emulator image started for declared Cosmos containers.
+    /// </summary>
+    /// <remarks>
+    /// Every other image here is pinned; this one cannot be. The Linux Cosmos emulator ships only
+    /// moving tags — <c>vnext-preview</c> is the one Microsoft documents — so a pull can change the
+    /// emulator between runs with nothing in the repository to show for it. Pin it with
+    /// <see cref="DockerAzureInfrastructureDefinition.CosmosDbImage"/>, by tag or by digest, when a run
+    /// has to be reproducible over time.
+    /// </remarks>
     public const string CosmosDbImage = "mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview";
     public const string CosmosDbEmulatorAccountKey = "C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==";
+    /// <summary>
+    /// The Service Bus emulator image started for declared Service Bus entities.
+    /// </summary>
+    /// <remarks>
+    /// This follows <c>latest</c>, which is what Microsoft's own compose templates and the
+    /// Testcontainers module both use; the registry publishes no semantic version tag to pin to. A pull
+    /// can therefore change the emulator between runs with nothing in the repository to show for it.
+    /// Pin it with <see cref="DockerAzureInfrastructureDefinition.ServiceBusImage"/>, by tag or by
+    /// digest, when a run has to be reproducible over time.
+    /// </remarks>
     public const string ServiceBusImage = "mcr.microsoft.com/azure-messaging/servicebus-emulator:latest";
     /// <summary>
     /// The <c>sa</c> password the environment used to start every SQL Server with.

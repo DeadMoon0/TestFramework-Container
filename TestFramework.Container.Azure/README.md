@@ -452,6 +452,13 @@ in the middle of asserting on.
 
 Use an infrastructure definition when you need explicit emulator-level overrides.
 
+Two of these earn an override on their own. `MsSqlImage` and `AzuriteImage` are pinned to a concrete
+version by default, but `CosmosDbImage` and `ServiceBusImage` are not: the Linux Cosmos emulator ships
+only moving tags, and the Service Bus emulator publishes no semantic version tag at all — Microsoft's
+own compose templates use `latest` for it. A pull can therefore change either emulator between runs
+with nothing in the repository to show for it. Pin them here, by tag or by digest, when a run has to be
+reproducible over time.
+
 `MsSqlPassword` is the only one you can safely leave alone: without it the environment generates a
 password per instance, and ports are published on `127.0.0.1` when the daemon is local, so nothing on
 the network can reach the running server. Override it only when something outside the run has to log
