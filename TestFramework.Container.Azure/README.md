@@ -415,6 +415,39 @@ Use this path when:
 Keep the per-run `SetEnv(DockerAzureEnvironment.For<...>())` shape for simple tests and examples.
 Move to `DockerAzureHostedCollectionFixture<TState>` only when suite scale or runtime cost justifies it.
 
+### What A Hosted Run Inherits
+
+The containers survive the run, and so does everything written into them. A blob, a table row, a Cosmos
+item, a storage queue message and a Service Bus message put there by one run are all still there when the
+next run of the collection starts. The persistent components are not created a second time, so nothing
+they do at startup happens again either.
+
+The environment therefore purges the resources it declared before each run touches them. That is
+`AzureResetMode.PurgeDeclaredResources`, the default:
+
+| Resource | What the purge does |
+| --- | --- |
+| Storage | Deletes every blob container and table on the account, and clears every storage queue. Containers and tables are recreated on demand by the artifact helpers. |
+| Cosmos | Deletes the declared container and creates it again with the recorded partition key. Far cheaper than deleting items one by one. |
+| Service Bus | Drains the declared queue or topic subscription, dead-letter sub-queue included, with a receive-and-delete receiver. The topology itself is untouched: the emulator reads it from the config file it started with. |
+| SQL | Drops and recreates only the databases named by declared `SqlDatabaseConfig`s. System databases and the Service Bus emulator's own database are never touched — dropping that one ends the emulator mid-suite. |
+
+Only declared resources are in scope, and only a run that was handed already-running containers pays for
+the purge: a run that started its own emulators skips it, because they came up empty seconds earlier.
+
+Turn it off with `UseResetMode` when a suite deliberately builds state across runs:
+
+```csharp
+public DockerAzureEnvironment CreateEnvironment()
+	=> DockerAzureEnvironment
+		.For<DefaultFunctionApp>()
+		.UseResetMode(AzureResetMode.None);
+```
+
+Keep `DisableParallelization = true` on the collection definition, as the example above has it. Two runs
+of one hosted collection share the same containers, so a parallel run would purge the data another run is
+in the middle of asserting on.
+
 ## Infrastructure Overrides
 
 Use an infrastructure definition when you need explicit emulator-level overrides.
