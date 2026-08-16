@@ -5,7 +5,7 @@
 		<GenerateDocumentationFile>true</GenerateDocumentationFile>
 		<IsTestProject>false</IsTestProject>
 		<Title>TestFramework.Container</Title>
-		<Version>0.1.1</Version>
+		<Version>0.2.0</Version>
 		<Authors>DeadMoon0</Authors>
 		<Product>TestFramework</Product>
 		<Description>Shared Docker building blocks for TestFramework container environments: declaring where an application comes from and building it, network creation, host and network endpoint addressing, readiness waits and container log capture.</Description>
@@ -48,7 +48,7 @@ Worth knowing up front:
 		<PackageReference Include="SSH.NET" Version="2026.0.0" />
 		<PackageReference Include="Testcontainers" Version="4.11.0" />
 		<PackageReference Include="Testcontainers.MsSql" Version="4.11.0" />
-		<PackageReference Include="TestFramework.Core" Version="0.1.10" />
+		<PackageReference Include="TestFramework.Core" Version="0.2.0" />
 	</ItemGroup>
 
 	<ItemGroup>

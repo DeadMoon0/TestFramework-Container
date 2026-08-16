@@ -9,7 +9,7 @@
 		     the documentation pass; it is a bridge, not a decision. -->
 		<NoWarn>$(NoWarn);CS1591</NoWarn>
 		<Title>TestFramework.Container.Azure</Title>
-		<Version>0.1.8</Version>
+		<Version>0.2.0</Version>
 		<Authors>DeadMoon0</Authors>
 		<Product>TestFramework</Product>
 		<Description>Docker-backed environment providers for TestFramework timelines for Azure components.</Description>
@@ -21,7 +21,10 @@
 		<PackageTags>Test;UnitTest;IntegrationTest;Framework;Timeline;Docker;Azure</PackageTags>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<Copyright>Copyright (c) DeadMoon0 2026</Copyright>
-		<PackageReleaseNotes>The Functions host image now follows the framework the Function App was built for.
+		<PackageReleaseNotes>Rebuilt on TestFramework.Container 0.1.1, so Azure environments get its registry and build fixes too.
+Changed in 0.1.9:
+- Depends on TestFramework.Container 0.1.1: an image is built once per run rather than once per environment, an unreachable registry is detected before the SDK is started rather than after it has spent minutes failing, and an image the daemon cannot pull is fetched over IPv4 and loaded in.
+Previously, in 0.1.8: the Functions host image now follows the framework the Function App was built for.
 Changed in 0.1.8:
 - The host image was pinned to 4-dotnet-isolated8.0 whatever the payload targeted. A Functions host image carries exactly one .NET runtime, so a Function App built for anything else could not start in it - and the failure said nothing: the container started, the host started, the worker exited with code 150, and the host then answered nothing until the readiness timeout expired four minutes later. The only trace of the real reason was inside the container log.
 - The image is now derived from the payload's target framework. An image named by the caller is never overridden - a private or pinned image is their decision - but one that cannot run the payload is now reported immediately, naming both versions, instead of four minutes of silence.
@@ -43,7 +46,7 @@ Also: a Function App's payload source can be declared with ContainerSource inste
 		<!-- Container is consumed as a published package, not as a project, so the dependency this
 		     package declares is exactly the one a consumer resolves. Container must be published
 		     before this package ships against it. -->
-		<PackageReference Include="TestFramework.Container" Version="0.1.0" />
+		<PackageReference Include="TestFramework.Container" Version="0.2.0" />
 	</ItemGroup>
 
 	<ItemGroup>
@@ -71,9 +74,9 @@ Also: a Function App's payload source can be declared with ContainerSource inste
 		<PackageReference Include="Testcontainers.CosmosDb" Version="4.11.0" />
 		<PackageReference Include="Testcontainers.MsSql" Version="4.11.0" />
 		<PackageReference Include="Testcontainers.ServiceBus" Version="4.11.0" />
-		<PackageReference Include="TestFramework.Azure" Version="0.1.13" />
-		<PackageReference Include="TestFramework.Config" Version="0.1.6" />
-		<PackageReference Include="TestFramework.Core" Version="0.1.10" />
+		<PackageReference Include="TestFramework.Azure" Version="0.2.0" />
+		<PackageReference Include="TestFramework.Config" Version="0.2.0" />
+		<PackageReference Include="TestFramework.Core" Version="0.2.0" />
 	</ItemGroup>
 
 	<ItemGroup>
