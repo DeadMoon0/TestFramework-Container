@@ -88,13 +88,44 @@ internal sealed class AzureResetEnvComponent(DockerAzureEnvironment owner) : Doc
         Stopwatch stopwatch = Stopwatch.StartNew();
         logger.LogInformation("Purging the declared Azure resources so this run starts from an empty environment.");
 
-        await PurgeStorageAsync(dockerEnvironment, serviceProvider, logger, cancellationToken).ConfigureAwait(false);
-        await PurgeCosmosAsync(dockerEnvironment, serviceProvider, logger, cancellationToken).ConfigureAwait(false);
-        await PurgeServiceBusAsync(dockerEnvironment, serviceProvider, logger, cancellationToken).ConfigureAwait(false);
-        await PurgeSqlAsync(dockerEnvironment, serviceProvider, logger, cancellationToken).ConfigureAwait(false);
+        await RunPurgeAsync("storage", () => PurgeStorageAsync(dockerEnvironment, serviceProvider, logger, cancellationToken), logger, cancellationToken).ConfigureAwait(false);
+        await RunPurgeAsync("Cosmos", () => PurgeCosmosAsync(dockerEnvironment, serviceProvider, logger, cancellationToken), logger, cancellationToken).ConfigureAwait(false);
+        await RunPurgeAsync("Service Bus", () => PurgeServiceBusAsync(dockerEnvironment, serviceProvider, logger, cancellationToken), logger, cancellationToken).ConfigureAwait(false);
+        await RunPurgeAsync("SQL", () => PurgeSqlAsync(dockerEnvironment, serviceProvider, logger, cancellationToken), logger, cancellationToken).ConfigureAwait(false);
 
         logger.LogInformation($"Finished purging the declared Azure resources in {stopwatch.Elapsed:g}.");
         return null;
+    }
+
+    /// <summary>
+    /// Runs one resource's purge, reporting a failure instead of ending the run.
+    /// </summary>
+    /// <remarks>
+    /// The purge is housekeeping: it exists so a reused emulator does not hand one run the data the
+    /// previous run left behind. Failing the environment over it turns a soft problem into a hard
+    /// one, and it punishes runs that never wanted the resource - a run-local configuration override
+    /// pointing somewhere the purge cannot reach is a legitimate thing to do, and used to fail the
+    /// whole run here with a bare connection error.
+    ///
+    /// The consequence of a skipped purge is real though, so it is reported as a warning that says
+    /// what it means rather than being swallowed. Each resource is attempted independently, so one
+    /// failure does not cost the others.
+    /// </remarks>
+    private static async Task RunPurgeAsync(string resource, Func<Task> purge, ScopedLogger logger, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await purge().ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(
+                $"The {resource} purge did not complete, so this run may still see data a previous run left behind: {exception.Message}");
+        }
     }
 
     public override Task DeconstructAsync(object? state, IEnvironmentProvider environment, IServiceProvider serviceProvider, VariableStore variableStore, ArtifactStore artifactStore, ScopedLogger logger, CancellationToken cancellationToken)
