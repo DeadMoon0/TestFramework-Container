@@ -94,6 +94,8 @@ internal sealed class FunctionAppEnvComponent(DockerAzureEnvironment owner) : Do
 
         EnsureFunctionAppPayload(payloadDirectory, identifier);
 
+        string image = ResolveHostImage(registration, plan, identifier, logger);
+
         Dictionary<string, string> appSettings = BuildAppSettings(dockerEnvironment, serviceProvider, descriptor, logger);
         appSettings["AzureFunctionsJobHost__Logging__Console__IsEnabled"] = "true";
         appSettings["AzureWebJobsScriptRoot"] = FunctionAppRoot;
@@ -103,7 +105,64 @@ internal sealed class FunctionAppEnvComponent(DockerAzureEnvironment owner) : Do
         appSettings["WEBSITES_PORT"] = "80";
         logger.LogInformation("Function App '{0}' app settings keys: {1}", identifier, string.Join(", ", appSettings.Keys.OrderBy(x => x, StringComparer.Ordinal)));
 
-        return new PlannedFunctionApp(identifier, registration.Image, payloadDirectory, appSettings, plan);
+        return new PlannedFunctionApp(identifier, image, payloadDirectory, appSettings, plan);
+    }
+
+    /// <summary>
+    /// Chooses the Functions host image that can actually run this payload.
+    /// </summary>
+    /// <param name="registration">The registration, which may have named an image itself.</param>
+    /// <param name="plan">The carried-out source plan, which knows what the payload was built for.</param>
+    /// <param name="identifier">The Function App identifier, for log and error output.</param>
+    /// <param name="logger">The scoped logger.</param>
+    /// <exception cref="FrameworkConfigurationException">A declared image cannot run the payload.</exception>
+    /// <remarks>
+    /// A Functions host image carries exactly one .NET runtime. Mounting an application built for a
+    /// different one produces no useful failure: the container starts, the host starts, the worker
+    /// exits with code 150, and the host then sits there not answering until the readiness timeout
+    /// expires -- with the real reason ("To install missing framework...") visible only inside the
+    /// container log. So the framework is matched here, before anything starts.
+    ///
+    /// An image the caller named is never overridden; it is only checked, because a caller naming a
+    /// private or pinned image knows things this does not. What is checked is the one thing that can
+    /// be read off both: the runtime version.
+    /// </remarks>
+    private static string ResolveHostImage(
+        DockerFunctionAppRegistration registration,
+        ContainerSourcePlan plan,
+        string identifier,
+        ScopedLogger logger)
+    {
+        if (plan.TargetFramework is not { Length: > 0 } targetFramework)
+            return registration.Image;
+
+        string? matching = DockerAzureDefaults.FunctionAppImageFor(targetFramework);
+        if (matching is null)
+            return registration.Image;
+
+        if (!registration.ImageWasDeclared)
+        {
+            if (!string.Equals(matching, registration.Image, StringComparison.Ordinal))
+                logger.LogInformation("Function App '{0}' runs on '{1}', matched to the '{2}' its payload was built for.", identifier, matching, targetFramework);
+
+            return matching;
+        }
+
+        // Declared, so it stands -- but a version that cannot run the payload is worth saying now
+        // rather than letting it surface as four minutes of silence.
+        if (!registration.Image.EndsWith($"-dotnet-isolated{targetFramework[3..]}", StringComparison.OrdinalIgnoreCase)
+            && registration.Image.StartsWith(DockerAzureDefaults.FunctionAppImageRepository, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new FrameworkConfigurationException(
+                $"Function App '{identifier}' is built for '{targetFramework}', and the host image '{registration.Image}' carries a different .NET runtime.",
+                [
+                    $"Use '{matching}', which carries the runtime this payload needs.",
+                    "Or build the Function App for the framework the declared image carries.",
+                    "A Functions host image bundles one runtime: a mismatch starts the container, fails the worker with exit code 150, and then answers nothing until the readiness timeout expires.",
+                ]);
+        }
+
+        return registration.Image;
     }
 
     /// <summary>

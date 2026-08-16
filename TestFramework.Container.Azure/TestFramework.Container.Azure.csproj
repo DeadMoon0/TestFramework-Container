@@ -9,7 +9,7 @@
 		     the documentation pass; it is a bridge, not a decision. -->
 		<NoWarn>$(NoWarn);CS1591</NoWarn>
 		<Title>TestFramework.Container.Azure</Title>
-		<Version>0.1.7</Version>
+		<Version>0.1.8</Version>
 		<Authors>DeadMoon0</Authors>
 		<Product>TestFramework</Product>
 		<Description>Docker-backed environment providers for TestFramework timelines for Azure components.</Description>
@@ -21,7 +21,11 @@
 		<PackageTags>Test;UnitTest;IntegrationTest;Framework;Timeline;Docker;Azure</PackageTags>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<Copyright>Copyright (c) DeadMoon0 2026</Copyright>
-		<PackageReleaseNotes>Multi-target net8.0 and net10.0, and build on the shared TestFramework.Container blocks.
+		<PackageReleaseNotes>The Functions host image now follows the framework the Function App was built for.
+Changed in 0.1.8:
+- The host image was pinned to 4-dotnet-isolated8.0 whatever the payload targeted. A Functions host image carries exactly one .NET runtime, so a Function App built for anything else could not start in it - and the failure said nothing: the container started, the host started, the worker exited with code 150, and the host then answered nothing until the readiness timeout expired four minutes later. The only trace of the real reason was inside the container log.
+- The image is now derived from the payload's target framework. An image named by the caller is never overridden - a private or pinned image is their decision - but one that cannot run the payload is now reported immediately, naming both versions, instead of four minutes of silence.
+Previously: multi-target net8.0 and net10.0, and build on the shared TestFramework.Container blocks.
 BREAKING: DockerAzureHostedCollectionFixture no longer implements xunit's IAsyncLifetime, so add the interface to your own fixture - the InitializeAsync/DisposeAsync it already has satisfy it. This is what removes xunit as a runtime dependency of this package, and it is what lets an xunit v3 consumer adapt the fixture at all; previously the base class hard-bound v2.
 Faster: a Function App run now starts only the emulators its declared resource bindings need. It used to start Azurite, Cosmos, SQL Server and Service Bus every time, so a storage-only Function App paid for the Cosmos emulator - by far the slowest container in the stack - for nothing.
 Isolation: a hosted environment reuses its containers across runs, which meant one run could see the blobs, tables, items and messages the previous run left behind. Declared resources are now purged between runs; set DockerAzureEnvironment.UseResetMode(AzureResetMode.None) to keep the old behaviour. A hosted collection must still disable test parallelization, or one run purges another's data.

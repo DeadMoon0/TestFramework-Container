@@ -41,6 +41,16 @@ public sealed class DockerFunctionAppRegistration
     /// </summary>
     public string Image { get; private set; } = DockerAzureDefaults.FunctionAppImage;
 
+    /// <summary>
+    /// Whether the host image was named by the caller rather than left to be worked out.
+    /// </summary>
+    /// <remarks>
+    /// A declared image is used exactly as given: the caller knows something this does not, and
+    /// second-guessing them would be worse than being wrong. Only an image nobody chose is derived
+    /// from the payload's framework.
+    /// </remarks>
+    internal bool ImageWasDeclared { get; private set; }
+
     internal Dictionary<string, string> AdditionalSettings { get; } = [];
 
     /// <summary>
@@ -84,6 +94,7 @@ public sealed class DockerFunctionAppRegistration
                 throw new FrameworkConfigurationException($"Function App '{registration.Identifier}' was given an empty host image.");
 
             registration.Image = image;
+            registration.ImageWasDeclared = true;
             return this;
         }
 

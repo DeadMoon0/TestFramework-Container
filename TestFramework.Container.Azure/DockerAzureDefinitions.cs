@@ -510,7 +510,49 @@ public sealed class DockerFunctionAppBuilder
 
 public static class DockerAzureDefaults
 {
+    /// <summary>
+    /// The Functions host image used when the payload's framework cannot be worked out.
+    /// </summary>
+    /// <remarks>
+    /// A fallback rather than a choice. The Functions host image carries exactly one .NET runtime, so
+    /// an application built for a different one cannot start in it -- the worker exits with code 150
+    /// and the only trace is inside the container log. Prefer
+    /// <see cref="FunctionAppImageFor(string)"/>, which reads the tag off the payload.
+    /// </remarks>
     public const string FunctionAppImage = "mcr.microsoft.com/azure-functions/dotnet-isolated:4-dotnet-isolated8.0";
+
+    /// <summary>
+    /// The repository the isolated Functions host images come from.
+    /// </summary>
+    public const string FunctionAppImageRepository = "mcr.microsoft.com/azure-functions/dotnet-isolated";
+
+    /// <summary>
+    /// Returns the Functions host image that can run an application built for this framework.
+    /// </summary>
+    /// <param name="targetFramework">The framework the payload was built for, for example <c>net8.0</c>.</param>
+    /// <returns>The image reference, or <see langword="null"/> when the framework is not one this can map.</returns>
+    /// <remarks>
+    /// The host image bundles one runtime and nothing else, so the tag has to follow the payload. It
+    /// used to be pinned to 8.0 whatever the application targeted, which meant a Function App built
+    /// for anything newer started, failed to launch its worker, and then simply never answered until
+    /// the readiness timeout expired four minutes later.
+    /// </remarks>
+    public static string? FunctionAppImageFor(string? targetFramework)
+    {
+        if (string.IsNullOrWhiteSpace(targetFramework)
+            || !targetFramework.StartsWith("net", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        string version = targetFramework[3..];
+
+        // Only the shapes the isolated images are published under: 'netX.Y'. A framework identifier
+        // such as net48 or netstandard2.0 is not something a Functions host image exists for.
+        return version.Contains('.', StringComparison.Ordinal) && char.IsAsciiDigit(version[0])
+            ? $"{FunctionAppImageRepository}:4-dotnet-isolated{version}"
+            : null;
+    }
     public const string PlaceholderConnectionString = "placeholder://container-managed";
     public const string MsSqlImage = "mcr.microsoft.com/mssql/server:2022-CU14-ubuntu-22.04";
     public const int MsSqlMemoryLimitMb = 1536;

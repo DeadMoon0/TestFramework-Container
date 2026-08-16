@@ -1,7 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <!-- One framework on purpose; see the ServiceBusFunctionApp project for why. A Functions host
+         image carries one .NET runtime, and this project's target decides which image is needed. -->
+    <TargetFramework>net8.0</TargetFramework>
     <AzureFunctionsVersion>v4</AzureFunctionsVersion>
     <IsPackable>false</IsPackable>
     <OutputType>Exe</OutputType>

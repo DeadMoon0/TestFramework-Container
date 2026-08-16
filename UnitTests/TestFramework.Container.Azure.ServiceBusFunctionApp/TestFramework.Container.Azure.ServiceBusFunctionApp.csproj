@@ -1,7 +1,14 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <!-- One framework on purpose, and not the repository's usual pair. A Functions host image
+         carries exactly one .NET runtime, so this project's target decides which image the tests
+         have to pull. Multi-targeting made the net10.0 test run mount a net10.0 payload into the
+         8.0 host, where the worker exited with code 150 and the host then answered nothing until
+         the readiness timeout expired. The framework now derives the image from the payload, which
+         is the actual fix; this stays on the LTS runtime so the suite needs one host image rather
+         than one per target, and still runs on a machine that has only that image. -->
+    <TargetFramework>net8.0</TargetFramework>
     <AzureFunctionsVersion>v4</AzureFunctionsVersion>
     <OutputType>Exe</OutputType>
     <IsPackable>false</IsPackable>
