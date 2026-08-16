@@ -102,3 +102,43 @@ dotnet test .\UnitTests\TestFramework.Container.Azure.Tests\TestFramework.Contai
 - If a definition is included but never used, treat that as "available" rather than "activated".
 - If Service Bus startup fails, inspect topology ownership and SQL dependency first.
 - If Cosmos tests fail after the emulator starts, inspect client options and confirm the test process is using the rewritten mapped endpoint.
+
+### "Failed to download" / CONTAINER1006 when building an image from a project
+
+Building an image from `ContainerSource.Project(...)` makes the .NET SDK fetch the base image's
+manifest from a registry over TLS, and it does so on every build even when that exact image is
+already in the local Docker daemon. On some networks that one request fails while everything else
+works, and the SDK spends about two and a half minutes retrying before reporting `CONTAINER1006`,
+which says nothing about the cause.
+
+The usual cause is a broken IPv6 path. The registry hostname resolves to both address families, the
+connection is made over IPv6, TCP succeeds because the first packets are small, and the TLS
+handshake then dies on the certificate chain because those packets exceed the real path MTU.
+Routers cannot fragment IPv6, and the ICMPv6 message that would report it is often filtered, so the
+packets simply vanish. A PPPoE line -- the normal shape of consumer DSL, with an MTU of 1492 rather
+than 1500 -- behind a VPN is the classic setting. It is intermittent, because the client races both
+families and IPv4 sometimes wins, which is why the occasional retry succeeds and hides the cause.
+
+**You do not have to do anything about it.** This is detected and worked around:
+
+- Before the SDK is started, the daemon is asked whether the base image is already here, and the
+  registry is asked whether it answers. Both questions cost milliseconds.
+- If the image is here and the registry is not answering, the application is published to a
+  directory and the image is built from the local copy with `docker build`, which pulls only what is
+  missing and therefore needs no registry at all.
+- If the probe was wrong -- it is a hint, not a verdict -- the SDK is tried anyway and the same
+  recovery runs after it fails.
+- Either way the run log says what was detected and what was done instead, and the resulting plan
+  carries a fallback reason. Nothing about this is silent.
+
+The workaround needs the base image to be in the local daemon. If it is not, fetch it once from a
+network that works:
+
+```bash
+docker pull mcr.microsoft.com/dotnet/aspnet:8.0
+```
+
+From then on that machine builds without a registry. To fix the network itself, lower the MTU or
+prefer IPv4 -- both need administrator rights. Where the machine cannot be changed at all, hand the
+source a prebuilt image instead of a project with `ContainerSource.Image("my-api:local")`, which
+fetches nothing at run time.

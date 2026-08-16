@@ -93,6 +93,37 @@ public static class DockerfileGenerator
     }
 
     /// <summary>
+    /// Writes the Dockerfile that wraps an already published output in a runtime image.
+    /// </summary>
+    /// <param name="runtimeImage">The image the application ends up on.</param>
+    /// <param name="assemblyFileName">The entry assembly file name.</param>
+    /// <remarks>
+    /// Deliberately the same shape the SDK's own container publish produces -- the output at
+    /// <c>/app</c>, the working directory there, and the application started with
+    /// <c>dotnet app.dll</c> -- because this stands in for that publish when the registry cannot be
+    /// reached, and an image that behaved differently would turn a network problem into a test that
+    /// fails for a second, unrelated reason.
+    ///
+    /// There is no build stage. The output was published on the host and is copied in as it is, so
+    /// nothing here needs the SDK image, and the runtime image is the one the daemon already has.
+    /// </remarks>
+    public static string WritePublishedOutputDockerfile(string runtimeImage, string assemblyFileName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(runtimeImage);
+        ArgumentException.ThrowIfNullOrWhiteSpace(assemblyFileName);
+
+        string[] lines =
+        [
+            $"FROM {runtimeImage}",
+            "WORKDIR /app",
+            "COPY . .",
+            $"ENTRYPOINT [\"dotnet\", \"{assemblyFileName}\"]",
+        ];
+
+        return string.Join("\n", lines) + "\n";
+    }
+
+    /// <summary>
     /// Writes a NuGet configuration with no sources at all.
     /// </summary>
     /// <remarks>

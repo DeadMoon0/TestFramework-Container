@@ -5,7 +5,7 @@
 		<GenerateDocumentationFile>true</GenerateDocumentationFile>
 		<IsTestProject>false</IsTestProject>
 		<Title>TestFramework.Container</Title>
-		<Version>0.1.0</Version>
+		<Version>0.1.1</Version>
 		<Authors>DeadMoon0</Authors>
 		<Product>TestFramework</Product>
 		<Description>Shared Docker building blocks for TestFramework container environments: declaring where an application comes from and building it, network creation, host and network endpoint addressing, readiness waits and container log capture.</Description>
@@ -17,7 +17,12 @@
 		<PackageTags>Test;UnitTest;IntegrationTest;Framework;Timeline;Docker</PackageTags>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<Copyright>Copyright (c) DeadMoon0 2026</Copyright>
-		<PackageReleaseNotes>Initial release: shared Docker building blocks, and a declared source model for getting an application into a container.
+		<PackageReleaseNotes>Building an image from a project no longer depends on the registry being reachable.
+Changed in 0.1.1:
+- The .NET SDK fetches the base image's manifest from a registry on every image build, even when that exact image is already in the local daemon. Where that request fails - a broken IPv6 path is the common cause, and a PPPoE line behind a VPN is enough - the SDK spent about two and a half minutes retrying and then failed with CONTAINER1006, which named neither the cause nor a way out.
+- That is now detected before the SDK is started, by asking the daemon whether the base image is here and the registry whether it answers. Both cost milliseconds. When the image is here and the registry is not answering, the application is published to a directory and the image is built from the local copy, which contacts no registry.
+- The probe is a hint rather than a verdict, because the failure is intermittent: when it is wrong the SDK is still tried, and the same recovery runs after it fails.
+- Whichever route is taken is stated in the run log, and a plan built the second way carries a fallback reason. The failure message, when nothing can be done, now names the base image, the pull that would fix the machine, and the ContainerSource.Image(...) escape that needs no administrator rights.
 Worth knowing up front:
 - Where a container's application comes from is declared, not guessed: Image(...), Project(...) - resolved against the file that declares it - or Directory(...). Project facts come from MSBuild rather than from inspecting paths, a multi-targeted project is a hard error instead of a silent pick, and the whole resolved plan is logged before anything is built, so a failure can be read against what was going to happen.
 - Published ports bind to 127.0.0.1, not to every interface. A test SQL Server or emulator is no longer reachable from the rest of the network while a suite runs. Set TESTFRAMEWORK_CONTAINER_HOST_IP when the Docker daemon is remote and the loopback default would make the port unreachable.
