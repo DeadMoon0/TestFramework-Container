@@ -231,6 +231,17 @@ public static class ContainerImageBuilder
             && plan.AssemblyFileName is { Length: > 0 }
             && await ImageExistsLocallyAsync(localBase, cancellationToken).ConfigureAwait(false);
 
+        if (plan.RuntimeImage is { } wantedImage
+            && plan.AssemblyFileName is { Length: > 0 }
+            && !canBuildLocally
+            && !await ContainerRegistryProbe.IsReachableAsync(wantedImage, cancellationToken).ConfigureAwait(false))
+        {
+            // The registry is out of reach and the base image is not here either, which used to be
+            // the end of it. It no longer is: the daemon cannot fetch the image, but this process
+            // can, over a path the daemon does not use.
+            canBuildLocally = await ContainerImagePull.FetchOverIPv4Async(wantedImage, logger, cancellationToken).ConfigureAwait(false);
+        }
+
         if (canBuildLocally
             && plan.RuntimeImage is { } declaredBase
             && !await ContainerRegistryProbe.IsReachableAsync(declaredBase, cancellationToken).ConfigureAwait(false))

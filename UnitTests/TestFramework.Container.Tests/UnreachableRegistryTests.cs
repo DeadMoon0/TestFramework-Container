@@ -333,6 +333,79 @@ public class UnreachableRegistryTests
         }
     }
 
+    [Theory]
+    [InlineData("mcr.microsoft.com/dotnet/aspnet:8.0", "mcr.microsoft.com", "dotnet/aspnet", "8.0")]
+    [InlineData("mcr.microsoft.com/azure-functions/dotnet-isolated:4-dotnet-isolated10.0", "mcr.microsoft.com", "azure-functions/dotnet-isolated", "4-dotnet-isolated10.0")]
+    [InlineData("mcr.microsoft.com/dotnet/runtime-deps", "mcr.microsoft.com", "dotnet/runtime-deps", "latest")]
+    public void AnImageReference_SplitsIntoWhatARegistryRequestNeeds(string image, string host, string repository, string reference)
+    {
+        Assert.Equal(repository, ContainerImagePull.RepositoryOf(image, host));
+        Assert.Equal(reference, ContainerImagePull.ReferenceOf(image));
+    }
+
+    [Fact]
+    public void AFailedPull_IsToldApartFromAMissingTag()
+    {
+        // Only a transport failure is worth a second route. A tag that does not exist would fail the
+        // same way twice, and the second failure would be harder to read than the first.
+        Assert.True(ContainerImagePull.LooksLikeATransportFailure(new ContainerDockerCommands.CommandResult(
+            1, string.Empty, "failed to do request: Head \"https://mcr.microsoft.com/v2/...\": EOF")));
+
+        Assert.True(ContainerImagePull.LooksLikeATransportFailure(new ContainerDockerCommands.CommandResult(
+            1, string.Empty, "net/http: TLS handshake timeout")));
+
+        Assert.False(ContainerImagePull.LooksLikeATransportFailure(new ContainerDockerCommands.CommandResult(
+            1, string.Empty, "manifest for mcr.microsoft.com/dotnet/aspnet:99.9 not found: manifest unknown")));
+
+        Assert.False(ContainerImagePull.LooksLikeATransportFailure(new ContainerDockerCommands.CommandResult(
+            1, string.Empty, "unauthorized: authentication required")));
+    }
+
+    /// <summary>
+    /// Pulls a real image through the loopback proxy, on a machine whose daemon cannot pull it.
+    /// </summary>
+    /// <remarks>
+    /// The point of this test is that it passes on exactly the network that breaks
+    /// <c>docker pull</c>: the daemon connects to 127.0.0.1, and the only connection that leaves the
+    /// machine is made by this process, pinned to IPv4. It is skipped where Docker is absent, and it
+    /// removes what it fetched so the next run starts from the same place.
+    /// </remarks>
+    [Fact]
+    public async Task AnImageTheDaemonCannotReach_IsFetchedOverIPv4AndHandedToTheDaemon()
+    {
+        // Small on purpose: this is testing the route, not the size of the download.
+        const string image = "mcr.microsoft.com/dotnet/runtime-deps:8.0-alpine";
+
+        if (!await DockerIsAvailableAsync())
+            return;
+
+        await ContainerImageBuilder.RemoveImageAsync(image, CancellationToken.None);
+
+        try
+        {
+            Assert.False(
+                await ContainerImageBuilder.ImageExistsLocallyAsync(image, CancellationToken.None),
+                "The image had to be absent for this to prove anything.");
+
+            bool fetched = await ContainerImagePull.FetchOverIPv4Async(image, CreateLogger(), CancellationToken.None);
+
+            Assert.True(fetched, "The image could not be fetched over IPv4.");
+            Assert.True(
+                await ContainerImageBuilder.ImageExistsLocallyAsync(image, CancellationToken.None),
+                "The fetch reported success but the daemon does not have the image.");
+
+            // It has to be a working image, not just an entry in the image list.
+            ContainerDockerCommands.CommandResult ran = await ContainerDockerCommands.RunAsync(
+                $"run --rm --entrypoint ls {image} /", CancellationToken.None);
+
+            Assert.Equal(0, ran.ExitCode);
+        }
+        finally
+        {
+            await ContainerImageBuilder.RemoveImageAsync(image, CancellationToken.None);
+        }
+    }
+
     private static async Task<bool> DockerIsAvailableAsync()
     {
         try

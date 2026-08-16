@@ -134,14 +134,21 @@ families and IPv4 sometimes wins, which is why the occasional retry succeeds and
 - Either way the run log says what was detected and what was done instead, and the resulting plan
   carries a fallback reason. Nothing about this is silent.
 
-The workaround needs the base image to be in the local daemon. If it is not, fetch it once from a
-network that works:
+**And if the base image is not on the machine either**, that is also handled. The daemon cannot pull
+it, but this process can: on a transport failure the image is downloaded here over a connection
+pinned to IPv4, written as an archive, and handed to the daemon with `docker load`. Measured on a
+machine whose daemon cannot pull at all, the same image arrives in about four seconds.
+
+That route serves anonymous registries only. Docker Hub requires a token exchange it does not
+perform, and it says so rather than failing obscurely — pull a Docker Hub image once from a network
+that works:
 
 ```bash
-docker pull mcr.microsoft.com/dotnet/aspnet:8.0
+docker pull redis:7
 ```
 
-From then on that machine builds without a registry. To fix the network itself, lower the MTU or
-prefer IPv4 -- both need administrator rights. Where the machine cannot be changed at all, hand the
-source a prebuilt image instead of a project with `ContainerSource.Image("my-api:local")`, which
-fetches nothing at run time.
+Nothing above needs administrator rights, a `daemon.json` entry, or any change to the machine. If you
+would rather fix the network itself, lowering the MTU (a PPPoE line is 1492, not 1500) or preferring
+IPv4 both resolve it, and both do need an administrator. Where the machine cannot be changed at all,
+hand the source a prebuilt image instead of a project with `ContainerSource.Image("my-api:local")`,
+which fetches nothing at run time.
