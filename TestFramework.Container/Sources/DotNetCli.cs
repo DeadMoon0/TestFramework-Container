@@ -22,6 +22,16 @@ public sealed record DotNetCliResult(IReadOnlyList<string> Arguments, int ExitCo
     public bool Succeeded => ExitCode == 0;
 
     /// <summary>
+    /// Whether the process was killed for outrunning its timeout rather than reporting a result.
+    /// </summary>
+    /// <remarks>
+    /// Worth telling apart from an ordinary failure: a command that never answered has produced no
+    /// diagnosis to read, so the caller has to reason about what it was trying to do instead of
+    /// about what it said.
+    /// </remarks>
+    public bool TimedOut { get; init; }
+
+    /// <summary>
     /// Returns the command and its output, for an error message that can be acted on.
     /// </summary>
     public string Describe()
@@ -49,12 +59,47 @@ public sealed record DotNetCliResult(IReadOnlyList<string> Arguments, int ExitCo
 public static class DotNetCli
 {
     /// <summary>
+    /// How long a <c>dotnet</c> invocation may run before it is killed.
+    /// </summary>
+    /// <remarks>
+    /// Generous, because a cold restore and compile is minutes of legitimate work -- but finite,
+    /// which the earlier unbounded wait was not. An SDK container publish can wedge indefinitely
+    /// when the registry it reaches for neither answers nor refuses: observed here as publishes
+    /// still alive after ninety minutes, each holding a hung <c>docker</c> child, and surviving the
+    /// test run that started them. Without a bound, nothing downstream ever gets the chance to
+    /// recover, because it is still waiting for a result that will not come.
+    /// </remarks>
+    public static readonly TimeSpan DefaultTimeout = TimeSpan.FromMinutes(10);
+
+    /// <summary>
     /// Runs <c>dotnet</c> and captures its output.
     /// </summary>
     /// <param name="arguments">The arguments, one element per argument.</param>
     /// <param name="workingDirectory">The working directory, or <see langword="null"/> for the current one.</param>
     /// <param name="cancellationToken">The cancellation token for the running command.</param>
-    public static async Task<DotNetCliResult> RunAsync(IReadOnlyList<string> arguments, string? workingDirectory, CancellationToken cancellationToken)
+    public static Task<DotNetCliResult> RunAsync(IReadOnlyList<string> arguments, string? workingDirectory, CancellationToken cancellationToken)
+        => RunAsync(arguments, workingDirectory, DefaultTimeout, cancellationToken);
+
+    /// <summary>
+    /// Runs <c>dotnet</c> with an explicit timeout and captures its output.
+    /// </summary>
+    /// <param name="arguments">The arguments, one element per argument.</param>
+    /// <param name="workingDirectory">The working directory, or <see langword="null"/> for the current one.</param>
+    /// <param name="timeout">How long the command may run. Use <see cref="Timeout.InfiniteTimeSpan"/> for no limit.</param>
+    /// <param name="cancellationToken">The cancellation token for the running command.</param>
+    /// <remarks>
+    /// A command that outruns its timeout is killed, process tree and all, and comes back as a failed
+    /// result rather than an exception, so a caller that can recover still gets the chance to.
+    ///
+    /// The process tree is killed on cancellation too. Awaiting a process is not the same as owning
+    /// it: a cancelled wait leaves the process running, which is how a stopped test run left a
+    /// publish and its <c>docker</c> child behind to idle for an hour.
+    /// </remarks>
+    public static async Task<DotNetCliResult> RunAsync(
+        IReadOnlyList<string> arguments,
+        string? workingDirectory,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(arguments);
         cancellationToken.ThrowIfCancellationRequested();
@@ -86,15 +131,66 @@ public static class DotNetCli
         using Process process = new() { StartInfo = startInfo };
         process.Start();
 
-        Task<string> standardOutput = process.StandardOutput.ReadToEndAsync(cancellationToken);
-        Task<string> standardError = process.StandardError.ReadToEndAsync(cancellationToken);
-        await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+        using CancellationTokenSource expiry = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        if (timeout != Timeout.InfiniteTimeSpan)
+            expiry.CancelAfter(timeout);
+
+        Task<string> standardOutput = process.StandardOutput.ReadToEndAsync(expiry.Token);
+        Task<string> standardError = process.StandardError.ReadToEndAsync(expiry.Token);
+
+        try
+        {
+            await process.WaitForExitAsync(expiry.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            KillProcessTree(process);
+            return new DotNetCliResult(
+                [.. arguments],
+                -1,
+                string.Empty,
+                $"'dotnet {string.Join(" ", arguments)}' did not finish within {timeout:g} and was terminated.")
+            {
+                TimedOut = true,
+            };
+        }
+        catch (OperationCanceledException)
+        {
+            KillProcessTree(process);
+            throw;
+        }
 
         return new DotNetCliResult(
             [.. arguments],
             process.ExitCode,
-            await standardOutput.ConfigureAwait(false),
-            await standardError.ConfigureAwait(false));
+            await ReadOrEmptyAsync(standardOutput).ConfigureAwait(false),
+            await ReadOrEmptyAsync(standardError).ConfigureAwait(false));
+    }
+
+    private static void KillProcessTree(Process process)
+    {
+        try
+        {
+            if (!process.HasExited)
+                process.Kill(entireProcessTree: true);
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or NotSupportedException or System.ComponentModel.Win32Exception)
+        {
+            // It finished on its own between the check and the kill, or the platform will not allow
+            // it. Neither is worth failing over.
+        }
+    }
+
+    private static async Task<string> ReadOrEmptyAsync(Task<string> read)
+    {
+        try
+        {
+            return await read.ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is OperationCanceledException or System.IO.IOException or ObjectDisposedException)
+        {
+            return string.Empty;
+        }
     }
 
     /// <summary>

@@ -77,6 +77,54 @@ public class UnreachableRegistryTests
             StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void AWedgedPublish_IsRecoverableAndSaysSoWithoutOutputToQuote()
+    {
+        // The case that costs the most: the SDK reports nothing at all, because a registry that
+        // neither answers nor refuses leaves it waiting rather than failing. Publishes were found
+        // still alive after ninety minutes, outliving the test run that started them.
+        DotNetCliResult wedged = new(["publish"], -1, string.Empty, "did not finish within 00:10:00") { TimedOut = true };
+
+        ContainerSourcePlan plan = new()
+        {
+            Kind = ContainerSourceKind.Project,
+            RuntimeImage = "mcr.microsoft.com/dotnet/aspnet:8.0",
+        };
+
+        string steps = string.Join("\n", ContainerImageBuilder.RecoveryStepsFor(wedged, plan));
+
+        // Not the same message as a failure: there is no output to read, so pointing at the log
+        // would be pointing at nothing.
+        Assert.DoesNotContain("The full command output follows", steps, StringComparison.Ordinal);
+        Assert.Contains("stopped making progress", steps, StringComparison.Ordinal);
+        Assert.Contains("mcr.microsoft.com/dotnet/aspnet:8.0", steps, StringComparison.Ordinal);
+        Assert.Contains("ContainerSource.Image(", steps, StringComparison.Ordinal);
+
+        // And a timeout must still reach the recovery, which a plain unreachable-check would miss:
+        // there is no CONTAINER1006 in the output of a command that never produced any.
+        Assert.False(ContainerImageBuilder.IsRegistryUnreachable(wedged));
+        Assert.True(wedged.TimedOut);
+    }
+
+    [Fact]
+    public async Task AProcessThatOutrunsItsTimeout_ComesBackAsAResultRatherThanAHang()
+    {
+        // The bound itself, exercised end to end on a command that will not finish in time.
+        System.Diagnostics.Stopwatch stopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+        DotNetCliResult result = await DotNetCli.RunAsync(
+            ["msbuild", "-h"], null, TimeSpan.FromMilliseconds(1), CancellationToken.None);
+
+        stopwatch.Stop();
+
+        Assert.True(result.TimedOut);
+        Assert.False(result.Succeeded);
+        Assert.Contains("did not finish within", result.StandardError, StringComparison.Ordinal);
+
+        // The point of the bound is that the caller gets its thread back.
+        Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(30), $"The bounded run took {stopwatch.Elapsed}.");
+    }
+
     [Theory]
     [InlineData("mcr.microsoft.com/dotnet/aspnet:8.0", "mcr.microsoft.com")]
     [InlineData("ghcr.io/owner/app:1.0", "ghcr.io")]

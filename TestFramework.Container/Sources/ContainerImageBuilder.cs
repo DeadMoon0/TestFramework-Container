@@ -144,7 +144,10 @@ public static class ContainerImageBuilder
 
         if (!result.Succeeded)
         {
-            if (IsRegistryUnreachable(result) && plan.RuntimeImage is { } wantedBase)
+            // A publish that wedged counts as much as one that failed. When the registry neither
+            // answers nor refuses, the SDK does not report anything at all -- so waiting for it to
+            // say "unreachable" would mean never recovering in the very case that costs the most.
+            if ((IsRegistryUnreachable(result) || result.TimedOut) && plan.RuntimeImage is { } wantedBase)
             {
                 ContainerSourcePlan? recovered = await TryRecoverFromLocalBaseAsync(
                     plan, identifier, repository, tag, wantedBase, logger, cancellationToken).ConfigureAwait(false);
@@ -394,6 +397,17 @@ public static class ContainerImageBuilder
     /// </remarks>
     internal static IReadOnlyList<string> RecoveryStepsFor(DotNetCliResult result, ContainerSourcePlan plan)
     {
+        if (result.TimedOut)
+        {
+            return
+            [
+                $"The publish was killed after {DotNetCli.DefaultTimeout:g} without answering. It had not failed - it had stopped making progress.",
+                $"Reaching the registry for the base image '{plan.RuntimeImage ?? "(the project's default)"}' is the usual reason: a registry that neither answers nor refuses leaves the SDK waiting rather than reporting anything.",
+                $"Fetch the base image once on a working network - `docker pull {plan.RuntimeImage ?? "<base image>"}` - and later runs build from the local copy without contacting a registry at all.",
+                "Where the machine cannot be changed, hand the source a prebuilt image instead of a project: ContainerSource.Image(\"my-api:local\"). Nothing is fetched at run time.",
+            ];
+        }
+
         if (!IsRegistryUnreachable(result))
         {
             return

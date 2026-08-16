@@ -127,7 +127,10 @@ families and IPv4 sometimes wins, which is why the occasional retry succeeds and
   directory and the image is built from the local copy with `docker build`, which pulls only what is
   missing and therefore needs no registry at all.
 - If the probe was wrong -- it is a hint, not a verdict -- the SDK is tried anyway and the same
-  recovery runs after it fails.
+  recovery runs after it fails, or after it stops making progress: the publish is bounded by a
+  timeout and killed with its process tree. A registry that neither answers nor refuses does not
+  make the SDK fail, it makes it wait, and an unbounded wait means nothing downstream ever gets to
+  recover. Cancelling a run kills the publish too, rather than leaving it to idle for hours.
 - Either way the run log says what was detected and what was done instead, and the resulting plan
   carries a fallback reason. Nothing about this is silent.
 
