@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -19,6 +20,20 @@ namespace TestFramework.Container.Sources;
 /// </remarks>
 public static class ContainerImageBuilder
 {
+    private static readonly ConcurrentDictionary<string, ContainerSourcePlan> BuiltImages = new(StringComparer.Ordinal);
+
+    private static readonly ConcurrentDictionary<string, SemaphoreSlim> BuildGates = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// How long the SDK publish may run when the base image is already in the local daemon.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately impatient, and only used when there is somewhere to go: a build that stops making
+    /// progress here costs a short detour rather than the run, so waiting the full budget out buys
+    /// nothing. Long enough that a genuine cold restore and compile still finishes.
+    /// </remarks>
+    internal static readonly TimeSpan SdkPublishTimeoutWithLocalFallback = TimeSpan.FromMinutes(3);
+
     /// <summary>
     /// Builds what the plan describes and returns the plan with the result filled in.
     /// </summary>
@@ -49,23 +64,136 @@ public static class ContainerImageBuilder
         if (plan.Kind != ContainerSourceKind.Project)
             return plan;
 
-        return plan.Strategy switch
-        {
-            ContainerBuildStrategy.SdkContainerPublish => await PublishImageAsync(plan, identifier, logger, cancellationToken).ConfigureAwait(false),
-            ContainerBuildStrategy.HostPublish => await PublishToDirectoryAsync(plan, identifier, logger, cancellationToken).ConfigureAwait(false),
-            ContainerBuildStrategy.InContainer => await BuildInContainerAsync(plan, identifier, logger, cancellationToken).ConfigureAwait(false),
-            _ => throw new FrameworkConfigurationException($"The build strategy '{plan.Strategy}' is not supported."),
-        };
+        if (plan.Strategy == ContainerBuildStrategy.HostPublish)
+            return await PublishToDirectoryAsync(plan, identifier, logger, cancellationToken).ConfigureAwait(false);
+
+        return await BuildImageOnceAsync(plan, identifier, logger, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
-    /// Removes an image this builder produced.
+    /// Builds the image for a plan, or hands back the one an earlier environment in this run built.
+    /// </summary>
+    /// <remarks>
+    /// An image is decided entirely by its inputs -- the project, the configuration, the framework,
+    /// the base image and how it is built -- so two environments describing the same inputs would
+    /// produce the same image twice. They used to: every environment ran its own publish and its own
+    /// image build, and threw the result away at teardown. A suite of a dozen chapters against one
+    /// unchanged application therefore paid for a dozen identical builds, which on a normal machine
+    /// is the difference between a run measured in minutes and one measured in tens of them.
+    ///
+    /// This does not weaken the isolation between runs. An image is read only: every container still
+    /// gets its own writable layer, its own settings file, its own network and its own data. What is
+    /// shared is the build output, which is the one thing that cannot differ between two environments
+    /// that asked for the same thing.
+    ///
+    /// The gate is per identity rather than global, so two different applications still build at the
+    /// same time while two environments wanting the same application do not race each other into
+    /// running two publishes over one project directory.
+    /// </remarks>
+    private static async Task<ContainerSourcePlan> BuildImageOnceAsync(
+        ContainerSourcePlan plan,
+        string identifier,
+        ScopedLogger logger,
+        CancellationToken cancellationToken)
+    {
+        string identity = BuildIdentityOf(plan);
+        SemaphoreSlim gate = BuildGates.GetOrAdd(identity, _ => new SemaphoreSlim(1, 1));
+
+        await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (await TryReuseAsync(identity, plan, identifier, logger, cancellationToken).ConfigureAwait(false) is { } reused)
+                return reused;
+
+            ContainerSourcePlan built = plan.Strategy switch
+            {
+                ContainerBuildStrategy.SdkContainerPublish => await PublishImageAsync(plan, identifier, logger, cancellationToken).ConfigureAwait(false),
+                ContainerBuildStrategy.InContainer => await BuildInContainerAsync(plan, identifier, logger, cancellationToken).ConfigureAwait(false),
+                _ => throw new FrameworkConfigurationException($"The build strategy '{plan.Strategy}' is not supported."),
+            };
+
+            if (built.Image is { Length: > 0 })
+                BuiltImages[identity] = built;
+
+            return built;
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    private static async Task<ContainerSourcePlan?> TryReuseAsync(
+        string identity,
+        ContainerSourcePlan plan,
+        string identifier,
+        ScopedLogger logger,
+        CancellationToken cancellationToken)
+    {
+        if (!BuiltImages.TryGetValue(identity, out ContainerSourcePlan? earlier) || earlier.Image is not { Length: > 0 } image)
+            return null;
+
+        // Asked rather than assumed: a developer clearing images between chapters, or a sweep on a
+        // shared machine, would otherwise leave this handing out the name of an image that is gone,
+        // and the failure would surface as a container that will not start.
+        if (!await ImageExistsLocallyAsync(image, cancellationToken).ConfigureAwait(false))
+        {
+            BuiltImages.TryRemove(identity, out _);
+            return null;
+        }
+
+        logger.LogInformation(
+            "'{0}' is reusing image '{1}', already built in this run from the same project, configuration, framework and base image.",
+            identifier,
+            image);
+
+        return plan with { Image = image, BuiltAtUtc = earlier.BuiltAtUtc, FallbackReason = earlier.FallbackReason };
+    }
+
+    /// <summary>
+    /// Forgets which images this run built, so the next build produces a fresh one.
+    /// </summary>
+    internal static void ForgetBuiltImages() => BuiltImages.Clear();
+
+    /// <summary>
+    /// The inputs that fully decide what an image built from this plan contains.
+    /// </summary>
+    private static string BuildIdentityOf(ContainerSourcePlan plan)
+        => string.Join(
+            '|',
+            plan.Strategy,
+            plan.ProjectPath,
+            plan.Configuration,
+            plan.TargetFramework,
+            plan.RuntimeImage,
+            plan.SdkImage,
+            plan.ContextDirectory);
+
+    /// <summary>
+    /// Removes an image this builder produced, unless later environments in this run still want it.
     /// </summary>
     /// <param name="image">The image reference.</param>
     /// <param name="cancellationToken">The cancellation token for the running teardown.</param>
+    /// <remarks>
+    /// A component tears its own environment down without knowing whether anything else in the run
+    /// shares the image, so the decision is made here rather than there -- which also means a caller
+    /// compiled against an earlier version keeps working unchanged. Removing an image that a later
+    /// chapter is about to reuse would not just cost the rebuild; it would hand that chapter a name
+    /// that no longer resolves.
+    ///
+    /// What is kept is not leaked. Images this framework builds carry its labels, and the leftover
+    /// sweep reclaims them once they are a day old, which is the same mechanism that already covers
+    /// a killed test host.
+    /// </remarks>
     public static async Task RemoveImageAsync(string image, CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(image);
+
+        foreach (ContainerSourcePlan built in BuiltImages.Values)
+        {
+            if (string.Equals(built.Image, image, StringComparison.Ordinal))
+                return;
+        }
 
         try
         {
@@ -99,9 +227,12 @@ public static class ContainerImageBuilder
         // questions are cheap -- one local daemon lookup, and one HTTPS request that is only asked
         // when there is something to fall back to -- and together they turn those minutes into
         // seconds.
-        if (plan.RuntimeImage is { } declaredBase
+        bool canBuildLocally = plan.RuntimeImage is { } localBase
             && plan.AssemblyFileName is { Length: > 0 }
-            && await ImageExistsLocallyAsync(declaredBase, cancellationToken).ConfigureAwait(false)
+            && await ImageExistsLocallyAsync(localBase, cancellationToken).ConfigureAwait(false);
+
+        if (canBuildLocally
+            && plan.RuntimeImage is { } declaredBase
             && !await ContainerRegistryProbe.IsReachableAsync(declaredBase, cancellationToken).ConfigureAwait(false))
         {
             logger.LogWarning(
@@ -138,9 +269,27 @@ public static class ContainerImageBuilder
         if (plan.RuntimeImage is { } runtimeImage)
             arguments.Add($"-p:ContainerBaseImage={runtimeImage}");
 
+        // How long to wait is decided by what being wrong costs. With the base image already here,
+        // a publish that stops making progress is not a lost run -- it is a two minute detour -- so
+        // there is no reason to sit through ten minutes of it. With nothing to fall back on, giving
+        // up early would turn a slow machine into a failed run, so it gets the full budget.
+        //
+        // This matters because the probe above is a hint: it is wrong roughly one time in five on the
+        // network this was written for, and without the shorter budget being wrong costs the whole
+        // ten minutes.
+        TimeSpan publishTimeout = canBuildLocally ? SdkPublishTimeoutWithLocalFallback : DotNetCli.DefaultTimeout;
+
         System.Diagnostics.Stopwatch stopwatch = System.Diagnostics.Stopwatch.StartNew();
-        DotNetCliResult result = await DotNetCli.RunAsync(arguments, Path.GetDirectoryName(plan.ProjectPath), cancellationToken).ConfigureAwait(false);
+        DotNetCliResult result = await DotNetCli
+            .RunAsync(arguments, Path.GetDirectoryName(plan.ProjectPath), publishTimeout, cancellationToken)
+            .ConfigureAwait(false);
         stopwatch.Stop();
+
+        if (result.TimedOut && canBuildLocally)
+        {
+            logger.LogWarning(
+                $"The SDK publish for '{identifier}' made no progress within {publishTimeout:g} and was stopped. The base image is already here, so the image is built from it instead.");
+        }
 
         if (!result.Succeeded)
         {

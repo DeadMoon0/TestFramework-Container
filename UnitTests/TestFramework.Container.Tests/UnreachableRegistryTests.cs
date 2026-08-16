@@ -281,6 +281,58 @@ public class UnreachableRegistryTests
         }
     }
 
+    /// <summary>
+    /// A second environment wanting the same application gets the image the first one built.
+    /// </summary>
+    /// <remarks>
+    /// This is the difference between a suite that takes minutes and one that takes tens of them: a
+    /// dozen chapters against one unchanged application used to pay for a dozen identical builds.
+    /// The second build here has to be near-instant, and it has to survive the first environment
+    /// tearing itself down -- which removes the image it built, unless something knows better.
+    /// </remarks>
+    [Fact]
+    public async Task ASecondEnvironment_ReusesTheImageRatherThanBuildingItAgain()
+    {
+        string baseImage = "mcr.microsoft.com/dotnet/aspnet:8.0";
+
+        if (!await DockerIsAvailableAsync() || !await ContainerImageBuilder.ImageExistsLocallyAsync(baseImage, CancellationToken.None))
+            return;
+
+        ProjectFacts facts = await ProjectQuery.ReadAsync(SampleApiProject, CancellationToken.None);
+        ContainerSource source = ContainerSource.Project(facts.ProjectPath).WithTargetFramework("net8.0").BuiltAsImage();
+        ScopedLogger logger = CreateLogger();
+
+        ContainerSourcePlan first = await ContainerImageBuilder.BuildAsync(
+            await ContainerSourceResolver.PlanAsync(source, CancellationToken.None), "reuse-one", logger, CancellationToken.None);
+
+        Assert.NotNull(first.Image);
+
+        try
+        {
+            // Exactly what a component does when its environment goes away. It must not take an
+            // image the rest of the run still wants with it.
+            await ContainerImageBuilder.RemoveImageAsync(first.Image!, CancellationToken.None);
+            Assert.True(
+                await ContainerImageBuilder.ImageExistsLocallyAsync(first.Image!, CancellationToken.None),
+                "Teardown removed an image that later environments in the same run still reuse.");
+
+            System.Diagnostics.Stopwatch stopwatch = System.Diagnostics.Stopwatch.StartNew();
+            ContainerSourcePlan second = await ContainerImageBuilder.BuildAsync(
+                await ContainerSourceResolver.PlanAsync(source, CancellationToken.None), "reuse-two", logger, CancellationToken.None);
+            stopwatch.Stop();
+
+            Assert.Equal(first.Image, second.Image);
+
+            // A rebuild is minutes. Anything in that range means the reuse did not happen.
+            Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(20), $"The second environment took {stopwatch.Elapsed}, so it rebuilt.");
+        }
+        finally
+        {
+            ContainerImageBuilder.ForgetBuiltImages();
+            await ContainerImageBuilder.RemoveImageAsync(first.Image!, CancellationToken.None);
+        }
+    }
+
     private static async Task<bool> DockerIsAvailableAsync()
     {
         try
