@@ -1,4 +1,4 @@
-using Azure.Messaging.ServiceBus;
+﻿using Azure.Messaging.ServiceBus;
 using Microsoft.Extensions.DependencyInjection;
 using Newtonsoft.Json;
 using System.Reflection;
@@ -190,10 +190,10 @@ public class DockerAzureEnvironmentTests
             .GetMethod("LogPendingResolutionSummary", BindingFlags.Instance | BindingFlags.NonPublic)!
             .Invoke(environment, [logger]);
 
-        Assert.True(await debugger.WaitForLogAsync(entry => entry.Message.Contains("Docker Azure resolution: components", StringComparison.Ordinal)), "Resolution summary was not logged.");
-        Assert.True(await debugger.WaitForLogAsync(entry => entry.Message.Contains("Function Apps: func-contract", StringComparison.Ordinal)), "Function App identifiers were not logged.");
-        Assert.True(await debugger.WaitForLogAsync(entry => entry.Message.Contains("Service Bus: bus", StringComparison.Ordinal)), "Service Bus identifiers were not logged.");
-        Assert.True(await debugger.WaitForLogAsync(entry => entry.Message.Contains("functionapp:func-contract <= servicebus:bus", StringComparison.Ordinal)), "Contract edge was not logged.");
+        Assert.True(await debugger.WaitForLogAsync(entry => DebugLogTemplate.Render(entry).Contains("Docker Azure resolution: components", StringComparison.Ordinal)), "Resolution summary was not logged.");
+        Assert.True(await debugger.WaitForLogAsync(entry => DebugLogTemplate.Render(entry).Contains("Function Apps: func-contract", StringComparison.Ordinal)), "Function App identifiers were not logged.");
+        Assert.True(await debugger.WaitForLogAsync(entry => DebugLogTemplate.Render(entry).Contains("Service Bus: bus", StringComparison.Ordinal)), "Service Bus identifiers were not logged.");
+        Assert.True(await debugger.WaitForLogAsync(entry => DebugLogTemplate.Render(entry).Contains("functionapp:func-contract <= servicebus:bus", StringComparison.Ordinal)), "Contract edge was not logged.");
     }
 
     [Fact]
@@ -791,7 +791,8 @@ public class DockerAzureEnvironmentTests
             debuggingRunSessionType,
             BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
             binder: null,
-            args: [debugger],
+            // Caller-info arguments passed explicitly: reflection does not fill in defaults.
+            args: [debugger, null, 0],
             culture: null)!;
 
         return (ScopedLogger)typeof(ScopedLogger)
@@ -840,8 +841,8 @@ public class DockerAzureEnvironmentTests
             }
         }
 
-        public Task SignalInitTimelineRunAsync(string sessionId, string name, string projectPath, TimelineRunStructure runStructure) => Task.CompletedTask;
-        public Task SignalEntityTransitionAsync(string sessionId, DebugEntityKind entityKind, string? stage, int? stepId, DebugLifecycleState state, DebugLifecycleState? previousState = null, DebugLifecycleState? outcomeState = null) => Task.CompletedTask;
+        public Task SignalInitTimelineRunAsync(string sessionId, string name, string projectPath, TimelineRunStructure runStructure, TestIdentity? identity = null) => Task.CompletedTask;
+        public Task SignalEntityTransitionAsync(string sessionId, DebugEntityKind entityKind, string? stage, int? stepId, DebugLifecycleState state, DebugLifecycleState? previousState = null, DebugLifecycleState? outcomeState = null, DebugFailureDetail? failure = null) => Task.CompletedTask;
         public Task SignalValueUpdateAsync(string sessionId, string name, DebugValueKind valueKind, string? stage, int? stepId, DebugValueEnvelope value) => Task.CompletedTask;
         public Task SignalLogEntryAsync(string sessionId, DebugLogEntry entry)
         {
