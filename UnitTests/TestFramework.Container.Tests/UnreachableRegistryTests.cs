@@ -374,25 +374,35 @@ public class UnreachableRegistryTests
     public async Task AnImageTheDaemonCannotReach_IsFetchedOverIPv4AndHandedToTheDaemon()
     {
         // Small on purpose: this is testing the route, not the size of the download.
-        const string image = "mcr.microsoft.com/dotnet/runtime-deps:8.0-alpine";
+        const string repository = "dotnet/runtime-deps";
+        const string reference = "8.0-alpine";
 
         if (!await DockerIsAvailableAsync())
             return;
 
-        await ContainerImageBuilder.RemoveImageAsync(image, CancellationToken.None);
+        // Loaded under a name nothing else uses. The obvious version of this test removed the real
+        // image, fetched it, and removed it again -- which works alone and flakes the moment a second
+        // process does the same thing, because `dotnet test` runs the target frameworks side by side
+        // and one run deleted the image the other had just asserted was there.
+        string image = $"tf-ipv4-fetch-test:{Guid.NewGuid().ToString("N")[..12]}";
+        string archive = Path.Combine(Path.GetTempPath(), $"tf-fetch-{Guid.NewGuid().ToString("N")[..12]}.tar");
 
         try
         {
-            Assert.False(
-                await ContainerImageBuilder.ImageExistsLocallyAsync(image, CancellationToken.None),
-                "The image had to be absent for this to prove anything.");
+            // The whole mechanism: manifest list, platform selection, config and layer blobs over a
+            // connection pinned to IPv4, gunzipped into a docker archive.
+            await RegistryImageFetcher.WriteArchiveAsync(
+                "mcr.microsoft.com", repository, reference, image, archive, CancellationToken.None);
 
-            bool fetched = await ContainerImagePull.FetchOverIPv4Async(image, CreateLogger(), CancellationToken.None);
+            Assert.True(File.Exists(archive), "No archive was written.");
 
-            Assert.True(fetched, "The image could not be fetched over IPv4.");
+            ContainerDockerCommands.CommandResult loaded = await ContainerDockerCommands.RunAsync(
+                $"load -i \"{archive}\"", TimeSpan.FromMinutes(5), CancellationToken.None);
+
+            Assert.True(loaded.ExitCode == 0, $"docker load failed: {loaded.StandardError.Trim()}");
             Assert.True(
                 await ContainerImageBuilder.ImageExistsLocallyAsync(image, CancellationToken.None),
-                "The fetch reported success but the daemon does not have the image.");
+                "The load reported success but the daemon does not have the image.");
 
             // It has to be a working image, not just an entry in the image list.
             ContainerDockerCommands.CommandResult ran = await ContainerDockerCommands.RunAsync(
@@ -403,6 +413,15 @@ public class UnreachableRegistryTests
         finally
         {
             await ContainerImageBuilder.RemoveImageAsync(image, CancellationToken.None);
+
+            try
+            {
+                if (File.Exists(archive))
+                    File.Delete(archive);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+            }
         }
     }
 
