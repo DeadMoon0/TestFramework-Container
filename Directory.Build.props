@@ -15,4 +15,13 @@
 		<LangVersion>latest</LangVersion>
 	</PropertyGroup>
 
+	<!-- Packaging and source-debugging conventions. A .snupkg carries the SourceLink data that
+	     lets a consumer step into this code, and that the generated API documentation links from. -->
+	<PropertyGroup>
+		<PublishRepositoryUrl>true</PublishRepositoryUrl>
+		<IncludeSymbols>true</IncludeSymbols>
+		<SymbolPackageFormat>snupkg</SymbolPackageFormat>
+		<EmbedUntrackedSources>true</EmbedUntrackedSources>
+	</PropertyGroup>
+
 </Project>
