@@ -21,9 +21,12 @@
 		<PackageTags>Test;UnitTest;IntegrationTest;Framework;Timeline;Docker;Azure</PackageTags>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<Copyright>Copyright (c) DeadMoon0 2026</Copyright>
-		<PackageReleaseNotes>Rebuilt on TestFramework.Container 0.1.1, so Azure environments get its registry and build fixes too.
-Changed in 0.1.9:
-- Depends on TestFramework.Container 0.1.1: an image is built once per run rather than once per environment, an unreachable registry is detected before the SDK is started rather than after it has spent minutes failing, and an image the daemon cannot pull is fetched over IPv4 and loaded in.
+		<PackageReleaseNotes>The Cosmos emulator clients are pinned to their endpoint, so purging a hosted environment takes a moment instead of minutes.
+Changed in 0.2.0:
+- The Cosmos emulator advertises its own endpoint, and on a user-defined Docker network that endpoint is a network alias only other containers can resolve. Two of the three emulator clients in this package did not set LimitToEndpoint, so the SDK read that alias from the account metadata, tried to reach it from the host, and retried every call until it gave up. The reset between runs spent between six and thirty-seven minutes doing that and then failed - and it failed as a warning, so a hosted run carried on without the empty environment it had just reported arranging. Both clients now set LimitToEndpoint, and the same purge finishes in under a second.
+- The purge logs how long each declared resource took. The reset as a whole was measurable before and the four resources inside it were not, which is the difference between fixing this and guessing at it.
+- Depends on TestFramework.Container 0.2.0: an image is built once per run rather than once per environment, an unreachable registry is detected before the SDK is started rather than after it has spent minutes failing, and an image the daemon cannot pull is fetched over IPv4 and loaded in.
+- There is no 0.1.9 of this package. The notes below were written for one, and the release went out as 0.2.0.
 Previously, in 0.1.8: the Functions host image now follows the framework the Function App was built for.
 Changed in 0.1.8:
 - The host image was pinned to 4-dotnet-isolated8.0 whatever the payload targeted. A Functions host image carries exactly one .NET runtime, so a Function App built for anything else could not start in it - and the failure said nothing: the container started, the host started, the worker exited with code 150, and the host then answered nothing until the readiness timeout expired four minutes later. The only trace of the real reason was inside the container log.
