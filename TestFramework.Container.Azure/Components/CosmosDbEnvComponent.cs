@@ -62,6 +62,16 @@ internal sealed class CosmosDbEnvComponent : DockerAzureEnvComponent
         using CosmosClient client = new(connectionString, new CosmosClientOptions
         {
             ConnectionMode = ConnectionMode.Gateway,
+            // The emulator advertises its own endpoint, and on a user-defined Docker network that
+            // is its network alias -- a name only other containers can resolve. Left to discover
+            // endpoints, the SDK switches to that one and every data-plane call then retries until
+            // it gives up: measured at six minutes on one run and thirty-seven on another, always
+            // ending in a failure, because the wait is retry backoff rather than work. Pinning the
+            // client to the endpoint it was handed takes the same call to under a second.
+            //
+            // ConfigureDockerAzureCosmosEmulator already does this for the client steps use, which
+            // is why a liveness probe answers instantly while this one did not.
+            LimitToEndpoint = true,
             HttpClientFactory = () => new HttpClient(new HttpClientHandler
             {
                 ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator,

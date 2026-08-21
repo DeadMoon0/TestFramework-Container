@@ -17,7 +17,20 @@ public interface IDockerAzureHostedFixtureState
 {
     IReadOnlyList<EnvironmentRequirement> PersistentRequirements { get; }
 
-    TimeSpan PersistentSetupTimeout => TimeSpan.FromMinutes(2);
+    /// <summary>
+    /// How long the one-off bootstrap of the persistent slice may take.
+    /// </summary>
+    /// <remarks>
+    /// Generous because it is a ceiling, not a delay: nothing waits for it when startup is quick, and
+    /// the cost of setting it too low is a green suite that fails for no reason. Two minutes was too
+    /// low. A persistent slice here can be a Docker network, Azurite, the Cosmos emulator, SQL Server,
+    /// the Service Bus emulator -- which only starts once SQL is serving -- and one or more Function
+    /// App hosts. That is minutes of legitimate work on a warm machine and more on a CI runner pulling
+    /// images for the first time; measured at about two and a half minutes warm locally, and it
+    /// overran two minutes on a hosted runner, where the timeout cancelled the token mid-start and
+    /// surfaced as a container readiness failure rather than as the timeout it was.
+    /// </remarks>
+    TimeSpan PersistentSetupTimeout => TimeSpan.FromMinutes(10);
 
     DockerAzureEnvironment CreateEnvironment();
 

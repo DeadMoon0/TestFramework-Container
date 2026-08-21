@@ -113,9 +113,13 @@ internal sealed class AzureResetEnvComponent(DockerAzureEnvironment owner) : Doc
     /// </remarks>
     private static async Task RunPurgeAsync(string resource, Func<Task> purge, ScopedLogger logger, CancellationToken cancellationToken)
     {
+        // Timed per resource. The purge as a whole was measured at six minutes with no way to tell
+        // which of the four resources spent it, which is the difference between a fix and a guess.
+        Stopwatch stopwatch = Stopwatch.StartNew();
         try
         {
             await purge().ConfigureAwait(false);
+            logger.LogInformation($"The {resource} purge finished in {stopwatch.Elapsed:g}.");
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -124,7 +128,7 @@ internal sealed class AzureResetEnvComponent(DockerAzureEnvironment owner) : Doc
         catch (Exception exception)
         {
             logger.LogWarning(
-                $"The {resource} purge did not complete, so this run may still see data a previous run left behind: {exception.Message}");
+                $"The {resource} purge did not complete after {stopwatch.Elapsed:g}, so this run may still see data a previous run left behind: {exception.Message}");
         }
     }
 
@@ -250,6 +254,16 @@ internal sealed class AzureResetEnvComponent(DockerAzureEnvironment owner) : Doc
         using CosmosClient client = new(config.ConnectionString, new CosmosClientOptions
         {
             ConnectionMode = ConnectionMode.Gateway,
+            // The emulator advertises its own endpoint, and on a user-defined Docker network that
+            // is its network alias -- a name only other containers can resolve. Left to discover
+            // endpoints, the SDK switches to that one and every data-plane call then retries until
+            // it gives up: measured at six minutes on one run and thirty-seven on another, always
+            // ending in a failure, because the wait is retry backoff rather than work. Pinning the
+            // client to the endpoint it was handed takes the same call to under a second.
+            //
+            // ConfigureDockerAzureCosmosEmulator already does this for the client steps use, which
+            // is why a liveness probe answers instantly while this one did not.
+            LimitToEndpoint = true,
             HttpClientFactory = () => new HttpClient(new HttpClientHandler
             {
                 ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator,
