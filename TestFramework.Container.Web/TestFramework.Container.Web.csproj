@@ -17,16 +17,9 @@
 		<PackageTags>Test;UnitTest;IntegrationTest;Framework;Timeline;Docker;Web;Sql;SqlServer</PackageTags>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<Copyright>Copyright (c) DeadMoon0 2026</Copyright>
-		<PackageReleaseNotes>Rebuilt on TestFramework.Container 0.1.1, which is where the change is.
-Changed in 0.1.1:
-- Building an image from a project no longer depends on the registry being reachable, and no longer rebuilds the same image for every environment. A suite of a dozen chapters against one unchanged application used to pay for a dozen identical publishes; it now pays for one. Measured on a web suite: 25 minutes down to under 3.
-- An image the Docker daemon cannot pull is fetched by the test process over IPv4 and loaded in, so a broken IPv6 path to a registry no longer stops a run on a machine nobody is allowed to reconfigure.
-- Every dotnet invocation is bounded and killed with its process tree, so a wedged publish cannot hang a run or outlive it.
-Previously: Initial release: container-backed SQL Server, application and stubbed dependencies for web timelines.
-Worth knowing up front:
-- A container reused across runs keeps whatever the previous run wrote, so SqlResetMode decides what happens to the database between runs - recreate it, run a reset script, or leave it alone.
-- Published ports bind to 127.0.0.1 rather than every interface, and the SQL Server password is generated per environment instead of being a constant shipped in the package. Use UseSqlPassword(...) to pin it, which a reused container needs.
-- Where the application under test comes from is declared rather than guessed, through the same ContainerSource model as TestFramework.Container: an image, a project path, or a directory. The resolved plan is logged before anything is built.</PackageReleaseNotes>
+		<PackageReleaseNotes>Rebuilt against TestFramework.Web 0.3.0 and TestFramework.Core 0.3.0. No API change in this package.
+Inherited BREAKING change: teardown now deletes a SQL row located by WebExt.ArtifactFinder.Sql unless the declaring step chains MarkReadonly(). Rows found this way were previously left in place.
+In container mode this is usually invisible: the SQL container this environment starts is removed when the run ends, so a deleted row inside it changes nothing observable. It matters when the same timeline runs against a database that outlives the run - a shared instance or a deployed environment. Add MarkReadonly() to discovery steps before doing that.</PackageReleaseNotes>
 	</PropertyGroup>
 
 	<ItemGroup>

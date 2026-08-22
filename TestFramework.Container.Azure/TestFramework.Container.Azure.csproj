@@ -21,22 +21,9 @@
 		<PackageTags>Test;UnitTest;IntegrationTest;Framework;Timeline;Docker;Azure</PackageTags>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<Copyright>Copyright (c) DeadMoon0 2026</Copyright>
-		<PackageReleaseNotes>The Cosmos emulator clients are pinned to their endpoint, so purging a hosted environment takes a moment instead of minutes.
-Changed in 0.2.0:
-- The Cosmos emulator advertises its own endpoint, and on a user-defined Docker network that endpoint is a network alias only other containers can resolve. Two of the three emulator clients in this package did not set LimitToEndpoint, so the SDK read that alias from the account metadata, tried to reach it from the host, and retried every call until it gave up. The reset between runs spent between six and thirty-seven minutes doing that and then failed - and it failed as a warning, so a hosted run carried on without the empty environment it had just reported arranging. Both clients now set LimitToEndpoint, and the same purge finishes in under a second.
-- The purge logs how long each declared resource took. The reset as a whole was measurable before and the four resources inside it were not, which is the difference between fixing this and guessing at it.
-- Depends on TestFramework.Container 0.2.0: an image is built once per run rather than once per environment, an unreachable registry is detected before the SDK is started rather than after it has spent minutes failing, and an image the daemon cannot pull is fetched over IPv4 and loaded in.
-- There is no 0.1.9 of this package. The notes below were written for one, and the release went out as 0.2.0.
-Previously, in 0.1.8: the Functions host image now follows the framework the Function App was built for.
-Changed in 0.1.8:
-- The host image was pinned to 4-dotnet-isolated8.0 whatever the payload targeted. A Functions host image carries exactly one .NET runtime, so a Function App built for anything else could not start in it - and the failure said nothing: the container started, the host started, the worker exited with code 150, and the host then answered nothing until the readiness timeout expired four minutes later. The only trace of the real reason was inside the container log.
-- The image is now derived from the payload's target framework. An image named by the caller is never overridden - a private or pinned image is their decision - but one that cannot run the payload is now reported immediately, naming both versions, instead of four minutes of silence.
-Previously: multi-target net8.0 and net10.0, and build on the shared TestFramework.Container blocks.
-BREAKING: DockerAzureHostedCollectionFixture no longer implements xunit's IAsyncLifetime, so add the interface to your own fixture - the InitializeAsync/DisposeAsync it already has satisfy it. This is what removes xunit as a runtime dependency of this package, and it is what lets an xunit v3 consumer adapt the fixture at all; previously the base class hard-bound v2.
-Faster: a Function App run now starts only the emulators its declared resource bindings need. It used to start Azurite, Cosmos, SQL Server and Service Bus every time, so a storage-only Function App paid for the Cosmos emulator - by far the slowest container in the stack - for nothing.
-Isolation: a hosted environment reuses its containers across runs, which meant one run could see the blobs, tables, items and messages the previous run left behind. Declared resources are now purged between runs; set DockerAzureEnvironment.UseResetMode(AzureResetMode.None) to keep the old behaviour. A hosted collection must still disable test parallelization, or one run purges another's data.
-Security: published ports bind to 127.0.0.1 rather than every interface, and the SQL Server password is generated per environment instead of being the constant shipped inside this package. That constant is now obsolete but still present, because a const is baked into consumers at compile time.
-Also: a Function App's payload source can be declared with ContainerSource instead of inferred from a marker type, and the inference that remains no longer scans toward the drive root or fails on a directory it cannot read. Where it still infers, it now prefers the project's own output over the loaded one.</PackageReleaseNotes>
+		<PackageReleaseNotes>Rebuilt against TestFramework.Azure 0.3.0 and TestFramework.Core 0.3.0. No API change in this package.
+Inherited BREAKING change: teardown now deletes an artifact a run discovered unless the declaring step chains MarkReadonly(). For Azure that means a SQL row located by the EF Core finder, which was previously never deleted; Cosmos items and Table entities already behaved this way.
+In container mode this is usually invisible: the emulator the run started is discarded when the environment tears down, so deleting a row inside it changes nothing observable. It matters the moment the same timeline is pointed at a store that outlives the run - a shared emulator, a persistent environment, or live Azure. Add MarkReadonly() to discovery steps before doing that.</PackageReleaseNotes>
 	</PropertyGroup>
 
 	<ItemGroup>
