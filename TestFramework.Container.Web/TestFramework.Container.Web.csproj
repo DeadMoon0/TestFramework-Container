@@ -5,7 +5,7 @@
 		<GenerateDocumentationFile>true</GenerateDocumentationFile>
 		<IsTestProject>false</IsTestProject>
 		<Title>TestFramework.Container.Web</Title>
-		<Version>0.2.0</Version>
+		<Version>0.2.1</Version>
 		<Authors>DeadMoon0</Authors>
 		<Product>TestFramework</Product>
 		<Description>Docker-backed environment providers for TestFramework.Web timelines: builds and runs the application under test, starts the SQL Server behind it and the stubbed dependencies in front of it, and publishes every address into the running timeline.</Description>
@@ -39,7 +39,7 @@ Worth knowing up front:
 		<!-- Container is consumed as a published package, not as a project, so the dependency this
 		     package declares is exactly the one a consumer resolves. Container must be published
 		     before this package ships against it. -->
-		<PackageReference Include="TestFramework.Container" Version="0.2.0" />
+		<PackageReference Include="TestFramework.Container" Version="0.2.1" />
 	</ItemGroup>
 
 	<ItemGroup>
@@ -50,9 +50,9 @@ Worth knowing up front:
 		<PackageReference Include="SSH.NET" Version="2026.0.0" />
 		<PackageReference Include="Testcontainers" Version="4.11.0" />
 		<PackageReference Include="Testcontainers.MsSql" Version="4.11.0" />
-		<PackageReference Include="TestFramework.Config" Version="0.2.0" />
-		<PackageReference Include="TestFramework.Core" Version="0.2.0" />
-		<PackageReference Include="TestFramework.Web" Version="0.2.0" />
+		<PackageReference Include="TestFramework.Config" Version="0.2.1" />
+		<PackageReference Include="TestFramework.Core" Version="0.3.0" />
+		<PackageReference Include="TestFramework.Web" Version="0.3.0" />
 	</ItemGroup>
 
 	<ItemGroup>
