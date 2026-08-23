@@ -65,9 +65,48 @@ public static class ContainerImageBuilder
             return plan;
 
         if (plan.Strategy == ContainerBuildStrategy.HostPublish)
-            return await PublishToDirectoryAsync(plan, identifier, logger, cancellationToken).ConfigureAwait(false);
+            return await PublishToDirectoryOnceAtATimeAsync(plan, identifier, logger, cancellationToken).ConfigureAwait(false);
 
         return await BuildImageOnceAsync(plan, identifier, logger, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Publishes a project to its own directory, one publish at a time per project.
+    /// </summary>
+    /// <remarks>
+    /// Every caller gets its own output directory, so the outputs cannot collide -- and for a long
+    /// time that looked like enough. It is not: they all drive MSBuild over one project, and MSBuild
+    /// keeps its intermediate state in that project's <c>obj/</c> whatever <c>-o</c> says. Two
+    /// environments publishing the same project at once take that state from each other, and the one
+    /// that loses reports that the project could not be published.
+    ///
+    /// This is reached far more often than it used to be. A Function App payload is mounted into the
+    /// Functions host image rather than run as an image of its own, so every Function App is on this
+    /// strategy -- and a suite that puts two of them in test classes xunit runs in parallel hits it
+    /// immediately.
+    ///
+    /// Unlike an image, the result is deliberately not shared between callers. A published directory
+    /// is mounted rather than layered, and each environment deletes its own at teardown, so handing a
+    /// second environment the first one's directory would hand it one that is about to be removed.
+    /// The gate buys correctness here, not the rebuild that image reuse saves.
+    /// </remarks>
+    private static async Task<ContainerSourcePlan> PublishToDirectoryOnceAtATimeAsync(
+        ContainerSourcePlan plan,
+        string identifier,
+        ScopedLogger logger,
+        CancellationToken cancellationToken)
+    {
+        SemaphoreSlim gate = GateFor(plan);
+
+        await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return await PublishToDirectoryAsync(plan, identifier, logger, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            gate.Release();
+        }
     }
 
     /// <summary>
@@ -86,9 +125,10 @@ public static class ContainerImageBuilder
     /// shared is the build output, which is the one thing that cannot differ between two environments
     /// that asked for the same thing.
     ///
-    /// The gate is per identity rather than global, so two different applications still build at the
+    /// The gate is per project rather than global, so two different applications still build at the
     /// same time while two environments wanting the same application do not race each other into
-    /// running two publishes over one project directory.
+    /// running two publishes over one project directory. Reuse stays keyed on the full identity: what
+    /// may not happen at once is broader than what counts as the same image.
     /// </remarks>
     private static async Task<ContainerSourcePlan> BuildImageOnceAsync(
         ContainerSourcePlan plan,
@@ -97,7 +137,7 @@ public static class ContainerImageBuilder
         CancellationToken cancellationToken)
     {
         string identity = BuildIdentityOf(plan);
-        SemaphoreSlim gate = BuildGates.GetOrAdd(identity, _ => new SemaphoreSlim(1, 1));
+        SemaphoreSlim gate = GateFor(plan);
 
         await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -154,6 +194,21 @@ public static class ContainerImageBuilder
     /// Forgets which images this run built, so the next build produces a fresh one.
     /// </summary>
     internal static void ForgetBuiltImages() => BuiltImages.Clear();
+
+    /// <summary>
+    /// The gate a plan queues on: everything built from one project waits for everything else built
+    /// from that project.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately coarser than the build identity. Two plans differing only in configuration, or in
+    /// whether the SDK builds the image or the host publishes the output, are two different results --
+    /// but they are one project directory, and MSBuild will not have its <c>obj/</c> driven from two
+    /// places at once. Keying the gate on the identity instead let exactly those pairs race.
+    ///
+    /// Different projects still build at the same time, which is the parallelism worth keeping.
+    /// </remarks>
+    private static SemaphoreSlim GateFor(ContainerSourcePlan plan)
+        => BuildGates.GetOrAdd(plan.ProjectPath ?? string.Empty, _ => new SemaphoreSlim(1, 1));
 
     /// <summary>
     /// The inputs that fully decide what an image built from this plan contains.
