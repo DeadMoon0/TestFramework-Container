@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using TestFramework.Container.Web.SampleApi;
+using TestFramework.Container.Sources;
 using TestFramework.Core.Environment;
 using TestFramework.Core.Exceptions;
 using TestFramework.Web;
@@ -23,23 +23,29 @@ public class DockerWebEnvironmentApiTests
         protected override void Configure(DockerSqlBuilder builder) => builder.WithDatabase("SalesDb");
     }
 
-    private sealed class OrdersApiDefinition : DockerApiDefinition<SampleApiMarker>
+    private sealed class OrdersApiDefinition : DockerApiDefinition
     {
         public override ApiIdentifier Identifier => "orders";
+
+        public override ContainerSource Source => ContainerSource.Directory(AppContext.BaseDirectory);
 
         protected override void Configure(DockerApiBuilder builder) => builder.UseSql<SalesSqlDefinition>("ConnectionStrings:Sales");
     }
 
-    private sealed class StandaloneApiDefinition : DockerApiDefinition<SampleApiMarker>
+    private sealed class StandaloneApiDefinition : DockerApiDefinition
     {
         public override ApiIdentifier Identifier => "orders";
+
+        public override ContainerSource Source => ContainerSource.Directory(AppContext.BaseDirectory);
 
         protected override void Configure(DockerApiBuilder builder) => builder.WithHealthPath("/health");
     }
 
-    private sealed class DuplicateOrdersApiDefinition : DockerApiDefinition<SampleApiMarker>
+    private sealed class DuplicateOrdersApiDefinition : DockerApiDefinition
     {
         public override ApiIdentifier Identifier => "orders";
+
+        public override ContainerSource Source => ContainerSource.Directory(AppContext.BaseDirectory);
 
         protected override void Configure(DockerApiBuilder builder) => builder.WithoutHealthCheck();
     }

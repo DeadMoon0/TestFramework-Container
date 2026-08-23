@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
 		<TargetFrameworks>net8.0;net10.0</TargetFrameworks>
@@ -9,7 +9,7 @@
 		     the documentation pass; it is a bridge, not a decision. -->
 		<NoWarn>$(NoWarn);CS1591</NoWarn>
 		<Title>TestFramework.Container.Azure</Title>
-		<Version>0.2.1</Version>
+		<Version>0.3.0</Version>
 		<Authors>DeadMoon0</Authors>
 		<Product>TestFramework</Product>
 		<Description>Docker-backed environment providers for TestFramework timelines for Azure components.</Description>
@@ -21,9 +21,7 @@
 		<PackageTags>Test;UnitTest;IntegrationTest;Framework;Timeline;Docker;Azure</PackageTags>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<Copyright>Copyright (c) DeadMoon0 2026</Copyright>
-		<PackageReleaseNotes>Rebuilt against TestFramework.Azure 0.3.0 and TestFramework.Core 0.3.0. No API change in this package.
-Inherited BREAKING change: teardown now deletes an artifact a run discovered unless the declaring step chains MarkReadonly(). For Azure that means a SQL row located by the EF Core finder, which was previously never deleted; Cosmos items and Table entities already behaved this way.
-In container mode this is usually invisible: the emulator the run started is discarded when the environment tears down, so deleting a row inside it changes nothing observable. It matters the moment the same timeline is pointed at a store that outlives the run - a shared emulator, a persistent environment, or live Azure. Add MarkReadonly() to discovery steps before doing that.</PackageReleaseNotes>
+		<PackageReleaseNotes>BREAKING - Function Apps declare where their payload comes from. The entry-point inference is gone with TestFramework.Container 0.3.0: DockerFunctionAppDefinition&lt;TFunctionApp&gt; and DockerFunctionAppRegistration.Create&lt;TFunctionApp&gt; no longer exist, and Source has no default. Override Source with ContainerSource.Project("...").BuiltOnHost() or ContainerSource.Directory(...); the inline ForFunctionApp* helpers take a ContainerSource parameter instead of a function type argument.</PackageReleaseNotes>
 	</PropertyGroup>
 
 	<ItemGroup>
@@ -36,7 +34,7 @@ In container mode this is usually invisible: the emulator the run started is dis
 		<!-- Container is consumed as a published package, not as a project, so the dependency this
 		     package declares is exactly the one a consumer resolves. Container must be published
 		     before this package ships against it. -->
-		<PackageReference Include="TestFramework.Container" Version="0.2.1" />
+		<PackageReference Include="TestFramework.Container" Version="0.3.0" />
 	</ItemGroup>
 
 	<ItemGroup>

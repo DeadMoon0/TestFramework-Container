@@ -110,4 +110,50 @@ public static class DockerWebDefaults
     /// How long to wait for a started stub server to answer.
     /// </summary>
     public static readonly TimeSpan StubReadinessTimeout = TimeSpan.FromSeconds(60);
+
+    /// <summary>
+    /// The image that serves a static site payload.
+    /// </summary>
+    public const string SiteImage = "nginx:1.29-alpine";
+
+    /// <summary>
+    /// The port a site server listens on inside its container.
+    /// </summary>
+    public const int SiteInternalPort = 80;
+
+    /// <summary>
+    /// The directory a site's payload is placed in inside its container.
+    /// </summary>
+    public const string SiteContentRoot = "/usr/share/nginx/html";
+
+    /// <summary>
+    /// The path the generated server configuration is placed at inside the container.
+    /// </summary>
+    /// <remarks>
+    /// The stock nginx image includes every file in <c>conf.d</c> into its own <c>http</c> block, so
+    /// replacing this one file changes the server without losing the image's MIME and compression
+    /// defaults.
+    /// </remarks>
+    public const string SiteNginxConfPath = "/etc/nginx/conf.d/default.conf";
+
+    /// <summary>
+    /// The payload-relative path the generated runtime configuration file is written to, unless the
+    /// definition declares another.
+    /// </summary>
+    public const string SiteConfigJsonPath = "assets/config.json";
+
+    /// <summary>
+    /// The image an npm project is built in when the build runs inside a container.
+    /// </summary>
+    public const string SiteNodeImage = "node:22-alpine";
+
+    /// <summary>
+    /// How long to wait for a started site server to answer.
+    /// </summary>
+    public static readonly TimeSpan SiteReadinessTimeout = TimeSpan.FromSeconds(60);
+
+    /// <summary>
+    /// How long a site build may run before it is killed.
+    /// </summary>
+    public static readonly TimeSpan SiteBuildTimeout = TimeSpan.FromMinutes(10);
 }

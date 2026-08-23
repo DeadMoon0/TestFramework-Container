@@ -152,20 +152,6 @@ public class ContainerSourcePlanTests
     }
 
     [Fact]
-    public async Task EntryPoint_StillWorksAndSaysWhatItInferred()
-    {
-        ContainerSourcePlan plan = await ContainerSourceResolver.PlanAsync(
-            ContainerSource.EntryPoint<ContainerSourcePlanTests>(),
-            CancellationToken.None);
-
-        Assert.Equal(ContainerSourceKind.EntryPoint, plan.Kind);
-        Assert.NotNull(plan.OutputDirectory);
-
-        // Every inference it makes is named, which is the whole difference from before.
-        Assert.Contains(plan.Derivations, note => note.Contains("loaded assembly", StringComparison.Ordinal));
-    }
-
-    [Fact]
     public async Task ToLogLines_StatesThePlanBeforeAnythingRuns()
     {
         ContainerSourcePlan plan = await ContainerSourceResolver.PlanAsync(

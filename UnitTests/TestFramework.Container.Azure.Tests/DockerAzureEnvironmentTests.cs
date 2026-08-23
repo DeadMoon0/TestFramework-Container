@@ -13,6 +13,7 @@ using TestFramework.Azure.StorageAccount.Blob;
 using TestFramework.Azure.StorageAccount.Table;
 using TestFramework.Azure.Trigger.IsLive;
 using TestFramework.Container.Azure;
+using TestFramework.Container.Sources;
 using TestFramework.Container.Azure.Contracts;
 using TestFramework.Core.Artifacts;
 using TestFramework.Core.Debugger;
@@ -158,13 +159,13 @@ public class DockerAzureEnvironmentTests
             .Invoke(environment, [])!;
         DockerFunctionAppRegistration registration = Assert.Single(registrations);
         Assert.Equal("func", registration.Identifier);
-        Assert.Equal(typeof(TestFunctionHost), registration.FunctionType);
+        Assert.Equal(ContainerSourceKind.Directory, registration.Source.Kind);
     }
 
     [Fact]
     public void ForFunctionAppWithCommonBindings_AddsCommonLocalStackWithoutCustomDefinition()
     {
-        DockerAzureEnvironment environment = DockerAzureEnvironment.ForFunctionAppWithCommonBindings<TestFunctionHost, TestStorageDefinition, TestCosmosDefinition, TestServiceBusDefinition>("func-inline", d => d.Trigger, d => d.Reply);
+        DockerAzureEnvironment environment = DockerAzureEnvironment.ForFunctionAppWithCommonBindings<TestStorageDefinition, TestCosmosDefinition, TestServiceBusDefinition>("func-inline", ContainerSource.Directory(AppContext.BaseDirectory), d => d.Trigger, d => d.Reply);
         var functionStep = new IsLiveTrigger().FunctionApp("func-inline");
 
         IReadOnlyCollection<EnvComponentIdentifier> result = environment.ResolveComponents([], ((IHasEnvironmentRequirements)functionStep).GetEnvironmentRequirements(null!));
@@ -663,14 +664,20 @@ public class DockerAzureEnvironmentTests
 
     private sealed class TestFunctionHost;
 
-    private sealed class MinimalFunctionAppDefinition : DockerFunctionAppDefinition<DockerAzureEnvironmentTests>
+    private sealed class MinimalFunctionAppDefinition : DockerFunctionAppDefinition
     {
         public override FunctionAppIdentifier Identifier => "func";
+
+        // Never started: the source only has to be declarable, and a directory that exists is.
+        public override ContainerSource Source => ContainerSource.Directory(AppContext.BaseDirectory);
     }
 
-    private sealed class TestFunctionAppDefinition : DockerFunctionAppDefinition<TestFunctionHost>
+    private sealed class TestFunctionAppDefinition : DockerFunctionAppDefinition
     {
         public override FunctionAppIdentifier Identifier => "func";
+
+        // Never started: the source only has to be declarable, and a directory that exists is.
+        public override ContainerSource Source => ContainerSource.Directory(AppContext.BaseDirectory);
 
         protected override void Configure(DockerFunctionAppBuilder builder)
         {
@@ -682,9 +689,12 @@ public class DockerAzureEnvironmentTests
         }
     }
 
-    private sealed class ContractLoggingFunctionAppDefinition : DockerFunctionAppDefinition<TestFunctionHost>
+    private sealed class ContractLoggingFunctionAppDefinition : DockerFunctionAppDefinition
     {
         public override FunctionAppIdentifier Identifier => "func-contract";
+
+        // Never started: the source only has to be declarable, and a directory that exists is.
+        public override ContainerSource Source => ContainerSource.Directory(AppContext.BaseDirectory);
 
         protected override void ConfigureDependencies(DockerAzureDependencyBuilder dependencies)
         {
@@ -717,9 +727,12 @@ public class DockerAzureEnvironmentTests
         }
     }
 
-    private sealed class SynthesizedFunctionAppDefinition : DockerFunctionAppDefinition<TestFunctionHost>
+    private sealed class SynthesizedFunctionAppDefinition : DockerFunctionAppDefinition
     {
         public override FunctionAppIdentifier Identifier => "auto-func";
+
+        // Never started: the source only has to be declarable, and a directory that exists is.
+        public override ContainerSource Source => ContainerSource.Directory(AppContext.BaseDirectory);
     }
 
     private sealed class TestInfrastructureDefinition : DockerAzureInfrastructureDefinition

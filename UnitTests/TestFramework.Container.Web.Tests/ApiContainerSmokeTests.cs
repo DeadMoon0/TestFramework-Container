@@ -66,14 +66,19 @@ public class ApiContainerSmokeTests
     }
 
     /// <summary>
-    /// The same application, still reached through a marker type.
+    /// The same application, published on the host and copied into a runtime image.
     /// </summary>
     /// <remarks>
-    /// Kept on the inferring road so the path older definitions use stays covered.
+    /// Kept on the host-publish road so the strategy that needs no Docker build stays covered.
     /// </remarks>
-    private sealed class HealthOnlyApiDefinition : DockerApiDefinition<SampleApiMarker>
+    private sealed class HealthOnlyApiDefinition : DockerApiDefinition
     {
         public override ApiIdentifier Identifier => "health-only";
+
+        public override ContainerSource Source =>
+            ContainerSource.Project("../TestFramework.Container.Web.SampleApi/TestFramework.Container.Web.SampleApi.csproj")
+                .BuiltOnHost()
+                .WithTargetFramework(CurrentTargetFramework);
 
         protected override void Configure(DockerApiBuilder builder) => builder.WithHealthPath("/health");
     }

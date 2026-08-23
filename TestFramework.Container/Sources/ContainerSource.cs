@@ -51,26 +51,6 @@ public abstract class ContainerSource
     /// caller. The plan reports when the assembly was last written.
     /// </remarks>
     public static ContainerSource Directory(string outputDirectory) => new DirectoryContainerSource(outputDirectory);
-
-    /// <summary>
-    /// Ships the build output of the assembly containing a type.
-    /// </summary>
-    /// <typeparam name="TEntryPoint">A type from the application assembly.</typeparam>
-    /// <remarks>
-    /// Kept for the definitions written before a source could be declared. It infers the project,
-    /// the configuration and the output directory from the loaded assembly, which requires the test
-    /// project to reference the application and can be wrong in ways that only show up as a
-    /// container that fails to start. Prefer <see cref="Project"/>.
-    /// </remarks>
-    public static ContainerSource EntryPoint<TEntryPoint>()
-        where TEntryPoint : class
-        => new EntryPointContainerSource(typeof(TEntryPoint));
-
-    /// <summary>
-    /// Ships the build output of the assembly containing a type.
-    /// </summary>
-    /// <param name="entryPointType">A type from the application assembly.</param>
-    public static ContainerSource EntryPoint(Type entryPointType) => new EntryPointContainerSource(entryPointType);
 }
 
 /// <summary>
@@ -86,9 +66,6 @@ public enum ContainerSourceKind
 
     /// <summary>A directory that is already built.</summary>
     Directory,
-
-    /// <summary>The build output behind a type, inferred from the loaded assembly.</summary>
-    EntryPoint,
 }
 
 /// <summary>
@@ -152,26 +129,6 @@ public sealed class DirectoryContainerSource : ContainerSource
     /// The directory holding the built application.
     /// </summary>
     public string OutputDirectory { get; }
-}
-
-/// <summary>
-/// The build output behind a type.
-/// </summary>
-public sealed class EntryPointContainerSource : ContainerSource
-{
-    internal EntryPointContainerSource(Type entryPointType)
-    {
-        ArgumentNullException.ThrowIfNull(entryPointType);
-        EntryPointType = entryPointType;
-    }
-
-    /// <inheritdoc />
-    public override ContainerSourceKind Kind => ContainerSourceKind.EntryPoint;
-
-    /// <summary>
-    /// A type from the application assembly.
-    /// </summary>
-    public Type EntryPointType { get; }
 }
 
 /// <summary>

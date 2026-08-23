@@ -30,7 +30,7 @@ Targets `net8.0` and `net10.0`.
 | `ContainerNetworkFactory` | creates the uniquely named network one environment's containers share |
 | `ContainerEndpoints` | the two addresses every container has: host-mapped and network-alias |
 | `ContainerReadiness` | waits until an HTTP endpoint or a SQL database actually answers |
-| `ContainerOutputResolver` | locates an already-built output; the inferring road, kept for older definitions |
+| `ContainerOutputResolver` | answers which framework an assembly was built for |
 | `ContainerLogCapture` | writes a container's output into the run log before it is removed |
 | `ContainerDockerCommands` | runs the Docker CLI and removes containers and networks reliably |
 | `ContainerDockerHost` | points the client at the Docker Desktop named pipe a Windows machine uses |
@@ -111,7 +111,6 @@ An application's source is **declared**, not discovered:
 ContainerSource.Image("orders-api:ci-1234")                     // already an image
 ContainerSource.Project("../Orders.Api/Orders.Api.csproj")      // the framework builds it
 ContainerSource.Directory(@"C:\out\orders-api")                 // this exact folder
-ContainerSource.EntryPoint<OrdersApiMarker>()                   // inferred from a loaded assembly
 ```
 
 A relative project path resolves against **the source file that declares it**, captured at compile
@@ -170,11 +169,3 @@ answerable without waiting for Docker. Values that were worked out rather than d
 
 A project that targets several frameworks is a **hard error**, not a silent pick: adding a framework
 to a project must not quietly change what a test runs.
-
-### The inferring road
-
-`ContainerSource.EntryPoint<T>()` and `ContainerOutputResolver` remain for definitions written before
-a source could be declared. They infer the project from a loaded assembly, which requires the test
-project to reference the application and can be wrong in ways that only appear as a container that
-fails to start. `ResolveProjectOutput` prefers the application's own `bin` over the test project's
-copy of its assembly; every inference it makes is named in the plan.

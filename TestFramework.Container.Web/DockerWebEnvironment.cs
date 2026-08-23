@@ -50,6 +50,22 @@ public class DockerWebEnvironment : EnvironmentProviderBase
     /// </summary>
     public static readonly EnvComponentIdentifier StubComponentId = "stub";
 
+    /// <summary>
+    /// The component that serves the declared sites.
+    /// </summary>
+    public static readonly EnvComponentIdentifier SiteComponentId = "site";
+
+    /// <summary>
+    /// The requirement kind browser steps declare for the web application they drive.
+    /// </summary>
+    /// <remarks>
+    /// The string is the contract, not a package reference: it must match
+    /// <c>BrowserEnvironmentResourceKinds.WebApp</c> in TestFramework.UI.Browser. The site is the
+    /// application a browser loads, so a browser step's own requirement starts and validates the
+    /// declared site with no bridging call in between.
+    /// </remarks>
+    internal const string UiWebAppResourceKind = "ui.webapp";
+
     private readonly Dictionary<Type, DockerWebDefinition> _definitions = [];
     private readonly Dictionary<Type, StubDefinition> _stubDefinitions = [];
     private readonly Dictionary<EnvComponentIdentifier, object?> _runtimeStates = [];
@@ -64,10 +80,13 @@ public class DockerWebEnvironment : EnvironmentProviderBase
         AddComponent(new SqlServerEnvComponent());
         AddComponent(new StubEnvComponent());
         AddComponent(new ApiEnvComponent());
+        AddComponent(new SiteEnvComponent());
 
         MapResourceKind(WebEnvironmentResourceKinds.Sql, SqlServerComponentId);
         MapResourceKind(WebEnvironmentResourceKinds.RestApi, ApiComponentId);
         MapResourceKind(WebEnvironmentResourceKinds.Stub, StubComponentId);
+        MapResourceKind(WebEnvironmentResourceKinds.Site, SiteComponentId);
+        MapResourceKind(UiWebAppResourceKind, SiteComponentId);
         MapArtifact(typeof(SqlRowArtifactDescriber<>), SqlServerComponentId);
     }
 
@@ -85,6 +104,11 @@ public class DockerWebEnvironment : EnvironmentProviderBase
     /// The stub identifiers the last resolution found in use.
     /// </summary>
     public HashSet<string> UsedStubIdentifiers { get; } = [];
+
+    /// <summary>
+    /// The site identifiers the last resolution found in use.
+    /// </summary>
+    public HashSet<string> UsedSiteIdentifiers { get; } = [];
 
     /// <summary>
     /// The image the stub servers run.
@@ -142,6 +166,9 @@ public class DockerWebEnvironment : EnvironmentProviderBase
                 break;
             case DockerApiDefinition api:
                 EnsureUniqueIdentifier(GetApiDefinitions(), api, existing => existing.Identifier, "API");
+                break;
+            case DockerSiteDefinition site:
+                EnsureUniqueIdentifier(GetSiteDefinitions(), site, existing => existing.Identifier, "site");
                 break;
         }
 
@@ -237,6 +264,12 @@ public class DockerWebEnvironment : EnvironmentProviderBase
     public IReadOnlyList<StubDefinition> GetStubDefinitions()
         => [.. _stubDefinitions.Values.OrderBy(definition => definition.Identifier.Identifier, StringComparer.Ordinal)];
 
+    /// <summary>
+    /// The sites this environment serves.
+    /// </summary>
+    public IReadOnlyList<DockerSiteDefinition> GetSiteDefinitions()
+        => [.. _definitions.Values.OfType<DockerSiteDefinition>().OrderBy(definition => definition.Identifier.Identifier, StringComparer.Ordinal)];
+
     /// <inheritdoc />
     public override IReadOnlyCollection<EnvComponentIdentifier> ResolveComponents(IEnumerable<ArtifactInstanceGeneric> artifacts, IEnumerable<EnvironmentRequirement> requirements)
     {
@@ -245,6 +278,7 @@ public class DockerWebEnvironment : EnvironmentProviderBase
         UsedSqlIdentifiers.Clear();
         UsedApiIdentifiers.Clear();
         UsedStubIdentifiers.Clear();
+        UsedSiteIdentifiers.Clear();
 
         foreach (ArtifactInstanceGeneric artifact in artifacts)
         {
@@ -267,8 +301,12 @@ public class DockerWebEnvironment : EnvironmentProviderBase
         if (GetStubDefinitions().Count > 0)
             resolved.Add(StubComponentId);
 
+        if (GetSiteDefinitions().Count > 0)
+            resolved.Add(SiteComponentId);
+
         EnsureDeclaredIdentifiers();
         EnsureDeclaredApiBindings();
+        EnsureDeclaredSiteBindings();
 
         return [.. resolved];
     }
@@ -314,6 +352,12 @@ public class DockerWebEnvironment : EnvironmentProviderBase
 
         if (string.Equals(requirement.ResourceKind, WebEnvironmentResourceKinds.Stub, StringComparison.Ordinal))
             UsedStubIdentifiers.Add(requirement.ResourceIdentifier);
+
+        if (string.Equals(requirement.ResourceKind, WebEnvironmentResourceKinds.Site, StringComparison.Ordinal)
+            || string.Equals(requirement.ResourceKind, UiWebAppResourceKind, StringComparison.Ordinal))
+        {
+            UsedSiteIdentifiers.Add(requirement.ResourceIdentifier);
+        }
     }
 
     private void EnsureUniqueStubIdentifier(StubDefinition candidate)
@@ -363,6 +407,55 @@ public class DockerWebEnvironment : EnvironmentProviderBase
             "stub",
             nameof(StubDefinition),
             "which stub to serve");
+
+        EnsureDeclared(
+            UsedSiteIdentifiers,
+            [.. GetSiteDefinitions().Select(definition => definition.Identifier.Identifier)],
+            "site",
+            nameof(DockerSiteDefinition),
+            "which site to serve");
+    }
+
+    private void EnsureDeclaredSiteBindings()
+    {
+        HashSet<string> apis = [.. GetApiDefinitions().Select(definition => definition.Identifier.Identifier)];
+        HashSet<string> stubs = [.. GetStubDefinitions().Select(definition => definition.Identifier.Identifier)];
+
+        foreach (DockerSiteDefinition site in GetSiteDefinitions())
+        {
+            DockerSiteSpec spec = site.Build();
+
+            // Only targets named as definition types are validated here: naming a type declares an
+            // intent to run the target in this environment. A target named by identifier may live
+            // outside it and is resolved against the configuration store at setup.
+            EnsureSiteBound(site, apis, TypeBoundTargets(spec, SiteTargetKind.Api), "API", nameof(DockerApiDefinition));
+            EnsureSiteBound(site, stubs, TypeBoundTargets(spec, SiteTargetKind.Stub), "stub", nameof(StubDefinition));
+        }
+    }
+
+    private static IReadOnlyList<string> TypeBoundTargets(DockerSiteSpec spec, SiteTargetKind kind)
+        => [.. spec.ProxyRoutes.Where(route => route.DeclaredByType && route.TargetKind == kind).Select(route => route.TargetIdentifier)
+            .Concat(spec.ConfigJsonBindings.Where(binding => binding.DeclaredByType && binding.TargetKind == kind).Select(binding => binding.TargetIdentifier))];
+
+    private static void EnsureSiteBound(
+        DockerSiteDefinition site,
+        HashSet<string> declared,
+        IReadOnlyList<string> bound,
+        string kind,
+        string definitionTypeName)
+    {
+        string[] missing = [.. bound
+            .Where(identifier => !declared.Contains(identifier))
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(identifier => identifier, StringComparer.Ordinal)];
+
+        if (missing.Length == 0)
+            return;
+
+        throw new FrameworkConfigurationException(
+            $"'{site.GetType().Name}' binds to the {kind} identifier(s) {string.Join(", ", missing.Select(identifier => $"'{identifier}'"))}, which no included definition declares. "
+            + $"Declared: {(declared.Count == 0 ? "none" : string.Join(", ", declared.OrderBy(identifier => identifier, StringComparer.Ordinal)))}. "
+            + $"Include the {definitionTypeName} the site points at, or name the target by identifier to resolve it from configuration.");
     }
 
     private void EnsureDeclaredApiBindings()

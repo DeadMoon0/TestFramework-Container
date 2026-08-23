@@ -13,6 +13,7 @@ using TestFramework.Azure.Identifier;
 using TestFramework.Azure.LogicApp;
 using TestFramework.Azure.StorageAccount.Blob;
 using TestFramework.Azure.StorageAccount.Table;
+using TestFramework.Container.Sources;
 using TestFramework.Core.Artifacts;
 using TestFramework.Core.Environment;
 using TestFramework.Core.Exceptions;
@@ -121,47 +122,54 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
         return new DockerAzureEnvironment().Include<TDefinition>();
     }
 
-    public DockerAzureEnvironment UseFunctionApp<TFunctionApp>(FunctionAppIdentifier identifier, Action<DockerFunctionAppBuilder>? configure = null, string? image = null)
+    /// <remarks>
+    /// The payload source is declared, like every definition's. One inline Function App per
+    /// environment: a second one deserves a definition class of its own, which is also what gives it
+    /// a distinct identity.
+    /// </remarks>
+    public DockerAzureEnvironment UseFunctionApp(FunctionAppIdentifier identifier, ContainerSource source, Action<DockerFunctionAppBuilder>? configure = null, string? image = null)
     {
-        return Include(new InlineFunctionAppDefinition<TFunctionApp>(identifier, configure, image));
+        return Include(new InlineFunctionAppDefinition(identifier, source, configure, image));
     }
 
-    public static DockerAzureEnvironment ForFunctionApp<TFunctionApp>(FunctionAppIdentifier identifier, Action<DockerFunctionAppBuilder>? configure = null, string? image = null)
+    public static DockerAzureEnvironment ForFunctionApp(FunctionAppIdentifier identifier, ContainerSource source, Action<DockerFunctionAppBuilder>? configure = null, string? image = null)
     {
-        return new DockerAzureEnvironment().UseFunctionApp<TFunctionApp>(identifier, configure, image);
+        return new DockerAzureEnvironment().UseFunctionApp(identifier, source, configure, image);
     }
 
-    public static DockerAzureEnvironment ForFunctionAppWithStorage<TFunctionApp, TStorage>(FunctionAppIdentifier identifier, string? image = null)
+    public static DockerAzureEnvironment ForFunctionAppWithStorage<TStorage>(FunctionAppIdentifier identifier, ContainerSource source, string? image = null)
         where TStorage : DockerStorageDefinition, new()
     {
-        return ForFunctionApp<TFunctionApp>(identifier, builder => builder.UseStorage<TStorage>(), image);
+        return ForFunctionApp(identifier, source, builder => builder.UseStorage<TStorage>(), image);
     }
 
-    public static DockerAzureEnvironment ForFunctionAppWithStorageAndCosmos<TFunctionApp, TStorage, TCosmos>(FunctionAppIdentifier identifier, string? image = null)
+    public static DockerAzureEnvironment ForFunctionAppWithStorageAndCosmos<TStorage, TCosmos>(FunctionAppIdentifier identifier, ContainerSource source, string? image = null)
         where TStorage : DockerStorageDefinition, new()
         where TCosmos : DockerCosmosDefinition, new()
     {
-        return ForFunctionApp<TFunctionApp>(identifier, builder => builder
+        return ForFunctionApp(identifier, source, builder => builder
             .UseStorage<TStorage>()
             .UseCosmos<TCosmos>(), image);
     }
 
-    public static DockerAzureEnvironment ForFunctionAppWithStorageAndServiceBus<TFunctionApp, TStorage, TServiceBus>(
+    public static DockerAzureEnvironment ForFunctionAppWithStorageAndServiceBus<TStorage, TServiceBus>(
         FunctionAppIdentifier identifier,
+        ContainerSource source,
         Func<TServiceBus, DockerServiceBusEndpoint> triggerSelector,
         Func<TServiceBus, DockerServiceBusEndpoint> replySelector,
         string? image = null)
         where TStorage : DockerStorageDefinition, new()
         where TServiceBus : DockerServiceBusDefinition, new()
     {
-        return ForFunctionApp<TFunctionApp>(identifier, builder => builder
+        return ForFunctionApp(identifier, source, builder => builder
             .UseStorage<TStorage>()
             .UseServiceBusTrigger<TServiceBus>(triggerSelector)
             .UseServiceBusReply<TServiceBus>(replySelector), image);
     }
 
-    public static DockerAzureEnvironment ForFunctionAppWithCommonBindings<TFunctionApp, TStorage, TCosmos, TServiceBus>(
+    public static DockerAzureEnvironment ForFunctionAppWithCommonBindings<TStorage, TCosmos, TServiceBus>(
         FunctionAppIdentifier identifier,
+        ContainerSource source,
         Func<TServiceBus, DockerServiceBusEndpoint> triggerSelector,
         Func<TServiceBus, DockerServiceBusEndpoint> replySelector,
         string? image = null)
@@ -169,7 +177,7 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
         where TCosmos : DockerCosmosDefinition, new()
         where TServiceBus : DockerServiceBusDefinition, new()
     {
-        return ForFunctionApp<TFunctionApp>(identifier, builder => builder
+        return ForFunctionApp(identifier, source, builder => builder
             .UseStorage<TStorage>()
             .UseCosmos<TCosmos>()
             .UseServiceBusTrigger<TServiceBus>(triggerSelector)
@@ -648,9 +656,11 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
         return clone;
     }
 
-    private sealed class InlineFunctionAppDefinition<TFunctionApp>(FunctionAppIdentifier identifier, Action<DockerFunctionAppBuilder>? configure, string? image) : DockerFunctionAppDefinition<TFunctionApp>
+    private sealed class InlineFunctionAppDefinition(FunctionAppIdentifier identifier, ContainerSource source, Action<DockerFunctionAppBuilder>? configure, string? image) : DockerFunctionAppDefinition
     {
         public override FunctionAppIdentifier Identifier => identifier;
+
+        public override ContainerSource Source => source;
 
         public override string Image => string.IsNullOrWhiteSpace(image) ? base.Image : image!;
 

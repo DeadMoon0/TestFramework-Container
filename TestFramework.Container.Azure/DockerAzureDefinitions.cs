@@ -280,23 +280,13 @@ public abstract class DockerFunctionAppDefinition : DockerAzureDefinition
     /// Where the payload mounted into the Functions host comes from.
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// Defaults to the build output behind <see cref="FunctionType"/>, which is what the generic
-    /// <see cref="DockerFunctionAppDefinition{TFunctionApp}"/> supplies and what every definition
-    /// written before sources existed relies on.
-    /// </para>
-    /// <para>
-    /// Override it with <c>ContainerSource.Project(...)</c> to name the project instead of inferring it
-    /// from where an assembly happened to be loaded from — the test project then does not have to
-    /// reference the Function App at all. Because the payload is mounted into the Functions host image
-    /// rather than run as an image of its own, a project source has to publish on the host:
-    /// <c>ContainerSource.Project("../App/App.csproj").BuiltOnHost()</c>.
-    /// </para>
+    /// There is no default: the payload is declared, not discovered. Because it is mounted into the
+    /// Functions host image rather than run as an image of its own, a project source has to publish
+    /// on the host: <c>ContainerSource.Project("../App/App.csproj").BuiltOnHost()</c>.
     /// </remarks>
-    public virtual ContainerSource Source => ContainerSource.EntryPoint(
-        FunctionType ?? throw new FrameworkConfigurationException(
-            $"Function App '{Identifier}' declares neither a function type nor a container source, so there is no payload to mount.",
-            ["Override Source with ContainerSource.Project(\"...\").BuiltOnHost() or ContainerSource.Directory(\"...\")."]));
+    public virtual ContainerSource Source => throw new FrameworkConfigurationException(
+        $"Function App '{Identifier}' declares no container source, so there is no payload to mount.",
+        ["Override Source with ContainerSource.Project(\"...\").BuiltOnHost() or ContainerSource.Directory(\"...\")."]);
 
     protected virtual FunctionAppConfig? CreateDefaultConfig() => new()
     {
@@ -329,7 +319,6 @@ public abstract class DockerFunctionAppDefinition : DockerAzureDefinition
 
         DockerFunctionAppRegistration registration = DockerFunctionAppRegistration.Create(
             Identifier,
-            FunctionType,
             Source,
             registrationBuilder =>
             {
@@ -340,22 +329,8 @@ public abstract class DockerFunctionAppDefinition : DockerAzureDefinition
                     registrationBuilder.WithAppSetting(key, value);
             });
 
-        return new FunctionAppDefinitionDescriptor(registration, builder.ServiceBusTopologySources, builder.Dependencies, builder.ResourceBindings);
+        return new FunctionAppDefinitionDescriptor(GetType(), registration, builder.ServiceBusTopologySources, builder.Dependencies, builder.ResourceBindings);
     }
-
-    /// <summary>
-    /// A type from the Function App assembly, when the payload is described by one.
-    /// </summary>
-    /// <remarks>
-    /// Null is allowed so a definition can name its project through <see cref="Source"/> instead, with
-    /// no reference from the test project to the application.
-    /// </remarks>
-    internal virtual Type? FunctionType => null;
-}
-
-public abstract class DockerFunctionAppDefinition<TFunctionApp> : DockerFunctionAppDefinition
-{
-    internal sealed override Type FunctionType => typeof(TFunctionApp);
 }
 
 public sealed class DockerAzureDependencyBuilder
@@ -612,6 +587,7 @@ public static class DockerAzureDefaults
 }
 
 internal sealed record FunctionAppDefinitionDescriptor(
+    Type DefinitionType,
     DockerFunctionAppRegistration Registration,
     IReadOnlyCollection<ServiceBusTopologySource> ServiceBusTopologySources,
     IReadOnlyCollection<ComponentDependency> Dependencies,
@@ -830,8 +806,8 @@ internal sealed class DockerAzureDefinitionState
     {
         if (_functionAppDescriptors.TryGetValue(identifier, out FunctionAppDefinitionDescriptor? existing))
         {
-            if (existing.Registration.FunctionType != descriptor.Registration.FunctionType)
-                throw new FrameworkConfigurationException($"Docker Function App identifier '{identifier}' was configured for multiple function types.");
+            if (existing.DefinitionType != descriptor.DefinitionType)
+                throw new FrameworkConfigurationException($"Docker Function App identifier '{identifier}' was configured by multiple definitions.");
 
             return;
         }

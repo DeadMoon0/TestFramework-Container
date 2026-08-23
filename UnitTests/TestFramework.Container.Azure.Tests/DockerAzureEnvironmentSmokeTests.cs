@@ -14,6 +14,7 @@ using TestFramework.Azure.StorageAccount.Blob;
 using TestFramework.Azure.StorageAccount.Table;
 using TestFramework.Container.Azure;
 using TestFramework.Container.Azure.FunctionApp;
+using TestFramework.Container.Sources;
 using TestFramework.Container.Azure.ServiceBusFunctionApp;
 using TestFramework.Config.Builder.InstanceBuilder;
 using TestFramework.Core.Environment;
@@ -101,9 +102,14 @@ public class DockerAzureEnvironmentSmokeTests
             => ConfigureDedicatedFunctionAppServiceBusTopology(builder);
     }
 
-    internal sealed class SmokeFunctionAppDefinition : DockerFunctionAppDefinition<LocalFunctionAppSmokeFunction>
+    internal sealed class SmokeFunctionAppDefinition : DockerFunctionAppDefinition
     {
         public override FunctionAppIdentifier Identifier => "func";
+
+        // Published on the host, because the payload is mounted into the Functions host image.
+        public override ContainerSource Source =>
+            ContainerSource.Project("../TestFramework.Container.Azure.FunctionApp/TestFramework.Container.Azure.FunctionApp.csproj")
+                .BuiltOnHost();
 
         protected override void Configure(DockerFunctionAppBuilder builder)
         {
@@ -114,9 +120,13 @@ public class DockerAzureEnvironmentSmokeTests
         }
     }
 
-    internal sealed class SmokeServiceBusFunctionAppDefinition : DockerFunctionAppDefinition<LocalServiceBusFunctionAppSmokeFunction>
+    internal sealed class SmokeServiceBusFunctionAppDefinition : DockerFunctionAppDefinition
     {
         public override FunctionAppIdentifier Identifier => "func-sb";
+
+        public override ContainerSource Source =>
+            ContainerSource.Project("../TestFramework.Container.Azure.ServiceBusFunctionApp/TestFramework.Container.Azure.ServiceBusFunctionApp.csproj")
+                .BuiltOnHost();
 
         protected override void Configure(DockerFunctionAppBuilder builder)
         {

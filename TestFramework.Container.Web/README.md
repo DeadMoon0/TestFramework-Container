@@ -163,7 +163,6 @@ Other sources are available where a project is not the right answer:
 ```csharp
 ContainerSource.Image("orders-api:ci-1234")            // a pipeline already built it
 ContainerSource.Directory(@"C:\out\orders-api")        // this exact folder
-ContainerSource.EntryPoint<OrdersApiMarker>()          // the older inferring road
 ```
 
 Whatever the source, the plan is written to the run log before anything starts and kept on the
@@ -242,6 +241,102 @@ Two things worth knowing:
   and fails immediately with the container log if they differ.
 - **The image follows `latest`.** Its publisher does not tag releases; pin it with
   `UseStubImage(...)` when a run has to be reproducible over time.
+
+## Serving The Frontend Too
+
+A site is the application a browser loads: an Angular build, any other npm framework's output, or a
+plain folder of pages. Nothing framework-specific is baked into the container kind — a fixed nginx
+image gets the payload copied in, and the `Source` only says where that payload comes from:
+
+```csharp
+internal sealed class ShopSiteDefinition : DockerSiteDefinition
+{
+    public override SiteIdentifier Identifier => "shop";   // the same string browser steps use
+
+    public override SiteSource Source =>
+        SiteSource.NpmProject("../../Shop.Frontend");       // npm run build, dist probed by convention
+
+    protected override void Configure(DockerSiteBuilder builder) => builder
+        .ProxyApi<OrdersApiDefinition>("/api");
+}
+
+DockerWebEnvironment.For<SalesSqlDefinition>()
+    .Include<OrdersApiDefinition>()
+    .Include<ShopSiteDefinition>();
+```
+
+The site publishes its host address into the `Site` configuration store, so a browser timeline
+resolves it by identifier like every other resource — and a deployed site is the same identifier
+with a `Site:shop:BaseUrl` entry instead of a container.
+
+### Where the payload comes from
+
+| Source | Build environment needed |
+|---|---|
+| `SiteSource.Directory(@"..\dist\shop\browser")` | none — an already-built folder |
+| `SiteSource.NpmProject("../Shop.Frontend")` | node + npm on the host; `ng`/`vite` come from `node_modules` |
+| `...NpmProject(...).BuiltInContainer()` | only Docker — sources are copied into a node image, `npm ci` and the build run there, the output ships |
+| `SiteSource.ContainerBuild("../docs", "hugomods/hugo", ["hugo"]).WithDistPath("public")` | the named build image; any toolchain |
+| `SiteSource.Image("shop-ui:ci-1234")` | none — runs as-is, with whatever server it bakes in |
+
+The plan is stated and logged before anything happens, exactly like an application's. An npm project
+without a declared `WithDistPath(...)` is probed by convention (`dist/*/browser` first, the Angular
+layout) — and exactly one answer is accepted; two plausible output folders are an error, not a guess.
+
+### How the browser reaches the API
+
+The SPA either calls a **relative** path, or reads an **absolute** address from its runtime
+configuration. Both are declared on the definition, and they write different addresses on purpose:
+
+| App style | Declaration | Address written | CORS |
+|---|---|---|---|
+| calls `/api` relative | `.ProxyApi<OrdersApiDefinition>("/api")` | network URL, inside the generated nginx config | none needed — same origin, like production |
+| reads `apiBaseUrl` from config | `.ConfigJsonApi<OrdersApiDefinition>("apiBaseUrl")` | host URL, in the generated `assets/config.json` | the application must allow it |
+
+The proxied road works because the browser resolves a relative path against the page's own origin —
+the site container — whose nginx forwards it over the Docker network. The browser never needs a
+route to the API container at all.
+
+A target may also be named by identifier instead of type: `.ProxyApi("orders", "/api")` resolves to
+the declared container when the environment runs one, and to the `Api:orders:BaseUrl` configuration
+entry when the backend is deployed elsewhere. Same store either way, so moving the API between the
+two is one `Include<>()`.
+
+### Runtime configuration of any shape
+
+The declarative bindings write into one JSON file (default `assets/config.json`), **merging over**
+the file the payload ships: a checked-in `{ "apiBaseUrl": null, "theme": "dark" }` keeps `theme`.
+For every other shape — `env.js`, `window.__env`, a patched page — one composer covers it:
+
+```csharp
+.WithConfigFile("env.js", ctx =>
+    $"window.__env = {{ ordersApi: \"{ctx.Addresses.ApiBaseUrl("orders")}\" }};")
+
+// or patch one field of the shipped JSON without rebuilding the rest:
+.WithConfigFile("assets/config.json", ctx =>
+    ctx.MergeJson(("apiBaseUrl", ctx.Addresses.ApiBaseUrl("orders").ToString())))
+```
+
+Every generated file — the nginx config included — is logged verbatim and kept on the component
+state, so a test can state what was actually served:
+
+```csharp
+SiteComponentState state = run.EnvironmentContext.GetState<SiteComponentState>(DockerWebEnvironment.SiteComponentId);
+RunningSite site = state.GetRequiredSite("shop");
+// site.BaseUrl, site.NginxConfig, site.GeneratedFiles["assets/config.json"], site.Plan
+```
+
+### What the server does for a SPA
+
+Deep links fall back to `index.html` by default (`WithoutSpaFallback()` turns that off for a
+classic multi-page folder), `location` blocks carry generated comments naming the `proxy_pass`
+trailing-slash rule they encode, and `WithNginxServerDirective(...)` appends anything no declaration
+covers, verbatim. An `Image` source runs as-is: declaring proxy routes or fallback changes against
+it fails fast, because its server configuration is baked in.
+
+Sites are per-run for the same reason applications are: a reused container would serve the previous
+build and proxy to containers that are gone. Linux containers are required, as they already are for
+SQL Server and the stub server.
 
 ## Two Addresses, Again
 

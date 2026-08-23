@@ -1,6 +1,7 @@
 using TestFramework.Azure;
 using TestFramework.Azure.Identifier;
 using TestFramework.Container.Azure;
+using TestFramework.Container.Sources;
 using TestFramework.Core.Environment;
 using System;
 using System.Collections.Generic;
@@ -57,7 +58,7 @@ public class DockerAzurePersistentRootMapperTests
     [Fact]
     public void Map_FunctionAppRequirement_OnlyKeepsTheEmulatorsItBindsTo()
     {
-        DockerAzureEnvironment environment = DockerAzureEnvironment.ForFunctionAppWithStorage<StorageOnlyFunctionApp, StorageOnlyDefinition>(new FunctionAppIdentifier("storage-only-app"));
+        DockerAzureEnvironment environment = DockerAzureEnvironment.ForFunctionAppWithStorage<StorageOnlyDefinition>(new FunctionAppIdentifier("storage-only-app"), ContainerSource.Directory(AppContext.BaseDirectory));
 
         IReadOnlyCollection<EnvComponentIdentifier> result = DockerAzurePersistentRootMapper.Map(
             environment,

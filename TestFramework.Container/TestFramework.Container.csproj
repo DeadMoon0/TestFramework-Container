@@ -1,11 +1,11 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
 		<TargetFrameworks>net8.0;net10.0</TargetFrameworks>
 		<GenerateDocumentationFile>true</GenerateDocumentationFile>
 		<IsTestProject>false</IsTestProject>
 		<Title>TestFramework.Container</Title>
-		<Version>0.2.1</Version>
+		<Version>0.3.0</Version>
 		<Authors>DeadMoon0</Authors>
 		<Product>TestFramework</Product>
 		<Description>Shared Docker building blocks for TestFramework container environments: declaring where an application comes from and building it, network creation, host and network endpoint addressing, readiness waits and container log capture.</Description>
@@ -17,8 +17,7 @@
 		<PackageTags>Test;UnitTest;IntegrationTest;Framework;Timeline;Docker</PackageTags>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<Copyright>Copyright (c) DeadMoon0 2026</Copyright>
-		<PackageReleaseNotes>Rebuilt against TestFramework.Core 0.3.0. No API change in this package.
-Core 0.3.0 changes what teardown does: an artifact a run declared, registered or discovered is deleted unless the declaring step chains MarkReadonly(). This package produces no artifacts of its own, so nothing here behaves differently - but a timeline using it inherits that change through whichever package supplies its artifacts.</PackageReleaseNotes>
+		<PackageReleaseNotes>BREAKING - the entry-point source is gone: ContainerSource.EntryPoint, EntryPointContainerSource and ContainerSourceKind.EntryPoint no longer exist, and ContainerOutputResolver keeps only ResolveTargetFramework. Everything a container ships is declared - ContainerSource.Project(...), .Image(...) or .Directory(...) - instead of being inferred from where an assembly was loaded. Replace marker-type definitions with a declared project source.</PackageReleaseNotes>
 	</PropertyGroup>
 
 	<ItemGroup>

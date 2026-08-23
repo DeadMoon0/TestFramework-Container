@@ -10,7 +10,7 @@
 
 <package_scope>
     Covers DockerAzureEnvironment, DockerAzureDefinition-based composition, Docker-backed Azurite, Cosmos emulator, SQL Server, Service Bus emulator, environment component resolution, connection-string rewriting, and smoke-test usage patterns.
-    Covers DockerWebEnvironment: DockerSqlDefinition with model-derived schema and reset modes, DockerApiDefinition with a declared ContainerSource, StubDefinition served from a container, and the two addresses every resource has.
+    Covers DockerWebEnvironment: DockerSqlDefinition with model-derived schema and reset modes, DockerApiDefinition with a declared ContainerSource, StubDefinition served from a container, DockerSiteDefinition serving a static frontend (any SPA build or plain pages) from nginx with declared proxy routes and generated runtime config, and the two addresses every resource has.
     Covers the shared building blocks: ContainerSource and its plan, the three build strategies, the offline package feed, readiness waits, log capture and Docker host normalisation.
 </package_scope>
 
@@ -57,18 +57,22 @@
     - DockerStorageDefinition
     - DockerCosmosDefinition<T>
     - DockerServiceBusDefinition
-    - DockerFunctionAppDefinition<T>
+    - DockerFunctionAppDefinition with a declared ContainerSource Source (project sources publish on the host: .BuiltOnHost())
     - DockerWebEnvironment.For<TDefinition>().Include<TDefinition>().IncludeStub<TStub>()
     - DockerWebEnvironment.UseSqlImage|UseSqlPassword|UseSqlMemoryLimit|UseStubImage(...)
     - DockerSqlDefinition with DockerSqlBuilder: .WithDatabase(...), .WithSchemaFromModels<T...>(), .WithSchemaScript(...), .WithResetScript(...), .WithResetMode(SqlResetMode.None|RunResetScript|RecreateDatabase)
     - DockerApiDefinition with ContainerSource Source and DockerApiBuilder: .WithEnvironmentName(...), .WithHealthPath(...)|.WithoutHealthCheck(), .WithSetting(...), .WithEnvironmentVariable(...), .UseSql<T>(settingPath), .UseStub<T>(settingPath)
-    - ContainerSource.Image|Project|Directory|EntryPoint<T>; project modifiers .BuiltAsImage()|.BuiltOnHost()|.BuiltInContainer(), .WithTargetFramework(...), .WithConfiguration(...), .WithRuntimeImage(...), .WithSdkImage(...), .WithContext(...)
+    - DockerSiteDefinition with SiteSource Source and DockerSiteBuilder: .WithImage(...)|.WithPort(...)|.WithReadinessPath(...)|.WithReadinessTimeout(...)|.WithoutSpaFallback(), .ProxyApi<T>(path, stripPrefix)|.ProxyApi(id, path)|.ProxyStub<T>(path), .WithNginxServerDirective(...), .ConfigJsonApi<T>(jsonPath)|.ConfigJsonApi(id, jsonPath)|.ConfigJsonStub<T>(jsonPath)|.WithConfigJsonValue(...)|.WithConfigJsonPath(...), .WithConfigFile(path, ctx => ...) with ctx.Addresses.ApiBaseUrl(id) and ctx.MergeJson((path, value))
+    - SiteSource.Image|Directory|NpmProject(.BuiltOnHost()|.BuiltInContainer(nodeImage)|.WithBuildScript(...)|.WithDistPath(...)|.WithoutInstall()|.WithBuildTimeout(...))|ContainerBuild(dir, image, command).WithDistPath(...)
+    - ContainerSource.Image|Project|Directory; project modifiers .BuiltAsImage()|.BuiltOnHost()|.BuiltInContainer(), .WithTargetFramework(...), .WithConfiguration(...), .WithRuntimeImage(...), .WithSdkImage(...), .WithContext(...)
     - ContainerSourceResolver.PlanAsync(source, ct) -> ContainerSourcePlan; plan.ToLogLines(identifier)
     - ContainerImageBuilder.BuildAsync(plan, identifier, logger, ct)
-    - State: SqlServerComponentState.GetRequiredDatabase(id), ApiComponentState.GetRequiredApi(id), StubComponentState.GetRequiredStub(id)
+    - State: SqlServerComponentState.GetRequiredDatabase(id), ApiComponentState.GetRequiredApi(id), StubComponentState.GetRequiredStub(id), SiteComponentState.GetRequiredSite(id) with BaseUrl, NginxConfig and GeneratedFiles
+    - Network aliases on the environment's network: sqlserver, api-{id}, stub-{id}, site-{id}; nginx proxy routes target api-{id}/stub-{id}
+    - A browser step's own requirement kind "ui.webapp" maps to the site component, so the site identifier IS the web-app identifier
     - ContainerEndpoints.HostEndpoint|NetworkEndpoint|HostSqlConnectionString|NetworkSqlConnectionString
     - ContainerReadiness.WaitForHttpAsync|WaitForHttpAnswerAsync|WaitForSqlAsync|WaitForSqlStatementAsync
-    - ContainerOutputResolver.Resolve|ResolveFrom|ResolveProjectOutput|ResolveTargetFramework
+    - ContainerOutputResolver.ResolveTargetFramework
     - ProjectQuery.ReadAsync|ResolveCommonRoot, OfflineFeed.CreateAsync, DockerfileGenerator, ContainerDockerHost.EnsureConfigured
     Component identifiers surfaced by the environment:
     - DockerAzureEnvironment.AzuriteComponentId

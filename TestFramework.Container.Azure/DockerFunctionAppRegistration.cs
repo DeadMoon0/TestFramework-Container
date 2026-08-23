@@ -10,10 +10,9 @@ namespace TestFramework.Container.Azure;
 /// </summary>
 public sealed class DockerFunctionAppRegistration
 {
-    private DockerFunctionAppRegistration(string identifier, Type? functionType, ContainerSource source)
+    private DockerFunctionAppRegistration(string identifier, ContainerSource source)
     {
         Identifier = identifier;
-        FunctionType = functionType;
         Source = source;
     }
 
@@ -21,15 +20,6 @@ public sealed class DockerFunctionAppRegistration
     /// The identifier the environment and the configuration store share.
     /// </summary>
     public string Identifier { get; }
-
-    /// <summary>
-    /// A type from the Function App assembly, when the payload is described by one.
-    /// </summary>
-    /// <remarks>
-    /// Null for a Function App that declares its <see cref="Source"/> as a project or a directory
-    /// instead, which needs no reference to the application from the test project at all.
-    /// </remarks>
-    public Type? FunctionType { get; }
 
     /// <summary>
     /// Where the payload mounted into the Functions host comes from.
@@ -54,29 +44,26 @@ public sealed class DockerFunctionAppRegistration
     internal Dictionary<string, string> AdditionalSettings { get; } = [];
 
     /// <summary>
-    /// Registers a Function App described by a type from its assembly.
+    /// Registers a Function App served from a declared source.
     /// </summary>
-    /// <typeparam name="TFunctionApp">A type from the Function App assembly.</typeparam>
     /// <param name="identifier">The identifier the configuration store uses.</param>
+    /// <param name="source">Where the payload mounted into the Functions host comes from.</param>
     /// <param name="configure">Optional extra registration settings.</param>
-    public static DockerFunctionAppRegistration Create<TFunctionApp>(string identifier = "Default", Action<Builder>? configure = null)
-        => Create(identifier, typeof(TFunctionApp), ContainerSource.EntryPoint(typeof(TFunctionApp)), configure);
-
-    internal static DockerFunctionAppRegistration Create(string identifier, Type? functionType, ContainerSource source, Action<Builder>? configure = null)
+    public static DockerFunctionAppRegistration Create(string identifier, ContainerSource source, Action<Builder>? configure = null)
     {
         ArgumentNullException.ThrowIfNull(source);
 
-        DockerFunctionAppRegistration registration = new(identifier, functionType, source);
+        DockerFunctionAppRegistration registration = new(identifier, source);
         Builder builder = new(registration);
         configure?.Invoke(builder);
         return registration;
     }
 
     /// <summary>
-    /// Describes the payload for log and error output, whether or not a type backs it.
+    /// Describes the payload for log and error output.
     /// </summary>
     internal string DescribeSource()
-        => FunctionType is { } type ? $"type '{type.FullName ?? type.Name}'" : Source.ToString() ?? Source.GetType().Name;
+        => Source.ToString() ?? Source.GetType().Name;
 
     /// <summary>
     /// Optional registration settings.

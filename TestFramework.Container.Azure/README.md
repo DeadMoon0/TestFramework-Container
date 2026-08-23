@@ -176,9 +176,13 @@ public sealed class ProcessingReply : DockerServiceBusDefinition
 	}
 }
 
-public sealed class DefaultFunctionApp : DockerFunctionAppDefinition<AnalysisProcessor>
+public sealed class DefaultFunctionApp : DockerFunctionAppDefinition
 {
 	public override FunctionAppIdentifier Identifier => "Default";
+
+	// The payload is mounted into the Functions host, so a project source publishes on the host.
+	public override ContainerSource Source =>
+		ContainerSource.Project("../AnalysisProcessor/AnalysisProcessor.csproj").BuiltOnHost();
 
 	protected override void Configure(DockerFunctionAppBuilder builder)
 	{
@@ -250,9 +254,12 @@ public sealed class ReplyBus : DockerServiceBusDefinition
 	}
 }
 
-public sealed class ReplyConsumerFunctionApp : DockerFunctionAppDefinition<ReplyConsumer>
+public sealed class ReplyConsumerFunctionApp : DockerFunctionAppDefinition
 {
 	public override FunctionAppIdentifier Identifier => "func";
+
+	public override ContainerSource Source =>
+		ContainerSource.Project("../ReplyConsumer/ReplyConsumer.csproj").BuiltOnHost();
 
 	protected override void ConfigureDependencies(DockerAzureDependencyBuilder dependencies)
 	{

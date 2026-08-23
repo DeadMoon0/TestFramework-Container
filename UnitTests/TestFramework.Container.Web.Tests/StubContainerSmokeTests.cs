@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Http;
 using System.Threading.Tasks;
 using TestFramework.Config;
+using TestFramework.Container.Sources;
 using TestFramework.Container.Web.SampleApi;
 using TestFramework.Core.Timelines;
 using TestFramework.Core.Timelines.Assertions;
@@ -55,9 +56,13 @@ public class StubContainerSmokeTests
                 .RespondJson(HttpStatusCode.Created, new { status = "captured" });
     }
 
-    private sealed class OrdersApiDefinition : DockerApiDefinition<SampleApiMarker>
+    private sealed class OrdersApiDefinition : DockerApiDefinition
     {
         public override ApiIdentifier Identifier => "orders";
+
+        public override ContainerSource Source =>
+            ContainerSource.Project("../TestFramework.Container.Web.SampleApi/TestFramework.Container.Web.SampleApi.csproj")
+                .WithTargetFramework(ContainerOutputResolver.ResolveTargetFramework(typeof(StubContainerSmokeTests).Assembly));
 
         protected override void Configure(DockerApiBuilder builder) => builder
             .WithHealthPath("/health")

@@ -94,7 +94,7 @@ internal sealed class ApiEnvComponent : WebEnvComponentBase
         foreach (StartedApi api in started)
         {
             Publish(configStore, api.Planned.Definition.Identifier, api.BaseUrl, api.Planned.Spec.HealthPath);
-            apis.Add(new RunningApi(api.Planned.Definition.Identifier, api.Container, api.BaseUrl, api.Planned.Plan, api.Planned.SettingsFileName, api.Planned.SettingsJson));
+            apis.Add(new RunningApi(api.Planned.Definition.Identifier, api.Container, api.BaseUrl, api.NetworkBaseUrl, api.Planned.Plan, api.Planned.SettingsFileName, api.Planned.SettingsJson));
             logger.LogInformation("API '{0}' is reachable at '{1}'.", api.Planned.Definition.Identifier, api.BaseUrl);
         }
 
@@ -126,20 +126,28 @@ internal sealed class ApiEnvComponent : WebEnvComponentBase
         }
     }
 
+    /// <summary>
+    /// The alias other containers on the environment's network reach an application by.
+    /// </summary>
+    /// <param name="identifier">The API identifier.</param>
+    internal static string NetworkAlias(string identifier) => $"api-{identifier}";
+
     private static async Task<StartedApi> StartApiAsync(PlannedApi planned, INetwork network, ScopedLogger logger, CancellationToken cancellationToken)
     {
-        IContainer container = BuildContainer(planned.Spec, planned.Plan, network, planned.SettingsFileName, planned.SettingsJson);
+        string alias = NetworkAlias(planned.Definition.Identifier);
+        IContainer container = BuildContainer(planned.Spec, planned.Plan, network, alias, planned.SettingsFileName, planned.SettingsJson);
         await StartAsync(container, planned.Definition, planned.Plan.Image ?? "(built from output)", logger, cancellationToken).ConfigureAwait(false);
 
         Uri baseUrl = ContainerEndpoints.HostEndpoint(container, planned.Spec.InternalPort);
+        Uri networkBaseUrl = ContainerEndpoints.NetworkEndpoint(alias, planned.Spec.InternalPort);
         await WaitForReadinessAsync(container, planned.Definition, planned.Spec, baseUrl, logger, cancellationToken).ConfigureAwait(false);
 
-        return new StartedApi(planned, container, baseUrl);
+        return new StartedApi(planned, container, baseUrl, networkBaseUrl);
     }
 
     private sealed record PlannedApi(DockerApiDefinition Definition, DockerApiSpec Spec, ContainerSourcePlan Plan, string SettingsFileName, string SettingsJson);
 
-    private sealed record StartedApi(PlannedApi Planned, IContainer Container, Uri BaseUrl);
+    private sealed record StartedApi(PlannedApi Planned, IContainer Container, Uri BaseUrl, Uri NetworkBaseUrl);
 
     private static void DeletePublishOutput(string directory, ScopedLogger logger)
     {
@@ -183,6 +191,7 @@ internal sealed class ApiEnvComponent : WebEnvComponentBase
         DockerApiSpec spec,
         ContainerSourcePlan plan,
         INetwork network,
+        string networkAlias,
         string settingsFileName,
         string settingsJson)
     {
@@ -191,6 +200,7 @@ internal sealed class ApiEnvComponent : WebEnvComponentBase
 
         ContainerBuilder builder = new ContainerBuilder(image)
             .WithNetwork(network)
+            .WithNetworkAliases(networkAlias)
             .WithPortBinding(spec.InternalPort, true)
             .WithCreateParameterModifier(ContainerPortBinding.Apply)
             .WithWorkingDirectory(DockerWebDefaults.ApiRoot)

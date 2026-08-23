@@ -31,7 +31,6 @@ public static class ContainerSourceResolver
         {
             ImageContainerSource image => new ContainerSourcePlan { Kind = ContainerSourceKind.Image, Image = image.ImageReference },
             DirectoryContainerSource directory => PlanDirectory(directory),
-            EntryPointContainerSource entryPoint => PlanEntryPoint(entryPoint),
             ProjectContainerSource project => await PlanProjectAsync(project, cancellationToken).ConfigureAwait(false),
             _ => throw new FrameworkConfigurationException($"The container source '{source.GetType().Name}' is not supported."),
         };
@@ -53,27 +52,6 @@ public static class ContainerSourceResolver
             Derivations = assembly is null
                 ? ["no runtime configuration was found, so the entry assembly is unknown"]
                 : [$"entry assembly from the runtime configuration beside it"],
-        };
-    }
-
-    private static ContainerSourcePlan PlanEntryPoint(EntryPointContainerSource source)
-    {
-        ContainerOutput output = ContainerOutputResolver.ResolveProjectOutput(source.EntryPointType);
-
-        return new ContainerSourcePlan
-        {
-            Kind = ContainerSourceKind.EntryPoint,
-            TargetFramework = output.TargetFramework,
-            OutputDirectory = output.OutputDirectory,
-            AssemblyFileName = output.AssemblyFileName,
-            BuiltAtUtc = output.AssemblyLastWriteTimeUtc,
-            FallbackReason = output.UsedFallbackOutput ? output.FallbackReason ?? "a fallback output was used" : null,
-            Derivations =
-            [
-                $"project from the loaded assembly of '{source.EntryPointType.Name}'",
-                $"output from the owning project at '{output.ProjectDirectory}'",
-                output.UsedFallbackOutput ? output.FallbackReason ?? "a fallback output was used" : "framework from the assembly's target framework attribute",
-            ],
         };
     }
 

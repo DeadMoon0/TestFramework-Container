@@ -43,7 +43,7 @@ Examples:
 - `DockerCosmosDefinition<TDocument>`
 - `DockerSqlDefinition`
 - `DockerServiceBusDefinition`
-- `DockerFunctionAppDefinition<TFunctionApp>`
+- `DockerFunctionAppDefinition`
 - `DockerAzureInfrastructureDefinition`
 
 The important rule is: one definition describes one realized component identity.
@@ -87,9 +87,12 @@ It no longer owns the main dependency or resource-binding story.
 Typical Function App definition:
 
 ```csharp
-public sealed class DefaultFunctionApp : DockerFunctionAppDefinition<AnalysisProcessor>
+public sealed class DefaultFunctionApp : DockerFunctionAppDefinition
 {
 	public override FunctionAppIdentifier Identifier => "Default";
+
+	public override ContainerSource Source =>
+		ContainerSource.Project("../AnalysisProcessor/AnalysisProcessor.csproj").BuiltOnHost();
 
 	protected override void Configure(DockerFunctionAppBuilder builder)
 	{
@@ -167,9 +170,12 @@ public sealed class ReplyBus : DockerServiceBusDefinition
 	}
 }
 
-public sealed class ReplyConsumer : DockerFunctionAppDefinition<ReplyFunctions>
+public sealed class ReplyConsumer : DockerFunctionAppDefinition
 {
 	public override FunctionAppIdentifier Identifier => "func";
+
+	public override ContainerSource Source =>
+		ContainerSource.Project("../ReplyFunctions/ReplyFunctions.csproj").BuiltOnHost();
 
 	protected override void ConfigureDependencies(DockerAzureDependencyBuilder dependencies)
 	{
@@ -259,7 +265,7 @@ For new code, the intended composition flow is:
 
 1. Create small named definitions for each resource.
 2. Let each definition own its identifier.
-3. Use `DockerFunctionAppDefinition<TFunctionApp>` as the root when a hosted Function App is the main workload.
+3. Use `DockerFunctionAppDefinition` with a declared `ContainerSource` as the root when a hosted Function App is the main workload.
 4. Use contracts when multiple compatible providers could otherwise overlap.
 5. Add infrastructure overrides only when the stack needs them.
 6. Let artifacts, requirements, dependency traversal, and contract binding decide what activates.

@@ -13,25 +13,13 @@ namespace TestFramework.Container.Web;
 /// <summary>
 /// Declares an application served by a container the environment starts.
 /// </summary>
-/// <typeparam name="TEntryPoint">
-/// Any type from the application assembly. It names the assembly whose build output is shipped, so
-/// a public marker type in the application project is the least intrusive choice: the generated
-/// <c>Program</c> of a minimal-hosting application is internal and cannot be used here.
-/// </typeparam>
-/// <remarks>
-/// Prefer deriving from <see cref="DockerApiDefinition"/> and declaring
-/// <see cref="ContainerSource.Project"/>, which needs no marker type and no reference from the test
-/// project to the application.
-/// </remarks>
 /// <example>
 /// <code>
-/// // in the application project
-/// public sealed class OrdersApiMarker;
-///
-/// // in the test project
-/// internal sealed class OrdersApiDefinition : DockerApiDefinition&lt;OrdersApiMarker&gt;
+/// internal sealed class OrdersApiDefinition : DockerApiDefinition
 /// {
 ///     public override ApiIdentifier Identifier =&gt; "orders";
+///
+///     public override ContainerSource Source =&gt; ContainerSource.Project("../OrdersApi/OrdersApi.csproj");
 ///
 ///     protected override void Configure(DockerApiBuilder builder) =&gt; builder
 ///         .WithHealthPath("/health")
@@ -39,21 +27,6 @@ namespace TestFramework.Container.Web;
 /// }
 /// </code>
 /// </example>
-public abstract class DockerApiDefinition<TEntryPoint> : DockerApiDefinition
-    where TEntryPoint : class
-{
-    /// <inheritdoc />
-    /// <remarks>
-    /// Inferring the application from a type requires the test project to reference it and guesses
-    /// the output directory from where the assembly was loaded. Declaring
-    /// <see cref="ContainerSource.Project"/> instead needs neither.
-    /// </remarks>
-    public override ContainerSource Source => ContainerSource.EntryPoint<TEntryPoint>();
-}
-
-/// <summary>
-/// Declares an application served by a container the environment starts.
-/// </summary>
 public abstract class DockerApiDefinition : DockerWebDefinition
 {
     /// <summary>

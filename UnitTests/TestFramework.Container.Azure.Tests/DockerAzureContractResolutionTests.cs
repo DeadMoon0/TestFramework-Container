@@ -1,5 +1,6 @@
 using TestFramework.Azure.Identifier;
 using TestFramework.Container.Azure;
+using TestFramework.Container.Sources;
 using TestFramework.Container.Azure.Contracts;
 using TestFramework.Core.Environment;
 using TestFramework.Core.Exceptions;
@@ -62,9 +63,12 @@ public class DockerAzureContractResolutionTests
         }
     }
 
-    private sealed class ContractFunctionAppDefinition : DockerFunctionAppDefinition<DockerAzureContractResolutionTests>
+    private sealed class ContractFunctionAppDefinition : DockerFunctionAppDefinition
     {
         public override FunctionAppIdentifier Identifier => "func";
+
+        // Never started: the source only has to be declarable, and a directory that exists is.
+        public override ContainerSource Source => ContainerSource.Directory(AppContext.BaseDirectory);
 
         protected override void ConfigureDependencies(DockerAzureDependencyBuilder dependencies)
         {
@@ -86,9 +90,12 @@ public class DockerAzureContractResolutionTests
         public override ServiceBusIdentifier Identifier => "bus";
     }
 
-    private sealed class ExclusiveFunctionAppDefinitionA : DockerFunctionAppDefinition<DockerAzureContractResolutionTests>
+    private sealed class ExclusiveFunctionAppDefinitionA : DockerFunctionAppDefinition
     {
         public override FunctionAppIdentifier Identifier => "func-a";
+
+        // Never started: the source only has to be declarable, and a directory that exists is.
+        public override ContainerSource Source => ContainerSource.Directory(AppContext.BaseDirectory);
 
         protected override void ConfigureDependencies(DockerAzureDependencyBuilder dependencies)
         {
@@ -96,9 +103,12 @@ public class DockerAzureContractResolutionTests
         }
     }
 
-    private sealed class ExclusiveFunctionAppDefinitionB : DockerFunctionAppDefinition<DockerAzureContractResolutionTests>
+    private sealed class ExclusiveFunctionAppDefinitionB : DockerFunctionAppDefinition
     {
         public override FunctionAppIdentifier Identifier => "func-b";
+
+        // Never started: the source only has to be declarable, and a directory that exists is.
+        public override ContainerSource Source => ContainerSource.Directory(AppContext.BaseDirectory);
 
         protected override void ConfigureDependencies(DockerAzureDependencyBuilder dependencies)
         {

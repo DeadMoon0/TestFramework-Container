@@ -13,6 +13,7 @@ namespace TestFramework.Container.Web;
 /// <param name="Identifier">The API identifier it serves.</param>
 /// <param name="Container">The running container.</param>
 /// <param name="BaseUrl">The address the test process reaches it at.</param>
+/// <param name="NetworkBaseUrl">The address another container on the environment's network reaches it at.</param>
 /// <param name="Plan">What was done to get the application into the container.</param>
 /// <param name="SettingsFileName">The name of the generated settings file.</param>
 /// <param name="SettingsJson">The exact configuration the application was given.</param>
@@ -24,6 +25,7 @@ public sealed record RunningApi(
     string Identifier,
     IContainer Container,
     Uri BaseUrl,
+    Uri NetworkBaseUrl,
     ContainerSourcePlan Plan,
     string SettingsFileName,
     string SettingsJson);

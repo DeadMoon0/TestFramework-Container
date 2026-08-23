@@ -1,6 +1,7 @@
 using TestFramework.Azure;
 using TestFramework.Azure.Identifier;
 using TestFramework.Container.Azure;
+using TestFramework.Container.Sources;
 using TestFramework.Core.Environment;
 using System;
 using System.Collections.Generic;
@@ -60,7 +61,7 @@ public class AzureResetEnvComponentTests
     [Fact]
     public void FunctionAppComponent_DependsOnTheResetSoItNeverStartsAgainstUnpurgedStores()
     {
-        DockerAzureEnvironment environment = DockerAzureEnvironment.ForFunctionAppWithStorage<ResetProbeFunctionApp, ResetProbeStorage>(new FunctionAppIdentifier("reset-probe-app"));
+        DockerAzureEnvironment environment = DockerAzureEnvironment.ForFunctionAppWithStorage<ResetProbeStorage>(new FunctionAppIdentifier("reset-probe-app"), ContainerSource.Directory(AppContext.BaseDirectory));
         environment.ResolveComponents([], [new(AzureEnvironmentResourceKinds.FunctionApp, "reset-probe-app")]);
 
         EnvComponent functionApp = environment.GetComponent(DockerAzureEnvironment.FunctionAppComponentId);

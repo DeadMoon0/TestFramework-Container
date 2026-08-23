@@ -22,9 +22,11 @@ public class DockerApiDefinitionTests
         protected override void Configure(DockerSqlBuilder builder) => builder.WithDatabase("SalesDb");
     }
 
-    private sealed class CompleteApiDefinition : DockerApiDefinition<SampleApiMarker>
+    private sealed class CompleteApiDefinition : DockerApiDefinition
     {
         public override ApiIdentifier Identifier => "orders";
+
+        public override ContainerSource Source => ContainerSource.Directory(AppContext.BaseDirectory);
 
         protected override void Configure(DockerApiBuilder builder) => builder
             .WithEnvironmentName("Testing")
@@ -34,18 +36,22 @@ public class DockerApiDefinitionTests
             .WithEnvironmentVariable("DOTNET_gcServer", "0");
     }
 
-    private sealed class CollidingApiDefinition : DockerApiDefinition<SampleApiMarker>
+    private sealed class CollidingApiDefinition : DockerApiDefinition
     {
         public override ApiIdentifier Identifier => "orders";
+
+        public override ContainerSource Source => ContainerSource.Directory(AppContext.BaseDirectory);
 
         protected override void Configure(DockerApiBuilder builder) => builder
             .WithSetting("ConnectionStrings:Sales", "hand-written")
             .UseSql<SalesSqlDefinition>("ConnectionStrings:Sales");
     }
 
-    private sealed class HealthlessApiDefinition : DockerApiDefinition<SampleApiMarker>
+    private sealed class HealthlessApiDefinition : DockerApiDefinition
     {
         public override ApiIdentifier Identifier => "orders";
+
+        public override ContainerSource Source => ContainerSource.Directory(AppContext.BaseDirectory);
 
         protected override void Configure(DockerApiBuilder builder) => builder.WithoutHealthCheck();
     }
@@ -62,15 +68,6 @@ public class DockerApiDefinitionTests
         Assert.Equal("0", spec.EnvironmentVariables["DOTNET_gcServer"]);
         Assert.Equal(["sales"], spec.SqlBindings.Select(binding => binding.SqlIdentifier.Identifier));
         Assert.Equal(["ConnectionStrings:Sales"], spec.SqlBindings.Select(binding => binding.SettingPath));
-    }
-
-    [Fact]
-    public void Source_OfAMarkerDefinition_IsTheEntryPointOfThatAssembly()
-    {
-        ContainerSource source = new CompleteApiDefinition().Source;
-
-        Assert.Equal(ContainerSourceKind.EntryPoint, source.Kind);
-        Assert.Equal(typeof(SampleApiMarker), Assert.IsType<EntryPointContainerSource>(source).EntryPointType);
     }
 
     [Fact]

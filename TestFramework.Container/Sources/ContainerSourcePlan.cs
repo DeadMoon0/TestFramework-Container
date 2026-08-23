@@ -81,13 +81,10 @@ public sealed record ContainerSourcePlan
     public IReadOnlyList<string> Derivations { get; init; } = [];
 
     /// <summary>
-    /// Why the preferred output was unusable, when a second candidate had to be shipped instead.
+    /// Why the preferred road was unusable, when a second one had to be taken instead -- an image
+    /// built from a locally cached base because the registry was unreachable, for example. Worth a
+    /// warning rather than a line in a derivation list.
     /// </summary>
-    /// <remarks>
-    /// Only an entry-point source can have one: it is the only kind whose output is discovered rather
-    /// than declared, and a fallback there means the plan is shipping something other than the project's
-    /// own build output. That is worth a warning rather than a line in a derivation list.
-    /// </remarks>
     public string? FallbackReason { get; init; }
 
     /// <summary>
@@ -125,8 +122,7 @@ public sealed record ContainerSourcePlan
     {
         ContainerSourceKind.Image => $"image {Image}",
         ContainerSourceKind.Project => $"project {ProjectPath} ({Strategy})",
-        ContainerSourceKind.Directory => $"directory {OutputDirectory}",
-        _ => $"entry point output {OutputDirectory}",
+        _ => $"directory {OutputDirectory}",
     };
 
     private static string Describe(ContainerBuildStrategy strategy) => strategy switch
