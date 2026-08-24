@@ -89,6 +89,12 @@ public static class ContainerImageBuilder
     /// is mounted rather than layered, and each environment deletes its own at teardown, so handing a
     /// second environment the first one's directory would hand it one that is about to be removed.
     /// The gate buys correctness here, not the rebuild that image reuse saves.
+    ///
+    /// The gate has two layers on purpose. The semaphore serializes the environments of this process;
+    /// the machine-wide lock behind it serializes the processes, because a multi-targeted test suite
+    /// runs one process per framework at the same time and each has its own semaphores. The second
+    /// layer is where a Function App suite died on CI: two test hosts published the same project at
+    /// once, and the worker SDK's nested build lost its deps file to the other process.
     /// </remarks>
     private static async Task<ContainerSourcePlan> PublishToDirectoryOnceAtATimeAsync(
         ContainerSourcePlan plan,
@@ -101,7 +107,10 @@ public static class ContainerImageBuilder
         await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            return await PublishToDirectoryAsync(plan, identifier, logger, cancellationToken).ConfigureAwait(false);
+            using (await EnterMachineWideAsync(plan, cancellationToken).ConfigureAwait(false))
+            {
+                return await PublishToDirectoryAsync(plan, identifier, logger, cancellationToken).ConfigureAwait(false);
+            }
         }
         finally
         {
@@ -145,17 +154,22 @@ public static class ContainerImageBuilder
             if (await TryReuseAsync(identity, plan, identifier, logger, cancellationToken).ConfigureAwait(false) is { } reused)
                 return reused;
 
-            ContainerSourcePlan built = plan.Strategy switch
+            // The same two-layer gate as the host publish: an SDK image build drives MSBuild over the
+            // same obj/ directory, and another test process may be doing the same right now.
+            using (await EnterMachineWideAsync(plan, cancellationToken).ConfigureAwait(false))
             {
-                ContainerBuildStrategy.SdkContainerPublish => await PublishImageAsync(plan, identifier, logger, cancellationToken).ConfigureAwait(false),
-                ContainerBuildStrategy.InContainer => await BuildInContainerAsync(plan, identifier, logger, cancellationToken).ConfigureAwait(false),
-                _ => throw new FrameworkConfigurationException($"The build strategy '{plan.Strategy}' is not supported."),
-            };
+                ContainerSourcePlan built = plan.Strategy switch
+                {
+                    ContainerBuildStrategy.SdkContainerPublish => await PublishImageAsync(plan, identifier, logger, cancellationToken).ConfigureAwait(false),
+                    ContainerBuildStrategy.InContainer => await BuildInContainerAsync(plan, identifier, logger, cancellationToken).ConfigureAwait(false),
+                    _ => throw new FrameworkConfigurationException($"The build strategy '{plan.Strategy}' is not supported."),
+                };
 
-            if (built.Image is { Length: > 0 })
-                BuiltImages[identity] = built;
+                if (built.Image is { Length: > 0 })
+                    BuiltImages[identity] = built;
 
-            return built;
+                return built;
+            }
         }
         finally
         {
@@ -209,6 +223,18 @@ public static class ContainerImageBuilder
     /// </remarks>
     private static SemaphoreSlim GateFor(ContainerSourcePlan plan)
         => BuildGates.GetOrAdd(plan.ProjectPath ?? string.Empty, _ => new SemaphoreSlim(1, 1));
+
+    /// <summary>
+    /// The cross-process layer of the project gate. Taken inside the semaphore, so lock order is the
+    /// same everywhere: this process first, then the machine.
+    /// </summary>
+    /// <param name="plan">The plan whose project is about to be built.</param>
+    /// <param name="cancellationToken">Cancels the waiting.</param>
+    /// <returns>The held lock, or nothing to hold for a plan without a project.</returns>
+    private static async Task<IDisposable?> EnterMachineWideAsync(ContainerSourcePlan plan, CancellationToken cancellationToken)
+        => plan.ProjectPath is { Length: > 0 } projectPath
+            ? await MachineWideProjectGate.EnterAsync(projectPath, cancellationToken).ConfigureAwait(false)
+            : null;
 
     /// <summary>
     /// The inputs that fully decide what an image built from this plan contains.

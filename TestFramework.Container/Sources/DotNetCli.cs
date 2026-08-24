@@ -123,6 +123,14 @@ public static class DotNetCli
         startInfo.Environment["MSBUILDDISABLENODEREUSE"] = "1";
         startInfo.Environment["DOTNET_CLI_UI_LANGUAGE"] = "en";
 
+        // The Roslyn compiler server outlives the publishes it compiles for, and it memory-maps every
+        // reference it reads. A Function App's generated WorkerExtensions build references the app's
+        // own obj/ assembly, so a lingering server from one publish holds that file exactly when the
+        // next publish's compiler wants to rewrite it - CS2012, "being used by another process", with
+        // no process visibly at fault. In-process compilation costs these second-long builds nothing
+        // measurable and leaves no handle behind.
+        startInfo.Environment["UseSharedCompilation"] = "false";
+
         // A Windows test host commonly carries DOCKER_HOST in the short named-pipe form. The SDK's
         // container tooling cannot use that form and reports it as a missing docker executable, so
         // the value is rewritten before it is inherited.

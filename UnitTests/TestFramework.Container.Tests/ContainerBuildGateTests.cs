@@ -112,6 +112,58 @@ public class ContainerBuildGateTests
     }
 
     /// <summary>
+    /// A second test process cannot be spawned cheaply, but it does not need to be: the machine-wide
+    /// gate is a file held open with no sharing, so holding that file the way another process would
+    /// IS being another process, as far as the gate can tell.
+    /// </summary>
+    [Fact]
+    public async Task TheMachineWideGateWaitsForWhoeverHoldsTheLockFile()
+    {
+        // Unique per run: the net8.0 and net10.0 test hosts execute this test at the same time, and a
+        // fixed path would make them contend on the very gate under test.
+        string projectPath = Path.Combine(Path.GetTempPath(), "gate-tests", Guid.NewGuid().ToString("N"), "Held.csproj");
+        string lockPath = MachineWideProjectGate.LockPathFor(projectPath);
+        Directory.CreateDirectory(Path.GetDirectoryName(lockPath)!);
+
+        using CancellationTokenSource timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+
+        // "Another process": the same no-sharing open the gate itself uses.
+        Task<IDisposable> waiting;
+        using (new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, bufferSize: 1))
+        {
+            waiting = MachineWideProjectGate.EnterAsync(projectPath, timeout.Token);
+
+            // Long enough that an EnterAsync that ignored the holder would have returned.
+            await Task.Delay(TimeSpan.FromSeconds(1), timeout.Token);
+            Assert.False(waiting.IsCompleted, "the gate must wait while another handle holds the lock file");
+        }
+
+        // The holder is gone; now the wait must end, and the lock must be really held afterwards.
+        using (IDisposable held = await waiting)
+        {
+            Assert.Throws<IOException>(() => new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, bufferSize: 1));
+        }
+    }
+
+    /// <summary>
+    /// Two different projects must never wait for each other - the parallelism worth keeping.
+    /// </summary>
+    [Fact]
+    public async Task TheMachineWideGateKeysOnTheProjectNotTheMachine()
+    {
+        string uniqueRun = Guid.NewGuid().ToString("N");
+        string first = Path.Combine(Path.GetTempPath(), "gate-tests", uniqueRun, "First.csproj");
+        string second = Path.Combine(Path.GetTempPath(), "gate-tests", uniqueRun, "Second.csproj");
+
+        Assert.NotEqual(MachineWideProjectGate.LockPathFor(first), MachineWideProjectGate.LockPathFor(second));
+
+        using CancellationTokenSource timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+
+        using IDisposable firstHeld = await MachineWideProjectGate.EnterAsync(first, timeout.Token);
+        using IDisposable secondHeld = await MachineWideProjectGate.EnterAsync(second, timeout.Token);
+    }
+
+    /// <summary>
     /// Builds a logger that writes nowhere, which is all this needs.
     /// </summary>
     /// <remarks>

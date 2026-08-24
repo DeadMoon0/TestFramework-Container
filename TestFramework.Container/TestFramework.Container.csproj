@@ -5,7 +5,7 @@
 		<GenerateDocumentationFile>true</GenerateDocumentationFile>
 		<IsTestProject>false</IsTestProject>
 		<Title>TestFramework.Container</Title>
-		<Version>0.3.0</Version>
+		<Version>0.3.1</Version>
 		<Authors>DeadMoon0</Authors>
 		<Product>TestFramework</Product>
 		<Description>Shared Docker building blocks for TestFramework container environments: declaring where an application comes from and building it, network creation, host and network endpoint addressing, readiness waits and container log capture.</Description>
@@ -17,7 +17,7 @@
 		<PackageTags>Test;UnitTest;IntegrationTest;Framework;Timeline;Docker</PackageTags>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<Copyright>Copyright (c) DeadMoon0 2026</Copyright>
-		<PackageReleaseNotes>BREAKING - the entry-point source is gone: ContainerSource.EntryPoint, EntryPointContainerSource and ContainerSourceKind.EntryPoint no longer exist, and ContainerOutputResolver keeps only ResolveTargetFramework. Everything a container ships is declared - ContainerSource.Project(...), .Image(...) or .Directory(...) - instead of being inferred from where an assembly was loaded. Replace marker-type definitions with a declared project source.</PackageReleaseNotes>
+		<PackageReleaseNotes>Host publishes and SDK image builds of one project are now serialized across processes, not only within one: a machine-wide lock backs the per-project gate, closing the WorkerExtensions build race a multi-targeted test suite hits when its frameworks run as parallel processes. Builds also run without the shared Roslyn compiler server, whose lingering reference handles could block the next publish of the same Function App.</PackageReleaseNotes>
 	</PropertyGroup>
 
 	<ItemGroup>
