@@ -1,3 +1,4 @@
+﻿using TestFramework.Core.Environment.Graph;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -146,11 +147,17 @@ public sealed class SiteAddressBook
 /// </summary>
 public sealed class SiteConfigFileContext
 {
-    internal SiteConfigFileContext(SiteAddressBook addresses, string? existingContent)
+    internal SiteConfigFileContext(SiteAddressBook addresses, string relativePath, string? existingContent)
     {
         Addresses = addresses;
+        RelativePath = relativePath;
         ExistingContent = existingContent;
     }
+
+    /// <summary>
+    /// Which file is being composed, relative to the payload. Named in anything that goes wrong with it.
+    /// </summary>
+    public string RelativePath { get; }
 
     /// <summary>
     /// The resolved, browser-facing addresses.
@@ -172,9 +179,9 @@ public sealed class SiteConfigFileContext
     public string MergeJson(params (string JsonPath, string Value)[] overrides)
     {
         ArgumentNullException.ThrowIfNull(overrides);
-        return SiteConfigFile.Compose(
-            ExistingContent,
-            overrides.ToDictionary(pair => pair.JsonPath, pair => pair.Value, StringComparer.OrdinalIgnoreCase));
+        return new JsonPathDocument(RelativePath).Compose(
+            overrides.ToDictionary(pair => pair.JsonPath, pair => pair.Value, StringComparer.OrdinalIgnoreCase),
+            ExistingContent);
     }
 }
 

@@ -1,9 +1,10 @@
+﻿using TestFramework.Core.Json;
+using Newtonsoft.Json.Linq;
+using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text.Json;
-using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 using TestFramework.Core.Exceptions;
@@ -138,36 +139,34 @@ public static class OfflineFeed
 
     private static void ReadAssets(string assetsFile, Dictionary<string, ResolvedPackage> packages, HashSet<string> packageFolders)
     {
-        JsonNode? root;
+        JToken? root;
         try
         {
-            root = JsonNode.Parse(File.ReadAllText(assetsFile));
+            root = WireJson.Parse(File.ReadAllText(assetsFile));
         }
         catch (JsonException exception)
         {
             throw new FrameworkConfigurationException($"The restore output '{assetsFile}' could not be read.", null, null, exception);
         }
 
-        if (root is not JsonObject assets)
+        if (root is not JObject assets)
             return;
 
         // The restore records where it put the packages, which is more reliable than assuming the
         // default cache location.
-        if (assets["packageFolders"] is JsonObject folders)
+        if (assets["packageFolders"] is JObject folders)
         {
-            foreach ((string folder, JsonNode? _) in folders)
+            foreach ((string folder, JToken? _) in folders)
                 packageFolders.Add(folder);
         }
 
-        if (assets["libraries"] is not JsonObject libraries)
+        if (assets["libraries"] is not JObject libraries)
             return;
 
-        foreach ((string key, JsonNode? entry) in libraries)
+        foreach ((string key, JToken? entry) in libraries)
         {
-            if (entry is not JsonObject library
-                || library["type"] is not JsonValue typeValue
-                || !typeValue.TryGetValue(out string? type)
-                || !string.Equals(type, "package", StringComparison.OrdinalIgnoreCase))
+            if (entry is not JObject library
+                || !string.Equals(library["type"]?.Value<string>(), "package", StringComparison.OrdinalIgnoreCase))
             {
                 continue;
             }

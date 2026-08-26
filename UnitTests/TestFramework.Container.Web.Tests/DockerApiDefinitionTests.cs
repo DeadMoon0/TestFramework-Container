@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using TestFramework.Container.Sources;
@@ -151,49 +151,27 @@ public class DockerApiDefinitionTests
 }
 
 /// <summary>
-/// Covers the file the application actually reads its configuration from.
+/// The one thing about an API's settings file that is this package's own: which file the host loads.
 /// </summary>
+/// <remarks>
+/// Composing the file was a copy of Core's <c>JsonPathDocument</c> - an API's settings, a site's
+/// configuration file and a function app's settings are the same problem three times - so the copy is
+/// gone and Core's suite covers the composing. What is left is the name, which only this package knows.
+///
+/// Deleting the copy did surface one real difference: this composer refused two paths where one nested
+/// inside the other, and Core's silently let the deeper one win. Core refuses it now too, so nothing was
+/// traded away for the deduplication.
+/// </remarks>
 public class ApiSettingsFileTests
 {
     [Fact]
-    public void Compose_NestsColonSeparatedPaths()
+    public void FileName_IsTheOneTheHostingEnvironmentLoads()
     {
-        string json = ApiSettingsFile.Compose(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["ConnectionStrings:Sales"] = "Data Source=sqlserver,1433",
-            ["Features:UseFakeClock"] = "true",
-            ["Logging:LogLevel:Default"] = "Debug",
-        });
-
-        Assert.Contains("\"ConnectionStrings\": {", json, StringComparison.Ordinal);
-        Assert.Contains("\"Sales\": \"Data Source=sqlserver,1433\"", json, StringComparison.Ordinal);
-        Assert.Contains("\"Default\": \"Debug\"", json, StringComparison.Ordinal);
+        Assert.Equal("appsettings.Testing.json", ApiSettingsFile.FileName("Testing"));
+        Assert.Equal("appsettings.Staging.json", ApiSettingsFile.FileName("Staging"));
     }
 
     [Fact]
-    public void Compose_IsStableSoTheFileReadsTheSameEveryRun()
-    {
-        Dictionary<string, string> first = new(StringComparer.OrdinalIgnoreCase) { ["B:One"] = "1", ["A:Two"] = "2" };
-        Dictionary<string, string> second = new(StringComparer.OrdinalIgnoreCase) { ["A:Two"] = "2", ["B:One"] = "1" };
-
-        Assert.Equal(ApiSettingsFile.Compose(first), ApiSettingsFile.Compose(second));
-    }
-
-    [Fact]
-    public void Compose_FailsWhenOnePathIsNestedInsideAnother()
-    {
-        Dictionary<string, string> settings = new(StringComparer.OrdinalIgnoreCase)
-        {
-            ["Features"] = "on",
-            ["Features:UseFakeClock"] = "true",
-        };
-
-        FrameworkConfigurationException exception = Assert.Throws<FrameworkConfigurationException>(() => ApiSettingsFile.Compose(settings));
-
-        Assert.Contains("Features", exception.Message, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void FileName_FollowsTheHostingEnvironment()
-        => Assert.Equal("appsettings.Testing.json", ApiSettingsFile.FileName("Testing"));
+    public void FileName_RefusesAnEnvironmentWithNoName()
+        => Assert.ThrowsAny<ArgumentException>(() => ApiSettingsFile.FileName(" "));
 }

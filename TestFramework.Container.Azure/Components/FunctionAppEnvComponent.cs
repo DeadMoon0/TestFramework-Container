@@ -1,3 +1,4 @@
+﻿using TestFramework.Core.Steps;
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Configurations;
 using DotNet.Testcontainers.Containers;
@@ -39,29 +40,29 @@ internal sealed class FunctionAppEnvComponent(DockerAzureEnvironment owner) : Do
     /// </remarks>
     public override IReadOnlyList<EnvComponentIdentifier> Dependencies => owner.GetFunctionAppComponentDependencies();
 
-    public override async Task<object?> CreateAsync(IEnvironmentProvider environment, IServiceProvider serviceProvider, VariableStore variableStore, ArtifactStore artifactStore, ScopedLogger logger, CancellationToken cancellationToken)
+    public override async Task<object?> CreateAsync(IEnvironmentProvider environment, RunContext context)
     {
         DockerAzureEnvironment dockerEnvironment = GetDockerEnvironment(environment);
         if (dockerEnvironment.UsedFunctionAppIdentifiers.Count == 0)
             return new FunctionAppComponentState([]);
 
-        ConfigStore<FunctionAppConfig>? functionStore = EnvComponentConfigStoreGuard.GetRequiredStore<FunctionAppConfig>(dockerEnvironment, serviceProvider, dockerEnvironment.UsedFunctionAppIdentifiers, "Function App environment setup");
+        ConfigStore<FunctionAppConfig>? functionStore = EnvComponentConfigStoreGuard.GetRequiredStore<FunctionAppConfig>(dockerEnvironment, context.Services, dockerEnvironment.UsedFunctionAppIdentifiers, "Function App environment setup");
         INetwork network = dockerEnvironment.GetRequiredRuntimeState<INetwork>(DockerAzureEnvironment.NetworkComponentId);
         DockerEndpointMap endpointMap = dockerEnvironment.GetEndpointMap();
 
-        dockerEnvironment.LogPendingResolutionSummary(logger);
+        dockerEnvironment.LogPendingResolutionSummary(context.Logger);
 
         // Preparation stays serial: it reads and seeds config stores, which are guarded on creation but
         // not on access, and it costs nothing next to a container start.
         List<PlannedFunctionApp> planned = [];
         foreach (string identifier in dockerEnvironment.UsedFunctionAppIdentifiers.OrderBy(x => x, StringComparer.Ordinal))
-            planned.Add(await PrepareFunctionAppAsync(dockerEnvironment, serviceProvider, identifier, logger, cancellationToken).ConfigureAwait(false));
+            planned.Add(await PrepareFunctionAppAsync(dockerEnvironment, context.Services, identifier, context.Logger, context.Deadline.Token).ConfigureAwait(false));
 
         IReadOnlyList<StartedFunctionApp> started = await ContainerStartCoordinator.StartAllAsync(
             planned,
-            (plan, token) => StartFunctionAppAsync(plan, network, endpointMap, logger, token),
+            (plan, token) => StartFunctionAppAsync(plan, network, endpointMap, context.Logger, token),
             result => result.Container,
-            cancellationToken).ConfigureAwait(false);
+            context.Deadline.Token).ConfigureAwait(false);
 
         // Publishing is a config-store write, so it happens once every start has settled.
         foreach (StartedFunctionApp app in started)
@@ -114,7 +115,6 @@ internal sealed class FunctionAppEnvComponent(DockerAzureEnvironment owner) : Do
     /// <param name="registration">The registration, which may have named an image itself.</param>
     /// <param name="plan">The carried-out source plan, which knows what the payload was built for.</param>
     /// <param name="identifier">The Function App identifier, for log and error output.</param>
-    /// <param name="logger">The scoped logger.</param>
     /// <exception cref="FrameworkConfigurationException">A declared image cannot run the payload.</exception>
     /// <remarks>
     /// A Functions host image carries exactly one .NET runtime. Mounting an application built for a
@@ -127,6 +127,7 @@ internal sealed class FunctionAppEnvComponent(DockerAzureEnvironment owner) : Do
     /// private or pinned image knows things this does not. What is checked is the one thing that can
     /// be read off both: the runtime version.
     /// </remarks>
+    /// <param name="logger">The run's logger.</param>
     private static string ResolveHostImage(
         DockerFunctionAppRegistration registration,
         ContainerSourcePlan plan,
@@ -249,20 +250,20 @@ internal sealed class FunctionAppEnvComponent(DockerAzureEnvironment owner) : Do
 
     private sealed record FunctionAppComponentState(IReadOnlyList<StartedFunctionApp> Apps);
 
-    public override async Task DeconstructAsync(object? state, IEnvironmentProvider environment, IServiceProvider serviceProvider, VariableStore variableStore, ArtifactStore artifactStore, ScopedLogger logger, CancellationToken cancellationToken)
+    public override async Task DeconstructAsync(object? state, IEnvironmentProvider environment, RunContext context)
     {
         if (state is not FunctionAppComponentState functionAppState)
             return;
 
         foreach (StartedFunctionApp app in functionAppState.Apps)
         {
-            await ContainerLogCapture.CaptureAsync(app.Container, $"Function App '{app.Identifier}'", logger, cancellationToken).ConfigureAwait(false);
+            await ContainerLogCapture.CaptureAsync(app.Container, $"Function App '{app.Identifier}'", context.Logger, context.Deadline.Token).ConfigureAwait(false);
             await app.Container.DisposeAsync().ConfigureAwait(false);
 
             // A publish this run made into the temp directory is the run's litter. A directory the
             // caller named, or a project's own build output, is not.
             if (app.Plan.Kind == ContainerSourceKind.Project && app.Plan.Strategy == ContainerBuildStrategy.HostPublish)
-                DeletePublishOutput(app.PayloadDirectory, logger);
+                DeletePublishOutput(app.PayloadDirectory, context.Logger);
         }
     }
 

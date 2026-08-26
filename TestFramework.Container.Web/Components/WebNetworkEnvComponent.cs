@@ -1,3 +1,4 @@
+﻿using TestFramework.Core.Steps;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
@@ -18,21 +19,21 @@ internal sealed class WebNetworkEnvComponent : WebEnvComponentBase
 
     public override EnvComponentReuseMode ReuseMode => EnvComponentReuseMode.PersistentContext;
 
-    public override async Task<object?> CreateAsync(IEnvironmentProvider environment, IServiceProvider serviceProvider, VariableStore variableStore, ArtifactStore artifactStore, ScopedLogger logger, CancellationToken cancellationToken)
+    public override async Task<object?> CreateAsync(IEnvironmentProvider environment, RunContext context)
     {
         // Everything else in this environment depends on the network, so this is the first thing the
         // run does with Docker and the right place to make sure the client can reach it at all.
-        ContainerRuntime.EnsureInitialized(logger);
+        ContainerRuntime.EnsureInitialized(context.Logger);
 
-        INetwork network = await ContainerNetworkFactory.CreateAsync(DockerWebDefaults.NetworkNamePrefix, cancellationToken).ConfigureAwait(false);
+        INetwork network = await ContainerNetworkFactory.CreateAsync(DockerWebDefaults.NetworkNamePrefix, context.Deadline.Token).ConfigureAwait(false);
         GetWebEnvironment(environment).SetRuntimeState(Id, network);
         return network;
     }
 
-    public override async Task DeconstructAsync(object? state, IEnvironmentProvider environment, IServiceProvider serviceProvider, VariableStore variableStore, ArtifactStore artifactStore, ScopedLogger logger, CancellationToken cancellationToken)
+    public override async Task DeconstructAsync(object? state, IEnvironmentProvider environment, RunContext context)
     {
         if (state is INetwork network)
-            await ContainerDockerCommands.ForceRemoveNetworkAsync(network, cancellationToken).ConfigureAwait(false);
+            await ContainerDockerCommands.ForceRemoveNetworkAsync(network, context.Deadline.Token).ConfigureAwait(false);
         else if (state is IAsyncDisposable asyncDisposable)
             await asyncDisposable.DisposeAsync().ConfigureAwait(false);
     }

@@ -1,3 +1,4 @@
+﻿using TestFramework.Core.Steps;
 using System;
 using System.Collections.Generic;
 using System.Reflection;
@@ -148,8 +149,14 @@ public class DockerWebEnvironmentTests
     public void GetRequiredRuntimeState_FailsBeforeAComponentHasProducedIt()
         => Assert.Throws<FrameworkStateException>(() => new DockerWebEnvironment().GetRequiredRuntimeState<object>(DockerWebEnvironment.NetworkComponentId));
 
-    // The artifact instance constructor is internal to the core package, so a test builds one the
-    // same way the Azure environment tests do.
+    /// <summary>
+    /// An artifact to hand an environment, made the way anything makes one.
+    /// </summary>
+    /// <remarks>
+    /// This used to reflect over the artifact instance's internal constructor, and broke the moment that
+    /// constructor gained a parameter. <c>ArtifactStore.Add</c> is the public way now - the store is the
+    /// only thing that may hold an artifact, so it is also the thing that makes one.
+    /// </remarks>
     private static ArtifactInstanceGeneric CreateArtifactInstance<TArtifactDescriber, TArtifactData, TArtifactReference>(
         TArtifactDescriber describer,
         ArtifactIdentifier identifier,
@@ -158,12 +165,5 @@ public class DockerWebEnvironmentTests
         where TArtifactDescriber : ArtifactDescriber<TArtifactDescriber, TArtifactData, TArtifactReference>, new()
         where TArtifactData : ArtifactData<TArtifactData, TArtifactDescriber, TArtifactReference>
         where TArtifactReference : ArtifactReference<TArtifactReference, TArtifactDescriber, TArtifactData>
-    {
-        return (ArtifactInstanceGeneric)Activator.CreateInstance(
-            typeof(ArtifactInstance<TArtifactDescriber, TArtifactData, TArtifactReference>),
-            BindingFlags.Instance | BindingFlags.NonPublic,
-            binder: null,
-            args: [describer, identifier, reference, data],
-            culture: null)!;
-    }
+        => RunContext.Detached().Artifacts.Add<TArtifactDescriber, TArtifactData, TArtifactReference>(identifier, reference, data);
 }

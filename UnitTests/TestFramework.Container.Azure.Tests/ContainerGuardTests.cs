@@ -1,3 +1,4 @@
+﻿using TestFramework.Core.Steps;
 using Microsoft.Extensions.DependencyInjection;
 using TestFramework.Container.Azure;
 using TestFramework.Container.Azure.Components;
@@ -55,11 +56,7 @@ public class ContainerGuardTests
         FrameworkStateException exception = await Assert.ThrowsAsync<FrameworkStateException>(() =>
             component.CreateAsync(
                 new FakeEnvironmentProvider(),
-                new ServiceCollection().BuildServiceProvider(),
-                null!,
-                null!,
-                null!,
-                CancellationToken.None));
+                RunContext.Detached(new ServiceCollection().BuildServiceProvider())));
 
         Assert.Contains(nameof(DockerAzureEnvironment), exception.Message, StringComparison.Ordinal);
         Assert.Contains(component.Id.ToString(), exception.Message, StringComparison.Ordinal);

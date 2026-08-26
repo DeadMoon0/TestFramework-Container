@@ -1,3 +1,6 @@
+﻿using TestFramework.Core.Environment.Graph;
+using System.Text;
+using TestFramework.Core.Steps;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -44,19 +47,19 @@ internal sealed class SiteEnvComponent : WebEnvComponentBase
         DockerWebEnvironment.ApiComponentId,
     ];
 
-    public override async Task<object?> CreateAsync(IEnvironmentProvider environment, IServiceProvider serviceProvider, VariableStore variableStore, ArtifactStore artifactStore, ScopedLogger logger, CancellationToken cancellationToken)
+    public override async Task<object?> CreateAsync(IEnvironmentProvider environment, RunContext context)
     {
-        ArgumentNullException.ThrowIfNull(serviceProvider);
-        ArgumentNullException.ThrowIfNull(logger);
+        ArgumentNullException.ThrowIfNull(context.Services);
+        ArgumentNullException.ThrowIfNull(context.Logger);
 
         DockerWebEnvironment webEnvironment = GetWebEnvironment(environment);
         IReadOnlyList<DockerSiteDefinition> definitions = webEnvironment.GetSiteDefinitions();
         if (definitions.Count == 0)
             return null;
 
-        WebConfigStore<SiteConfig> configStore = GetRequiredConfigStore(serviceProvider);
+        WebConfigStore<SiteConfig> configStore = GetRequiredConfigStore(context.Services);
         INetwork network = webEnvironment.GetRequiredRuntimeState<INetwork>(DockerWebEnvironment.NetworkComponentId);
-        SiteTargetResolver targets = new(webEnvironment, serviceProvider);
+        SiteTargetResolver targets = new(webEnvironment, context.Services);
 
         // Declaration order in, declaration order out, however the starts interleave.
         IReadOnlyList<DockerSiteDefinition> ordered = [.. definitions.OrderBy(definition => definition.Identifier.ToString(), StringComparer.Ordinal)];
@@ -71,11 +74,11 @@ internal sealed class SiteEnvComponent : WebEnvComponentBase
 
             SiteSourcePlan plan = SiteSourceResolver.Plan(definition.Source);
             foreach (string line in plan.ToLogLines(identifier))
-                logger.LogInformation(line);
+                context.Logger.LogInformation(line);
 
             EnsureImageSourceServesItself(definition, spec, plan);
 
-            plan = await SitePayloadBuilder.BuildAsync(definition.Source, plan, identifier, logger, cancellationToken).ConfigureAwait(false);
+            plan = await SitePayloadBuilder.BuildAsync(definition.Source, plan, identifier, context.Logger, context.Deadline.Token).ConfigureAwait(false);
 
             string? nginxConfig = null;
             if (plan.Kind != SiteSourceKind.Image)
@@ -86,16 +89,16 @@ internal sealed class SiteEnvComponent : WebEnvComponentBase
                     [.. spec.ProxyRoutes.Select(route => ToNginxLocation(route, targets))],
                     spec.ExtraNginxDirectives);
 
-                logger.LogInformation("Site '{0}' server config '{1}':{2}{3}", identifier, NginxConfigFile.FileName, Environment.NewLine, nginxConfig);
+                context.Logger.LogInformation("Site '{0}' server config '{1}':{2}{3}", identifier, NginxConfigFile.FileName, Environment.NewLine, nginxConfig);
             }
 
-            Dictionary<string, string> generatedFiles = ComposeGeneratedFiles(spec, plan, targets, identifier, logger);
+            Dictionary<string, string> generatedFiles = ComposeGeneratedFiles(spec, plan, targets, identifier, context.Logger);
 
             // The generated files are written into a staged copy of the payload rather than mapped
             // beside it: two mappings writing the same path race on ordering, and the wrong winner
             // would serve the checked-in file instead of the generated one.
             if (plan.Kind != SiteSourceKind.Image && generatedFiles.Count > 0)
-                plan = StagePayload(plan, generatedFiles, identifier, logger);
+                plan = StagePayload(plan, generatedFiles, identifier, context.Logger);
 
             planned.Add(new PlannedSite(definition, spec, plan, nginxConfig, generatedFiles));
         }
@@ -104,22 +107,22 @@ internal sealed class SiteEnvComponent : WebEnvComponentBase
         // pull cannot. A missing image then fails as a stated pull problem, not as a container that
         // mysteriously did not start.
         foreach (string image in planned.Select(ServingImage).Distinct(StringComparer.Ordinal))
-            await ContainerImagePull.EnsureAvailableAsync(image, logger, cancellationToken).ConfigureAwait(false);
+            await ContainerImagePull.EnsureAvailableAsync(image, context.Logger, context.Deadline.Token).ConfigureAwait(false);
 
         // Phase two races: creating, starting and waiting out the containers are independent per
         // site, and the readiness waits are what the setup actually spends its time on.
         IReadOnlyList<StartedSite> started = await ContainerStartCoordinator.StartAllAsync(
             planned,
-            (site, token) => StartSiteAsync(site, network, logger, token),
+            (site, token) => StartSiteAsync(site, network, context.Logger, token),
             result => result.Container,
-            cancellationToken).ConfigureAwait(false);
+            context.Deadline.Token).ConfigureAwait(false);
 
         List<RunningSite> sites = [];
         foreach (StartedSite site in started)
         {
             Publish(configStore, site.Planned.Definition.Identifier, site.BaseUrl);
             sites.Add(new RunningSite(site.Planned.Definition.Identifier, site.Container, site.BaseUrl, site.Planned.Plan, site.Planned.NginxConfig, site.Planned.GeneratedFiles));
-            logger.LogInformation("Site '{0}' is reachable at '{1}'.", site.Planned.Definition.Identifier, site.BaseUrl);
+            context.Logger.LogInformation("Site '{0}' is reachable at '{1}'.", site.Planned.Definition.Identifier, site.BaseUrl);
         }
 
         SiteComponentState state = new(sites);
@@ -127,9 +130,9 @@ internal sealed class SiteEnvComponent : WebEnvComponentBase
         return state;
     }
 
-    public override async Task DeconstructAsync(object? state, IEnvironmentProvider environment, IServiceProvider serviceProvider, VariableStore variableStore, ArtifactStore artifactStore, ScopedLogger logger, CancellationToken cancellationToken)
+    public override async Task DeconstructAsync(object? state, IEnvironmentProvider environment, RunContext context)
     {
-        ArgumentNullException.ThrowIfNull(logger);
+        ArgumentNullException.ThrowIfNull(context.Logger);
 
         if (state is not SiteComponentState siteState)
             return;
@@ -138,13 +141,13 @@ internal sealed class SiteEnvComponent : WebEnvComponentBase
         {
             // The log dies with the container, and a serving failure is invisible from the test side
             // without it.
-            await ContainerLogCapture.CaptureAsync(site.Container, $"Site '{site.Identifier}'", logger, cancellationToken).ConfigureAwait(false);
-            await ContainerDockerCommands.ForceRemoveContainerAsync(site.Container, cancellationToken).ConfigureAwait(false);
+            await ContainerLogCapture.CaptureAsync(site.Container, $"Site '{site.Identifier}'", context.Logger, context.Deadline.Token).ConfigureAwait(false);
+            await ContainerDockerCommands.ForceRemoveContainerAsync(site.Container, context.Deadline.Token).ConfigureAwait(false);
 
             // A scratch directory the run's own build created is the run's litter. A project's dist
             // built on the host is the caller's artifact and stays.
             if (site.Plan.TemporaryRoot is { } temporaryRoot)
-                DeleteTemporaryRoot(temporaryRoot, logger);
+                DeleteTemporaryRoot(temporaryRoot, context.Logger);
         }
     }
 
@@ -197,12 +200,15 @@ internal sealed class SiteEnvComponent : WebEnvComponentBase
             foreach (DockerSiteConfigBinding binding in spec.ConfigJsonBindings)
                 values[binding.JsonPath] = targets.HostUrl(binding.TargetKind, binding.TargetIdentifier).ToString();
 
-            files[spec.ConfigJsonPath] = SiteConfigFile.Compose(ReadExisting(plan, spec.ConfigJsonPath), values);
+            // The engine composes it: same colon-path JSON as an API's settings, so it is the same
+            // document type rather than a second implementation of one.
+            files[spec.ConfigJsonPath] = new JsonPathDocument(spec.ConfigJsonPath)
+                .Compose(values, ReadExisting(plan, spec.ConfigJsonPath));
         }
 
         foreach (DockerSiteConfigFile configFile in spec.ConfigFiles)
         {
-            SiteConfigFileContext context = new(addresses, ReadExisting(plan, configFile.RelativePath));
+            SiteConfigFileContext context = new(addresses, configFile.RelativePath, ReadExisting(plan, configFile.RelativePath));
             files[configFile.RelativePath] = configFile.Compose(context)
                 ?? throw new FrameworkConfigurationException($"The composer for '{configFile.RelativePath}' of site '{identifier}' returned null.");
         }
@@ -286,7 +292,7 @@ internal sealed class SiteEnvComponent : WebEnvComponentBase
             // A path starting with '/' addresses the container directly, which is how a generated
             // file reaches an image whose content root this package does not know.
             string containerPath = path.StartsWith('/') ? path : $"{DockerWebDefaults.SiteContentRoot}/{path}";
-            builder = builder.WithResourceMapping(SiteConfigFile.ToBytes(content), containerPath);
+            builder = builder.WithResourceMapping(Encoding.UTF8.GetBytes(content), containerPath);
         }
 
         return builder.Build();

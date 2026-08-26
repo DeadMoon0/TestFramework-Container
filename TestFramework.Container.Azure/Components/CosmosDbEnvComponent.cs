@@ -1,3 +1,4 @@
+﻿using TestFramework.Core.Steps;
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
 using DotNet.Testcontainers.Networks;
@@ -29,16 +30,16 @@ internal sealed class CosmosDbEnvComponent : DockerAzureEnvComponent
 
     public override IReadOnlyList<EnvComponentIdentifier> Dependencies => [DockerAzureEnvironment.NetworkComponentId];
 
-    public override async Task<object?> CreateAsync(IEnvironmentProvider environment, IServiceProvider serviceProvider, VariableStore variableStore, ArtifactStore artifactStore, ScopedLogger logger, CancellationToken cancellationToken)
+    public override async Task<object?> CreateAsync(IEnvironmentProvider environment, RunContext context)
     {
         DockerAzureEnvironment dockerEnvironment = GetDockerEnvironment(environment);
         if (dockerEnvironment.UsedCosmosIdentifiers.Count == 0)
         {
-            logger.LogInformation("Skipping Cosmos environment setup because no Cosmos identifiers were requested.");
+            context.Logger.LogInformation("Skipping Cosmos environment setup because no Cosmos identifiers were requested.");
             return null;
         }
 
-        ConfigStore<CosmosContainerDbConfig>? configStore = EnvComponentConfigStoreGuard.GetRequiredStore<CosmosContainerDbConfig>(dockerEnvironment, serviceProvider, dockerEnvironment.UsedCosmosIdentifiers, "Cosmos environment setup");
+        ConfigStore<CosmosContainerDbConfig>? configStore = EnvComponentConfigStoreGuard.GetRequiredStore<CosmosContainerDbConfig>(dockerEnvironment, context.Services, dockerEnvironment.UsedCosmosIdentifiers, "Cosmos environment setup");
         INetwork network = dockerEnvironment.GetRequiredRuntimeState<INetwork>(DockerAzureEnvironment.NetworkComponentId);
         string cosmosImage = dockerEnvironment.GetCosmosDbImage();
         ContainerBuilder builder = new ContainerBuilder(cosmosImage)
@@ -54,7 +55,7 @@ internal sealed class CosmosDbEnvComponent : DockerAzureEnvComponent
 
         IContainer container = builder.Build();
 
-        await container.StartAsync(cancellationToken).ConfigureAwait(false);
+        await container.StartAsync(context.Deadline.Token).ConfigureAwait(false);
 
         string connectionString = dockerEnvironment.GetEndpointMap().CreateCosmosConnectionString(container);
         ConnectionStringGuards.EnsureCosmos(connectionString);
@@ -77,7 +78,7 @@ internal sealed class CosmosDbEnvComponent : DockerAzureEnvComponent
                 ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator,
             }),
         });
-        await WaitForGatewayAsync(client, DescribeCosmosEndpoint(connectionString), logger, cancellationToken).ConfigureAwait(false);
+        await WaitForGatewayAsync(client, DescribeCosmosEndpoint(connectionString), context.Logger, context.Deadline.Token).ConfigureAwait(false);
 
         if (configStore is not null)
         {
@@ -88,7 +89,7 @@ internal sealed class CosmosDbEnvComponent : DockerAzureEnvComponent
                 configStore.AddConfig(identifier, updated);
 
                 if (dockerEnvironment.CosmosPartitionKeyPaths.TryGetValue(identifier, out string? partitionKeyPath))
-                    await DeploySchemaAsync(identifier, updated, partitionKeyPath, logger, cancellationToken).ConfigureAwait(false);
+                    await DeploySchemaAsync(identifier, updated, partitionKeyPath, context.Logger, context.Deadline.Token).ConfigureAwait(false);
             }
         }
 
@@ -96,7 +97,7 @@ internal sealed class CosmosDbEnvComponent : DockerAzureEnvComponent
         return container;
     }
 
-    public override async Task DeconstructAsync(object? state, IEnvironmentProvider environment, IServiceProvider serviceProvider, VariableStore variableStore, ArtifactStore artifactStore, ScopedLogger logger, CancellationToken cancellationToken)
+    public override async Task DeconstructAsync(object? state, IEnvironmentProvider environment, RunContext context)
     {
         if (state is IAsyncDisposable asyncDisposable)
             await asyncDisposable.DisposeAsync().ConfigureAwait(false);
@@ -142,7 +143,7 @@ internal sealed class CosmosDbEnvComponent : DockerAzureEnvComponent
         // The config already carries the container's mapped connection string, so it is the single
         // source of the endpoint the schema is deployed against.
         Stopwatch stopwatch = Stopwatch.StartNew();
-        await CosmosSchemaRestClient.EnsureDatabaseAndContainerExistAsync(config, partitionKeyPath, cancellationToken).ConfigureAwait(false);
+        await CosmosSchema.EnsureExistsAsync(config, partitionKeyPath, cancellationToken).ConfigureAwait(false);
         logger.LogInformation($"Deployed the Cosmos schema for '{identifier}': {config.DatabaseName}/{config.ContainerName} ({partitionKeyPath}) in {stopwatch.Elapsed:g}.");
     }
 

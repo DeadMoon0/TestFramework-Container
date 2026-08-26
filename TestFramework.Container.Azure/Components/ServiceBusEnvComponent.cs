@@ -1,3 +1,4 @@
+﻿using TestFramework.Core.Steps;
 using Azure.Messaging.ServiceBus.Administration;
 using DotNet.Testcontainers.Networks;
 using System;
@@ -23,19 +24,19 @@ internal sealed class ServiceBusEnvComponent : DockerAzureEnvComponent
 
     public override IReadOnlyList<EnvComponentIdentifier> Dependencies => [DockerAzureEnvironment.NetworkComponentId, DockerAzureEnvironment.MsSqlComponentId];
 
-    public override async Task<object?> CreateAsync(IEnvironmentProvider environment, IServiceProvider serviceProvider, VariableStore variableStore, ArtifactStore artifactStore, ScopedLogger logger, CancellationToken cancellationToken)
+    public override async Task<object?> CreateAsync(IEnvironmentProvider environment, RunContext context)
     {
         DockerAzureEnvironment dockerEnvironment = GetDockerEnvironment(environment);
         if (dockerEnvironment.UsedServiceBusIdentifiers.Count == 0)
         {
-            logger.LogInformation("Skipping Service Bus environment setup because no Service Bus identifiers were requested.");
+            context.Logger.LogInformation("Skipping Service Bus environment setup because no Service Bus identifiers were requested.");
             return null;
         }
 
-        ConfigStore<ServiceBusConfig>? configStore = EnvComponentConfigStoreGuard.GetRequiredStore<ServiceBusConfig>(dockerEnvironment, serviceProvider, dockerEnvironment.UsedServiceBusIdentifiers, "Service Bus environment setup");
+        ConfigStore<ServiceBusConfig>? configStore = EnvComponentConfigStoreGuard.GetRequiredStore<ServiceBusConfig>(dockerEnvironment, context.Services, dockerEnvironment.UsedServiceBusIdentifiers, "Service Bus environment setup");
         INetwork network = dockerEnvironment.GetRequiredRuntimeState<INetwork>(DockerAzureEnvironment.NetworkComponentId);
         MsSqlContainer msSqlContainer = dockerEnvironment.GetRequiredRuntimeState<MsSqlContainer>(DockerAzureEnvironment.MsSqlComponentId);
-        MaterializedServiceBusTopology materializedTopology = ServiceBusTopologyMaterializer.Materialize(dockerEnvironment.GetServiceBusTopologySource(), logger);
+        MaterializedServiceBusTopology materializedTopology = ServiceBusTopologyMaterializer.Materialize(dockerEnvironment.GetServiceBusTopologySource(), context.Logger);
 
         ServiceBusContainer container = new ServiceBusBuilder(dockerEnvironment.GetServiceBusImage())
             .WithAcceptLicenseAgreement(true)
@@ -45,13 +46,13 @@ internal sealed class ServiceBusEnvComponent : DockerAzureEnvComponent
             .WithCreateParameterModifier(ContainerPortBinding.Apply)
             .Build();
 
-        await container.StartAsync(cancellationToken).ConfigureAwait(false);
+        await container.StartAsync(context.Deadline.Token).ConfigureAwait(false);
 
         string connectionString = container.GetConnectionString();
         ConnectionStringGuards.EnsureServiceBus(connectionString);
 
         ServiceBusAdministrationClient administrationClient = new(container.GetHttpConnectionString());
-        await administrationClient.GetNamespacePropertiesAsync(cancellationToken).ConfigureAwait(false);
+        await administrationClient.GetNamespacePropertiesAsync(context.Deadline.Token).ConfigureAwait(false);
 
         if (configStore is not null)
         {
@@ -67,7 +68,7 @@ internal sealed class ServiceBusEnvComponent : DockerAzureEnvComponent
         return runtimeState;
     }
 
-    public override async Task DeconstructAsync(object? state, IEnvironmentProvider environment, IServiceProvider serviceProvider, VariableStore variableStore, ArtifactStore artifactStore, ScopedLogger logger, CancellationToken cancellationToken)
+    public override async Task DeconstructAsync(object? state, IEnvironmentProvider environment, RunContext context)
     {
         if (state is IAsyncDisposable asyncDisposable)
             await asyncDisposable.DisposeAsync().ConfigureAwait(false);

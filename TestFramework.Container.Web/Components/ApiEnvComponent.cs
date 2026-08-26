@@ -1,3 +1,6 @@
+﻿using TestFramework.Core.Environment.Graph;
+using System.Text;
+using TestFramework.Core.Steps;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -43,17 +46,17 @@ internal sealed class ApiEnvComponent : WebEnvComponentBase
         DockerWebEnvironment.StubComponentId,
     ];
 
-    public override async Task<object?> CreateAsync(IEnvironmentProvider environment, IServiceProvider serviceProvider, VariableStore variableStore, ArtifactStore artifactStore, ScopedLogger logger, CancellationToken cancellationToken)
+    public override async Task<object?> CreateAsync(IEnvironmentProvider environment, RunContext context)
     {
-        ArgumentNullException.ThrowIfNull(serviceProvider);
-        ArgumentNullException.ThrowIfNull(logger);
+        ArgumentNullException.ThrowIfNull(context.Services);
+        ArgumentNullException.ThrowIfNull(context.Logger);
 
         DockerWebEnvironment webEnvironment = GetWebEnvironment(environment);
         IReadOnlyList<DockerApiDefinition> definitions = webEnvironment.GetApiDefinitions();
         if (definitions.Count == 0)
             return null;
 
-        WebConfigStore<ApiConfig> configStore = GetRequiredConfigStore(serviceProvider);
+        WebConfigStore<ApiConfig> configStore = GetRequiredConfigStore(context.Services);
         INetwork network = webEnvironment.GetRequiredRuntimeState<INetwork>(DockerWebEnvironment.NetworkComponentId);
 
         // Declaration order in, declaration order out, however the starts interleave.
@@ -70,14 +73,14 @@ internal sealed class ApiEnvComponent : WebEnvComponentBase
 
             // The plan says what will happen before it happens, and every value in it was either
             // declared or read from the project. Nothing is inferred from where an assembly sat.
-            ContainerSourcePlan plan = await ContainerSourceResolver.PlanAsync(definition.Source, cancellationToken).ConfigureAwait(false);
-            plan = await ContainerImageBuilder.BuildAsync(plan, identifier, logger, cancellationToken).ConfigureAwait(false);
+            ContainerSourcePlan plan = await ContainerSourceResolver.PlanAsync(definition.Source, context.Deadline.Token).ConfigureAwait(false);
+            plan = await ContainerImageBuilder.BuildAsync(plan, identifier, context.Logger, context.Deadline.Token).ConfigureAwait(false);
 
             IReadOnlyDictionary<string, string> settings = ComposeSettings(webEnvironment, definition, spec);
-            string settingsJson = ApiSettingsFile.Compose(settings);
             string settingsFileName = ApiSettingsFile.FileName(spec.EnvironmentName);
+            string settingsJson = new JsonPathDocument(settingsFileName).Compose(settings, existing: null);
 
-            logger.LogInformation("API '{0}' settings '{1}':{2}{3}", identifier, settingsFileName, Environment.NewLine, settingsJson);
+            context.Logger.LogInformation("API '{0}' settings '{1}':{2}{3}", identifier, settingsFileName, Environment.NewLine, settingsJson);
 
             planned.Add(new PlannedApi(definition, spec, plan, settingsFileName, settingsJson));
         }
@@ -86,16 +89,16 @@ internal sealed class ApiEnvComponent : WebEnvComponentBase
         // application, and the readiness waits are what the run actually spends its time on.
         IReadOnlyList<StartedApi> started = await ContainerStartCoordinator.StartAllAsync(
             planned,
-            (plan, token) => StartApiAsync(plan, network, logger, token),
+            (plan, token) => StartApiAsync(plan, network, context.Logger, token),
             result => result.Container,
-            cancellationToken).ConfigureAwait(false);
+            context.Deadline.Token).ConfigureAwait(false);
 
         List<RunningApi> apis = [];
         foreach (StartedApi api in started)
         {
             Publish(configStore, api.Planned.Definition.Identifier, api.BaseUrl, api.Planned.Spec.HealthPath);
             apis.Add(new RunningApi(api.Planned.Definition.Identifier, api.Container, api.BaseUrl, api.NetworkBaseUrl, api.Planned.Plan, api.Planned.SettingsFileName, api.Planned.SettingsJson));
-            logger.LogInformation("API '{0}' is reachable at '{1}'.", api.Planned.Definition.Identifier, api.BaseUrl);
+            context.Logger.LogInformation("API '{0}' is reachable at '{1}'.", api.Planned.Definition.Identifier, api.BaseUrl);
         }
 
         ApiComponentState state = new(apis);
@@ -103,9 +106,9 @@ internal sealed class ApiEnvComponent : WebEnvComponentBase
         return state;
     }
 
-    public override async Task DeconstructAsync(object? state, IEnvironmentProvider environment, IServiceProvider serviceProvider, VariableStore variableStore, ArtifactStore artifactStore, ScopedLogger logger, CancellationToken cancellationToken)
+    public override async Task DeconstructAsync(object? state, IEnvironmentProvider environment, RunContext context)
     {
-        ArgumentNullException.ThrowIfNull(logger);
+        ArgumentNullException.ThrowIfNull(context.Logger);
 
         if (state is not ApiComponentState apiState)
             return;
@@ -114,15 +117,15 @@ internal sealed class ApiEnvComponent : WebEnvComponentBase
         {
             // The log dies with the container, and an application failure is invisible from the test
             // side without it.
-            await ContainerLogCapture.CaptureAsync(api.Container, $"API '{api.Identifier}'", logger, cancellationToken).ConfigureAwait(false);
-            await ContainerDockerCommands.ForceRemoveContainerAsync(api.Container, cancellationToken).ConfigureAwait(false);
+            await ContainerLogCapture.CaptureAsync(api.Container, $"API '{api.Identifier}'", context.Logger, context.Deadline.Token).ConfigureAwait(false);
+            await ContainerDockerCommands.ForceRemoveContainerAsync(api.Container, context.Deadline.Token).ConfigureAwait(false);
 
             // An image the run built is the run's litter. One the caller named is not.
             if (api.Plan.Kind == ContainerSourceKind.Project && api.Plan.Image is { } builtImage)
-                await ContainerImageBuilder.RemoveImageAsync(builtImage, cancellationToken).ConfigureAwait(false);
+                await ContainerImageBuilder.RemoveImageAsync(builtImage, context.Deadline.Token).ConfigureAwait(false);
 
             if (api.Plan.Strategy == ContainerBuildStrategy.HostPublish && api.Plan.OutputDirectory is { } published)
-                DeletePublishOutput(published, logger);
+                DeletePublishOutput(published, context.Logger);
         }
     }
 
@@ -208,7 +211,7 @@ internal sealed class ApiEnvComponent : WebEnvComponentBase
             .WithEnvironment("DOTNET_ENVIRONMENT", spec.EnvironmentName)
             .WithEnvironment("ASPNETCORE_HTTP_PORTS", port)
             // Container paths are always separated by '/', whatever the host does.
-            .WithResourceMapping(ApiSettingsFile.ToBytes(settingsJson), $"{DockerWebDefaults.ApiRoot}/{settingsFileName}");
+            .WithResourceMapping(Encoding.UTF8.GetBytes(settingsJson), $"{DockerWebDefaults.ApiRoot}/{settingsFileName}");
 
         // An image already knows how to start itself. A directory has to be put somewhere and given
         // a command; it is copied rather than bind-mounted, so the generated settings file can sit

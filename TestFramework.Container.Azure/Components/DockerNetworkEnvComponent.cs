@@ -1,3 +1,4 @@
+﻿using TestFramework.Core.Steps;
 using DotNet.Testcontainers.Networks;
 using System;
 using System.Threading;
@@ -15,16 +16,16 @@ internal sealed class DockerNetworkEnvComponent : DockerAzureEnvComponent
 
     public override EnvComponentReuseMode ReuseMode => EnvComponentReuseMode.PersistentContext;
 
-    public override async Task<object?> CreateAsync(IEnvironmentProvider environment, IServiceProvider serviceProvider, VariableStore variableStore, ArtifactStore artifactStore, ScopedLogger logger, CancellationToken cancellationToken)
+    public override async Task<object?> CreateAsync(IEnvironmentProvider environment, RunContext context)
     {
         // Everything else in this environment depends on the network, so this is the first thing the
         // run does with Docker and the right place to make sure the client can reach it at all.
-        ContainerRuntime.EnsureInitialized(logger);
+        ContainerRuntime.EnsureInitialized(context.Logger);
 
         if (environment is DockerAzureEnvironment dockerEnvironment)
-            dockerEnvironment.LogPendingResolutionSummary(logger);
+            dockerEnvironment.LogPendingResolutionSummary(context.Logger);
 
-        INetwork network = await ContainerNetworkFactory.CreateAsync("testframework", cancellationToken).ConfigureAwait(false);
+        INetwork network = await ContainerNetworkFactory.CreateAsync("testframework", context.Deadline.Token).ConfigureAwait(false);
 
         if (environment is DockerAzureEnvironment runtimeEnvironment)
             runtimeEnvironment.SetRuntimeState(Id, network);
@@ -32,11 +33,11 @@ internal sealed class DockerNetworkEnvComponent : DockerAzureEnvComponent
         return network;
     }
 
-    public override async Task DeconstructAsync(object? state, IEnvironmentProvider environment, IServiceProvider serviceProvider, VariableStore variableStore, ArtifactStore artifactStore, ScopedLogger logger, CancellationToken cancellationToken)
+    public override async Task DeconstructAsync(object? state, IEnvironmentProvider environment, RunContext context)
     {
         if (state is INetwork network)
         {
-            await ForceRemoveNetworkAsync(network, cancellationToken).ConfigureAwait(false);
+            await ForceRemoveNetworkAsync(network, context.Deadline.Token).ConfigureAwait(false);
         }
         else if (state is IAsyncDisposable asyncDisposable)
         {

@@ -1,3 +1,4 @@
+﻿using TestFramework.Core.Steps;
 using Azure.Data.Tables;
 using Azure.Data.Tables.Models;
 using Azure.Messaging.ServiceBus;
@@ -67,13 +68,13 @@ internal sealed class AzureResetEnvComponent(DockerAzureEnvironment owner) : Doc
     /// </remarks>
     public override IReadOnlyList<EnvComponentIdentifier> Dependencies => owner.GetResetComponentDependencies();
 
-    public override async Task<object?> CreateAsync(IEnvironmentProvider environment, IServiceProvider serviceProvider, VariableStore variableStore, ArtifactStore artifactStore, ScopedLogger logger, CancellationToken cancellationToken)
+    public override async Task<object?> CreateAsync(IEnvironmentProvider environment, RunContext context)
     {
         DockerAzureEnvironment dockerEnvironment = GetDockerEnvironment(environment);
 
         if (dockerEnvironment.GetResetMode() == AzureResetMode.None)
         {
-            logger.LogInformation($"Skipping the Azure reset because the environment is set to {nameof(AzureResetMode)}.{nameof(AzureResetMode.None)}.");
+            context.Logger.LogInformation($"Skipping the Azure reset because the environment is set to {nameof(AzureResetMode)}.{nameof(AzureResetMode.None)}.");
             return null;
         }
 
@@ -81,19 +82,19 @@ internal sealed class AzureResetEnvComponent(DockerAzureEnvironment owner) : Doc
         // Only a run handed containers a previous run already used pays for this.
         if (!dockerEnvironment.HasReusedPersistentComponents)
         {
-            logger.LogInformation("Skipping the Azure reset because this run started its own emulators, so there is nothing a previous run could have left behind.");
+            context.Logger.LogInformation("Skipping the Azure reset because this run started its own emulators, so there is nothing a previous run could have left behind.");
             return null;
         }
 
         Stopwatch stopwatch = Stopwatch.StartNew();
-        logger.LogInformation("Purging the declared Azure resources so this run starts from an empty environment.");
+        context.Logger.LogInformation("Purging the declared Azure resources so this run starts from an empty environment.");
 
-        await RunPurgeAsync("storage", () => PurgeStorageAsync(dockerEnvironment, serviceProvider, logger, cancellationToken), logger, cancellationToken).ConfigureAwait(false);
-        await RunPurgeAsync("Cosmos", () => PurgeCosmosAsync(dockerEnvironment, serviceProvider, logger, cancellationToken), logger, cancellationToken).ConfigureAwait(false);
-        await RunPurgeAsync("Service Bus", () => PurgeServiceBusAsync(dockerEnvironment, serviceProvider, logger, cancellationToken), logger, cancellationToken).ConfigureAwait(false);
-        await RunPurgeAsync("SQL", () => PurgeSqlAsync(dockerEnvironment, serviceProvider, logger, cancellationToken), logger, cancellationToken).ConfigureAwait(false);
+        await RunPurgeAsync("storage", () => PurgeStorageAsync(dockerEnvironment, context.Services, context.Logger, context.Deadline.Token), context.Logger, context.Deadline.Token).ConfigureAwait(false);
+        await RunPurgeAsync("Cosmos", () => PurgeCosmosAsync(dockerEnvironment, context.Services, context.Logger, context.Deadline.Token), context.Logger, context.Deadline.Token).ConfigureAwait(false);
+        await RunPurgeAsync("Service Bus", () => PurgeServiceBusAsync(dockerEnvironment, context.Services, context.Logger, context.Deadline.Token), context.Logger, context.Deadline.Token).ConfigureAwait(false);
+        await RunPurgeAsync("SQL", () => PurgeSqlAsync(dockerEnvironment, context.Services, context.Logger, context.Deadline.Token), context.Logger, context.Deadline.Token).ConfigureAwait(false);
 
-        logger.LogInformation($"Finished purging the declared Azure resources in {stopwatch.Elapsed:g}.");
+        context.Logger.LogInformation($"Finished purging the declared Azure resources in {stopwatch.Elapsed:g}.");
         return null;
     }
 
@@ -132,7 +133,7 @@ internal sealed class AzureResetEnvComponent(DockerAzureEnvironment owner) : Doc
         }
     }
 
-    public override Task DeconstructAsync(object? state, IEnvironmentProvider environment, IServiceProvider serviceProvider, VariableStore variableStore, ArtifactStore artifactStore, ScopedLogger logger, CancellationToken cancellationToken)
+    public override Task DeconstructAsync(object? state, IEnvironmentProvider environment, RunContext context)
     {
         // The purge owns nothing, so there is nothing to give back.
         return Task.CompletedTask;
@@ -225,7 +226,7 @@ internal sealed class AzureResetEnvComponent(DockerAzureEnvironment owner) : Doc
             try
             {
                 await DeleteCosmosContainerAsync(config, logger, cancellationToken).ConfigureAwait(false);
-                await CosmosSchemaRestClient.EnsureDatabaseAndContainerExistAsync(config, partitionKeyPath, cancellationToken).ConfigureAwait(false);
+                await CosmosSchema.EnsureExistsAsync(config, partitionKeyPath, cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {

@@ -1,3 +1,4 @@
+﻿using TestFramework.Core.Steps;
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
 using DotNet.Testcontainers.Networks;
@@ -22,16 +23,16 @@ internal sealed class AzuriteEnvComponent : DockerAzureEnvComponent
 
     public override IReadOnlyList<EnvComponentIdentifier> Dependencies => [DockerAzureEnvironment.NetworkComponentId];
 
-    public override async Task<object?> CreateAsync(IEnvironmentProvider environment, IServiceProvider serviceProvider, VariableStore variableStore, ArtifactStore artifactStore, ScopedLogger logger, CancellationToken cancellationToken)
+    public override async Task<object?> CreateAsync(IEnvironmentProvider environment, RunContext context)
     {
         DockerAzureEnvironment dockerEnvironment = GetDockerEnvironment(environment);
         if (dockerEnvironment.UsedStorageIdentifiers.Count == 0)
         {
-            logger.LogInformation("Skipping Azurite environment setup because no storage identifiers were requested.");
+            context.Logger.LogInformation("Skipping Azurite environment setup because no storage identifiers were requested.");
             return null;
         }
 
-        ConfigStore<StorageAccountConfig>? configStore = EnvComponentConfigStoreGuard.GetRequiredStore<StorageAccountConfig>(dockerEnvironment, serviceProvider, dockerEnvironment.UsedStorageIdentifiers, "Azurite environment setup");
+        ConfigStore<StorageAccountConfig>? configStore = EnvComponentConfigStoreGuard.GetRequiredStore<StorageAccountConfig>(dockerEnvironment, context.Services, dockerEnvironment.UsedStorageIdentifiers, "Azurite environment setup");
         INetwork network = dockerEnvironment.GetRequiredRuntimeState<INetwork>(DockerAzureEnvironment.NetworkComponentId);
         IContainer container = new ContainerBuilder(dockerEnvironment.GetAzuriteImage())
             .WithNetwork(network)
@@ -43,7 +44,7 @@ internal sealed class AzuriteEnvComponent : DockerAzureEnvComponent
             .WithCommand("azurite", "--blobHost", "0.0.0.0", "--queueHost", "0.0.0.0", "--tableHost", "0.0.0.0", "--skipApiVersionCheck")
             .Build();
 
-        await container.StartAsync(cancellationToken).ConfigureAwait(false);
+        await container.StartAsync(context.Deadline.Token).ConfigureAwait(false);
 
         string connectionString = dockerEnvironment.GetEndpointMap().CreateAzuriteConnectionString(container);
         ConnectionStringGuards.EnsureAzurite(connectionString);
@@ -61,11 +62,11 @@ internal sealed class AzuriteEnvComponent : DockerAzureEnvComponent
         return container;
     }
 
-    public override async Task DeconstructAsync(object? state, IEnvironmentProvider environment, IServiceProvider serviceProvider, VariableStore variableStore, ArtifactStore artifactStore, ScopedLogger logger, CancellationToken cancellationToken)
+    public override async Task DeconstructAsync(object? state, IEnvironmentProvider environment, RunContext context)
     {
         if (state is IContainer container)
         {
-            await ForceRemoveContainerAsync(container, cancellationToken).ConfigureAwait(false);
+            await ForceRemoveContainerAsync(container, context.Deadline.Token).ConfigureAwait(false);
         }
         else if (state is IAsyncDisposable asyncDisposable)
         {

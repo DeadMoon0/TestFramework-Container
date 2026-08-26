@@ -1,4 +1,4 @@
-using Azure.Data.Tables;
+﻿using Azure.Data.Tables;
 using Azure.Messaging.ServiceBus;
 using Microsoft.Azure.Cosmos;
 using Microsoft.EntityFrameworkCore;
@@ -369,9 +369,9 @@ public class DockerAzureEnvironmentSmokeTests
         public IReadOnlyCollection<EnvironmentRequirement> GetEnvironmentRequirements(VariableStore variableStore)
             => [new(AzureEnvironmentResourceKinds.ServiceBus, "bus")];
 
-        public override Task<InspectServiceBusConfigResult?> Execute(IServiceProvider serviceProvider, VariableStore variableStore, TestFramework.Core.Artifacts.ArtifactStore artifactStore, TestFramework.Core.Logging.ScopedLogger logger, CancellationToken cancellationToken)
+        public override Task<InspectServiceBusConfigResult?> Execute(RunContext context)
         {
-            ServiceBusConfig config = ((ConfigStore<ServiceBusConfig>)serviceProvider.GetService(typeof(ConfigStore<ServiceBusConfig>))!).GetConfig("bus");
+            ServiceBusConfig config = ((ConfigStore<ServiceBusConfig>)context.Services.GetService(typeof(ConfigStore<ServiceBusConfig>))!).GetConfig("bus");
             return Task.FromResult<InspectServiceBusConfigResult?>(new(config.QueueName ?? throw new InvalidOperationException("Service Bus queue name was not configured.")));
         }
 

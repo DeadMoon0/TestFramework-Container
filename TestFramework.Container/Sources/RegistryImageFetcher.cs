@@ -1,3 +1,6 @@
+﻿using TestFramework.Core.Json;
+using Newtonsoft.Json.Linq;
+using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.Formats.Tar;
@@ -8,7 +11,6 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using TestFramework.Core.Exceptions;
@@ -67,22 +69,20 @@ internal static class RegistryImageFetcher
         using HttpClient client = CreateIPv4Client();
 
         string manifestJson = await GetStringAsync(client, $"https://{host}/v2/{repository}/manifests/{reference}", cancellationToken).ConfigureAwait(false);
-        using JsonDocument manifestDocument = JsonDocument.Parse(manifestJson);
-        JsonElement root = manifestDocument.RootElement;
+        JToken root = WireJson.Parse(manifestJson);
 
         // A multi-platform tag answers with a list, and picking from it is this code's job rather
         // than the registry's: an index names every platform it was built for and says nothing about
         // which one is wanted here.
-        if (root.TryGetProperty("manifests", out JsonElement entries))
+        if (root["manifests"] is JArray entries)
         {
             string digest = SelectPlatformDigest(entries, repository, reference);
             manifestJson = await GetStringAsync(client, $"https://{host}/v2/{repository}/manifests/{digest}", cancellationToken).ConfigureAwait(false);
         }
 
-        using JsonDocument imageDocument = JsonDocument.Parse(manifestJson);
-        JsonElement image = imageDocument.RootElement;
+        JToken image = WireJson.Parse(manifestJson);
 
-        string configDigest = image.GetProperty("config").GetProperty("digest").GetString()
+        string configDigest = image["config"]?["digest"]?.Value<string>()
             ?? throw new FrameworkStateException($"The manifest for '{repository}:{reference}' names no configuration blob.");
 
         byte[] config = await GetBytesAsync(client, $"https://{host}/v2/{repository}/blobs/{configDigest}", cancellationToken).ConfigureAwait(false);
@@ -95,10 +95,10 @@ internal static class RegistryImageFetcher
             List<string> layerEntries = [];
             int index = 0;
 
-            foreach (JsonElement layer in image.GetProperty("layers").EnumerateArray())
+            foreach (JToken layer in image["layers"] ?? new JArray())
             {
-                string digest = layer.GetProperty("digest").GetString()!;
-                string mediaType = layer.TryGetProperty("mediaType", out JsonElement type) ? type.GetString() ?? string.Empty : string.Empty;
+                string digest = layer["digest"]!.Value<string>()!;
+                string mediaType = layer["mediaType"]?.Value<string>() ?? string.Empty;
 
                 if (mediaType.Contains("zstd", StringComparison.OrdinalIgnoreCase))
                 {
@@ -127,7 +127,7 @@ internal static class RegistryImageFetcher
 
             await File.WriteAllTextAsync(
                 Path.Combine(workingDirectory, "manifest.json"),
-                JsonSerializer.Serialize(new[]
+                JsonConvert.SerializeObject(new[]
                 {
                     new ArchiveManifestEntry(configFileName, [repoTag], [.. layerEntries]),
                 }),
@@ -154,7 +154,7 @@ internal static class RegistryImageFetcher
     /// <summary>
     /// Picks the manifest for the platform this machine runs.
     /// </summary>
-    private static string SelectPlatformDigest(JsonElement entries, string repository, string reference)
+    private static string SelectPlatformDigest(JArray entries, string repository, string reference)
     {
         string architecture = RuntimeInformation.OSArchitecture switch
         {
@@ -163,19 +163,17 @@ internal static class RegistryImageFetcher
             _ => "amd64",
         };
 
-        foreach (JsonElement entry in entries.EnumerateArray())
+        foreach (JToken entry in entries)
         {
-            if (!entry.TryGetProperty("platform", out JsonElement platform))
+            if (entry["platform"] is not { } platform)
                 continue;
 
             // Linux only: every base image this framework selects is a Linux image, and the daemon is
             // checked for Linux containers before any of this runs.
-            if (platform.TryGetProperty("os", out JsonElement os)
-                && string.Equals(os.GetString(), "linux", StringComparison.OrdinalIgnoreCase)
-                && platform.TryGetProperty("architecture", out JsonElement arch)
-                && string.Equals(arch.GetString(), architecture, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(platform["os"]?.Value<string>(), "linux", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(platform["architecture"]?.Value<string>(), architecture, StringComparison.OrdinalIgnoreCase))
             {
-                return entry.GetProperty("digest").GetString()!;
+                return entry["digest"]!.Value<string>()!;
             }
         }
 

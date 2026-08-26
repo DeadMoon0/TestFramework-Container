@@ -1,3 +1,4 @@
+﻿using TestFramework.Core.Steps;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -38,17 +39,17 @@ internal sealed class StubEnvComponent : WebEnvComponentBase
 
     public override IReadOnlyList<EnvComponentIdentifier> Dependencies => [DockerWebEnvironment.NetworkComponentId];
 
-    public override async Task<object?> CreateAsync(IEnvironmentProvider environment, IServiceProvider serviceProvider, VariableStore variableStore, ArtifactStore artifactStore, ScopedLogger logger, CancellationToken cancellationToken)
+    public override async Task<object?> CreateAsync(IEnvironmentProvider environment, RunContext context)
     {
-        ArgumentNullException.ThrowIfNull(serviceProvider);
-        ArgumentNullException.ThrowIfNull(logger);
+        ArgumentNullException.ThrowIfNull(context.Services);
+        ArgumentNullException.ThrowIfNull(context.Logger);
 
         DockerWebEnvironment webEnvironment = GetWebEnvironment(environment);
         IReadOnlyList<StubDefinition> definitions = webEnvironment.GetStubDefinitions();
         if (definitions.Count == 0)
             return null;
 
-        WebConfigStore<StubConfig> configStore = GetRequiredConfigStore(serviceProvider);
+        WebConfigStore<StubConfig> configStore = GetRequiredConfigStore(context.Services);
         INetwork network = webEnvironment.GetRequiredRuntimeState<INetwork>(DockerWebEnvironment.NetworkComponentId);
 
         // Declaration order in, declaration order out, however the starts interleave.
@@ -56,9 +57,9 @@ internal sealed class StubEnvComponent : WebEnvComponentBase
 
         IReadOnlyList<StartedStub> started = await ContainerStartCoordinator.StartAllAsync(
             ordered,
-            (definition, token) => StartStubAsync(webEnvironment, definition, network, logger, token),
+            (definition, token) => StartStubAsync(webEnvironment, definition, network, context.Logger, token),
             result => result.Container,
-            cancellationToken).ConfigureAwait(false);
+            context.Deadline.Token).ConfigureAwait(false);
 
         // The admin client reads the published address, so counting has to follow publishing, and
         // publishing is a config-store write that stays serial.
@@ -66,11 +67,11 @@ internal sealed class StubEnvComponent : WebEnvComponentBase
         foreach (StartedStub stub in started)
         {
             Publish(configStore, stub.Identifier, stub.HostBaseUrl);
-            int loaded = await CountLoadedMappingsAsync(serviceProvider, stub.Identifier, cancellationToken).ConfigureAwait(false);
-            await EnsureMappingsLoadedAsync(stub.Container, stub.Identifier, stub.DeclaredMappings, loaded, logger, cancellationToken).ConfigureAwait(false);
+            int loaded = await CountLoadedMappingsAsync(context.Services, stub.Identifier, context.Deadline.Token).ConfigureAwait(false);
+            await EnsureMappingsLoadedAsync(stub.Container, stub.Identifier, stub.DeclaredMappings, loaded, context.Logger, context.Deadline.Token).ConfigureAwait(false);
 
             stubs.Add(new RunningStub(stub.Identifier, stub.Container, stub.HostBaseUrl, stub.NetworkBaseUrl, loaded));
-            logger.LogInformation("Stub '{0}' is reachable at '{1}' with {2} mapping(s) loaded.", stub.Identifier, stub.HostBaseUrl, loaded);
+            context.Logger.LogInformation("Stub '{0}' is reachable at '{1}' with {2} mapping(s) loaded.", stub.Identifier, stub.HostBaseUrl, loaded);
         }
 
         StubComponentState state = new(stubs);
@@ -78,17 +79,17 @@ internal sealed class StubEnvComponent : WebEnvComponentBase
         return state;
     }
 
-    public override async Task DeconstructAsync(object? state, IEnvironmentProvider environment, IServiceProvider serviceProvider, VariableStore variableStore, ArtifactStore artifactStore, ScopedLogger logger, CancellationToken cancellationToken)
+    public override async Task DeconstructAsync(object? state, IEnvironmentProvider environment, RunContext context)
     {
-        ArgumentNullException.ThrowIfNull(logger);
+        ArgumentNullException.ThrowIfNull(context.Logger);
 
         if (state is not StubComponentState stubState)
             return;
 
         foreach (RunningStub stub in stubState.Stubs)
         {
-            await ContainerLogCapture.CaptureAsync(stub.Container, $"Stub '{stub.Identifier}'", logger, cancellationToken).ConfigureAwait(false);
-            await ContainerDockerCommands.ForceRemoveContainerAsync(stub.Container, cancellationToken).ConfigureAwait(false);
+            await ContainerLogCapture.CaptureAsync(stub.Container, $"Stub '{stub.Identifier}'", context.Logger, context.Deadline.Token).ConfigureAwait(false);
+            await ContainerDockerCommands.ForceRemoveContainerAsync(stub.Container, context.Deadline.Token).ConfigureAwait(false);
         }
     }
 

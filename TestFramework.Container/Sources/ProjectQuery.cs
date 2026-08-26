@@ -1,9 +1,10 @@
+﻿using TestFramework.Core.Json;
+using Newtonsoft.Json.Linq;
+using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text.Json;
-using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 using TestFramework.Core.Exceptions;
@@ -87,8 +88,8 @@ public static class ProjectQuery
                 [result.Describe()]);
         }
 
-        JsonObject payload = Parse(result, fullPath);
-        JsonObject properties = payload["Properties"] as JsonObject ?? [];
+        JObject payload = Parse(result, fullPath);
+        JObject properties = payload["Properties"] as JObject ?? [];
 
         string assemblyName = ReadString(properties, "AssemblyName")
             ?? Path.GetFileNameWithoutExtension(fullPath);
@@ -142,11 +143,11 @@ public static class ProjectQuery
         return OperatingSystem.IsWindows() ? $"{joined}{Path.DirectorySeparatorChar}" : $"{Path.DirectorySeparatorChar}{joined}";
     }
 
-    private static JsonObject Parse(DotNetCliResult result, string projectPath)
+    private static JObject Parse(DotNetCliResult result, string projectPath)
     {
         try
         {
-            return JsonNode.Parse(result.StandardOutput) as JsonObject
+            return WireJson.Parse(result.StandardOutput) as JObject
                 ?? throw new FrameworkConfigurationException($"MSBuild returned no usable evaluation for '{projectPath}'.");
         }
         catch (JsonException exception)
@@ -159,7 +160,7 @@ public static class ProjectQuery
         }
     }
 
-    private static IReadOnlyList<string> ReadTargetFrameworks(JsonObject properties)
+    private static IReadOnlyList<string> ReadTargetFrameworks(JObject properties)
     {
         string? plural = ReadString(properties, "TargetFrameworks");
         if (!string.IsNullOrWhiteSpace(plural))
@@ -169,15 +170,15 @@ public static class ProjectQuery
         return string.IsNullOrWhiteSpace(single) ? [] : [single];
     }
 
-    private static IReadOnlyList<string> ReadProjectReferences(JsonObject payload, string projectDirectory)
+    private static IReadOnlyList<string> ReadProjectReferences(JObject payload, string projectDirectory)
     {
-        if (payload["Items"] is not JsonObject items || items["ProjectReference"] is not JsonArray references)
+        if (payload["Items"] is not JObject items || items["ProjectReference"] is not JArray references)
             return [];
 
         List<string> resolved = [];
-        foreach (JsonNode? reference in references)
+        foreach (JToken? reference in references)
         {
-            string? relative = reference is JsonObject entry
+            string? relative = reference is JObject entry
                 ? ReadString(entry, "FullPath") ?? ReadString(entry, "Identity")
                 : reference?.ToString();
 
@@ -188,8 +189,18 @@ public static class ProjectQuery
         return resolved;
     }
 
-    private static string? ReadString(JsonObject source, string name)
-        => source[name] is JsonValue value && value.TryGetValue(out string? text) && !string.IsNullOrWhiteSpace(text)
+    /// <summary>
+    /// Reads a property that is a JSON string, and nothing else.
+    /// </summary>
+    /// <remarks>
+    /// The type check is deliberate: <c>Value&lt;string&gt;()</c> would render a number or a boolean as
+    /// text, and a property that is not a string is one this reader does not understand.
+    /// </remarks>
+    /// <param name="source">The object to read from.</param>
+    /// <param name="name">The property name.</param>
+    /// <returns>The string, or null when it is absent, not a string, or blank.</returns>
+    private static string? ReadString(JObject source, string name)
+        => source[name] is { Type: JTokenType.String } value && value.Value<string>() is { } text && !string.IsNullOrWhiteSpace(text)
             ? text
             : null;
 }

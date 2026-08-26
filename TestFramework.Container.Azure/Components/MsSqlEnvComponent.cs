@@ -1,3 +1,4 @@
+﻿using TestFramework.Core.Steps;
 using DotNet.Testcontainers.Networks;
 using System;
 using System.Collections.Generic;
@@ -22,18 +23,18 @@ internal sealed class MsSqlEnvComponent : DockerAzureEnvComponent
 
     public override IReadOnlyList<EnvComponentIdentifier> Dependencies => [DockerAzureEnvironment.NetworkComponentId];
 
-    public override async Task<object?> CreateAsync(IEnvironmentProvider environment, IServiceProvider serviceProvider, VariableStore variableStore, ArtifactStore artifactStore, ScopedLogger logger, CancellationToken cancellationToken)
+    public override async Task<object?> CreateAsync(IEnvironmentProvider environment, RunContext context)
     {
         DockerAzureEnvironment dockerEnvironment = GetDockerEnvironment(environment);
 
         // The Service Bus emulator is backed by this very container, so a SQL-only guard would break every Service Bus run.
         if (dockerEnvironment.UsedSqlIdentifiers.Count == 0 && dockerEnvironment.UsedServiceBusIdentifiers.Count == 0)
         {
-            logger.LogInformation("Skipping SQL environment setup because neither SQL nor Service Bus identifiers were requested.");
+            context.Logger.LogInformation("Skipping SQL environment setup because neither SQL nor Service Bus identifiers were requested.");
             return null;
         }
 
-        ConfigStore<SqlDatabaseConfig>? configStore = EnvComponentConfigStoreGuard.GetRequiredStore<SqlDatabaseConfig>(dockerEnvironment, serviceProvider, dockerEnvironment.UsedSqlIdentifiers, "SQL environment setup");
+        ConfigStore<SqlDatabaseConfig>? configStore = EnvComponentConfigStoreGuard.GetRequiredStore<SqlDatabaseConfig>(dockerEnvironment, context.Services, dockerEnvironment.UsedSqlIdentifiers, "SQL environment setup");
         INetwork network = dockerEnvironment.GetRequiredRuntimeState<INetwork>(DockerAzureEnvironment.NetworkComponentId);
         MsSqlContainer container = MsSqlContainerFactory.Create(
             new MsSqlContainerOptions(
@@ -43,10 +44,10 @@ internal sealed class MsSqlEnvComponent : DockerAzureEnvComponent
                 [ServiceBusBuilder.DatabaseNetworkAlias]),
             network);
 
-        await container.StartAsync(cancellationToken).ConfigureAwait(false);
+        await container.StartAsync(context.Deadline.Token).ConfigureAwait(false);
 
         string connectionString = container.GetConnectionString();
-        await ContainerReadiness.WaitForSqlAsync(connectionString, dockerEnvironment.GetMsSqlReadinessTimeout(), "the SQL container", cancellationToken).ConfigureAwait(false);
+        await ContainerReadiness.WaitForSqlAsync(connectionString, dockerEnvironment.GetMsSqlReadinessTimeout(), "the SQL container", context.Deadline.Token).ConfigureAwait(false);
         ConnectionStringGuards.EnsureSql(connectionString);
 
         if (configStore is not null)
@@ -62,7 +63,7 @@ internal sealed class MsSqlEnvComponent : DockerAzureEnvComponent
         return container;
     }
 
-    public override async Task DeconstructAsync(object? state, IEnvironmentProvider environment, IServiceProvider serviceProvider, VariableStore variableStore, ArtifactStore artifactStore, ScopedLogger logger, CancellationToken cancellationToken)
+    public override async Task DeconstructAsync(object? state, IEnvironmentProvider environment, RunContext context)
     {
         if (state is IAsyncDisposable asyncDisposable)
             await asyncDisposable.DisposeAsync().ConfigureAwait(false);

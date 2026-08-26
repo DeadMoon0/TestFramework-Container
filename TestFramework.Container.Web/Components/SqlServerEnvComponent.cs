@@ -1,3 +1,4 @@
+﻿using TestFramework.Core.Steps;
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -28,10 +29,10 @@ internal sealed class SqlServerEnvComponent : WebEnvComponentBase
 
     public override IReadOnlyList<EnvComponentIdentifier> Dependencies => [DockerWebEnvironment.NetworkComponentId];
 
-    public override async Task<object?> CreateAsync(IEnvironmentProvider environment, IServiceProvider serviceProvider, VariableStore variableStore, ArtifactStore artifactStore, ScopedLogger logger, CancellationToken cancellationToken)
+    public override async Task<object?> CreateAsync(IEnvironmentProvider environment, RunContext context)
     {
-        ArgumentNullException.ThrowIfNull(serviceProvider);
-        ArgumentNullException.ThrowIfNull(logger);
+        ArgumentNullException.ThrowIfNull(context.Services);
+        ArgumentNullException.ThrowIfNull(context.Logger);
 
         DockerWebEnvironment webEnvironment = GetWebEnvironment(environment);
         IReadOnlyList<DockerSqlDefinition> definitions = webEnvironment.GetSqlDefinitions();
@@ -40,12 +41,12 @@ internal sealed class SqlServerEnvComponent : WebEnvComponentBase
         // a database. When nothing declares one, there is nothing to start.
         if (definitions.Count == 0)
         {
-            logger.LogInformation("No database was declared, so no SQL Server container is started.");
+            context.Logger.LogInformation("No database was declared, so no SQL Server container is started.");
             return null;
         }
 
-        WebConfigStore<SqlConfig> configStore = GetRequiredConfigStore(serviceProvider);
-        SqlModelRegistry registry = SqlConfigResolver.ResolveModelRegistry(serviceProvider);
+        WebConfigStore<SqlConfig> configStore = GetRequiredConfigStore(context.Services);
+        SqlModelRegistry registry = SqlConfigResolver.ResolveModelRegistry(context.Services);
         INetwork network = webEnvironment.GetRequiredRuntimeState<INetwork>(DockerWebEnvironment.NetworkComponentId);
 
         MsSqlContainer container = MsSqlContainerFactory.Create(
@@ -56,29 +57,29 @@ internal sealed class SqlServerEnvComponent : WebEnvComponentBase
                 [DockerWebDefaults.MsSqlNetworkAlias]),
             network);
 
-        await container.StartAsync(cancellationToken).ConfigureAwait(false);
+        await container.StartAsync(context.Deadline.Token).ConfigureAwait(false);
 
         // A started container is not a usable server, and publishing an address before the server
         // answers turns a startup race into a confusing failure much later.
         string serverConnectionString = container.GetConnectionString();
-        await ContainerReadiness.WaitForSqlAsync(serverConnectionString, DockerWebDefaults.MsSqlReadinessTimeout, "the SQL Server container", cancellationToken).ConfigureAwait(false);
+        await ContainerReadiness.WaitForSqlAsync(serverConnectionString, DockerWebDefaults.MsSqlReadinessTimeout, "the SQL Server container", context.Deadline.Token).ConfigureAwait(false);
 
         Dictionary<string, SqlDatabaseEndpoint> databases = [];
         foreach (DockerSqlDefinition definition in definitions)
         {
             DockerSqlSpec spec = definition.Build();
-            await SqlDatabaseProvisioner.EnsureDatabaseAsync(serverConnectionString, spec, logger, cancellationToken).ConfigureAwait(false);
+            await SqlDatabaseProvisioner.EnsureDatabaseAsync(serverConnectionString, spec, context.Logger, context.Deadline.Token).ConfigureAwait(false);
 
             SqlDatabaseEndpoint endpoint = new(
                 ContainerEndpoints.HostSqlConnectionString(container, spec.DatabaseName, MsSqlContainerOptions.UserName, webEnvironment.SqlPassword),
                 ContainerEndpoints.NetworkSqlConnectionString(DockerWebDefaults.MsSqlNetworkAlias, spec.DatabaseName, MsSqlContainerOptions.UserName, webEnvironment.SqlPassword));
 
-            await SqlDatabaseProvisioner.ApplySchemaAsync(endpoint.HostConnectionString, spec, registry, logger, cancellationToken).ConfigureAwait(false);
+            await SqlDatabaseProvisioner.ApplySchemaAsync(endpoint.HostConnectionString, spec, registry, context.Logger, context.Deadline.Token).ConfigureAwait(false);
 
             Publish(configStore, definition.Identifier, endpoint.HostConnectionString, webEnvironment.SqlPassword);
             databases[definition.Identifier] = endpoint;
 
-            logger.LogInformation("SQL identifier '{0}' is served by the database '{1}'.", definition.Identifier.ToString(), spec.DatabaseName);
+            context.Logger.LogInformation("SQL identifier '{0}' is served by the database '{1}'.", definition.Identifier.ToString(), spec.DatabaseName);
         }
 
         SqlServerComponentState state = new(container, databases);
@@ -86,12 +87,12 @@ internal sealed class SqlServerEnvComponent : WebEnvComponentBase
         return state;
     }
 
-    public override async Task DeconstructAsync(object? state, IEnvironmentProvider environment, IServiceProvider serviceProvider, VariableStore variableStore, ArtifactStore artifactStore, ScopedLogger logger, CancellationToken cancellationToken)
+    public override async Task DeconstructAsync(object? state, IEnvironmentProvider environment, RunContext context)
     {
         if (state is SqlServerComponentState sqlState)
-            await ContainerDockerCommands.ForceRemoveContainerAsync(sqlState.Container, cancellationToken).ConfigureAwait(false);
+            await ContainerDockerCommands.ForceRemoveContainerAsync(sqlState.Container, context.Deadline.Token).ConfigureAwait(false);
         else if (state is IContainer container)
-            await ContainerDockerCommands.ForceRemoveContainerAsync(container, cancellationToken).ConfigureAwait(false);
+            await ContainerDockerCommands.ForceRemoveContainerAsync(container, context.Deadline.Token).ConfigureAwait(false);
         else if (state is IAsyncDisposable asyncDisposable)
             await asyncDisposable.DisposeAsync().ConfigureAwait(false);
     }

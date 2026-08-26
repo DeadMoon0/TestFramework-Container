@@ -1,8 +1,7 @@
+﻿using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 using TestFramework.Core.Exceptions;
 using TestFramework.Core.Logging;
@@ -185,39 +184,38 @@ internal sealed class ServiceBusRuntimeState(ServiceBusContainer container, stri
 
 internal static class ServiceBusTopologySerializer
 {
-    private static readonly JsonSerializerOptions SerializerOptions = new()
-    {
-        WriteIndented = true,
-    };
-
     internal static string Serialize(ServiceBusEmulatorTopologyDefinition topology)
     {
         ArgumentNullException.ThrowIfNull(topology);
-        return JsonSerializer.Serialize(topology, SerializerOptions);
+
+        // Indented because the emulator's config is something a person reads when a run misbehaves, and
+        // the property names are spelled out on the records rather than left to a naming policy: they are
+        // the emulator's contract, not this package's preference.
+        return JsonConvert.SerializeObject(topology, Formatting.Indented);
     }
 }
 
 internal sealed record ServiceBusEmulatorTopologyDefinition(
-    [property: JsonPropertyName("UserConfig")] ServiceBusEmulatorUserConfigDefinition UserConfig);
+    [property: JsonProperty("UserConfig")] ServiceBusEmulatorUserConfigDefinition UserConfig);
 
 internal sealed record ServiceBusEmulatorUserConfigDefinition(
-    [property: JsonPropertyName("Namespaces")] IReadOnlyList<ServiceBusEmulatorNamespaceDefinition> Namespaces,
-    [property: JsonPropertyName("Logging")] ServiceBusEmulatorLoggingDefinition Logging);
+    [property: JsonProperty("Namespaces")] IReadOnlyList<ServiceBusEmulatorNamespaceDefinition> Namespaces,
+    [property: JsonProperty("Logging")] ServiceBusEmulatorLoggingDefinition Logging);
 
 internal sealed record ServiceBusEmulatorNamespaceDefinition(
-    [property: JsonPropertyName("Name")] string Name,
-    [property: JsonPropertyName("Queues")] IReadOnlyList<ServiceBusEmulatorQueueDefinition> Queues,
-    [property: JsonPropertyName("Topics")] IReadOnlyList<ServiceBusEmulatorTopicDefinition> Topics);
+    [property: JsonProperty("Name")] string Name,
+    [property: JsonProperty("Queues")] IReadOnlyList<ServiceBusEmulatorQueueDefinition> Queues,
+    [property: JsonProperty("Topics")] IReadOnlyList<ServiceBusEmulatorTopicDefinition> Topics);
 
 internal sealed record ServiceBusEmulatorQueueDefinition(
-    [property: JsonPropertyName("Name")] string Name);
+    [property: JsonProperty("Name")] string Name);
 
 internal sealed record ServiceBusEmulatorTopicDefinition(
-    [property: JsonPropertyName("Name")] string Name,
-    [property: JsonPropertyName("Subscriptions")] IReadOnlyList<ServiceBusEmulatorSubscriptionDefinition> Subscriptions);
+    [property: JsonProperty("Name")] string Name,
+    [property: JsonProperty("Subscriptions")] IReadOnlyList<ServiceBusEmulatorSubscriptionDefinition> Subscriptions);
 
 internal sealed record ServiceBusEmulatorSubscriptionDefinition(
-    [property: JsonPropertyName("Name")] string Name);
+    [property: JsonProperty("Name")] string Name);
 
 internal sealed record ServiceBusEmulatorLoggingDefinition(
-    [property: JsonPropertyName("Type")] string Type);
+    [property: JsonProperty("Type")] string Type);

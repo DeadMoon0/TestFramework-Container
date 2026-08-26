@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Net.Http;
 using System.Threading;
@@ -319,15 +319,15 @@ public class SiteContainerSmokeTests
         public IReadOnlyCollection<EnvironmentRequirement> GetEnvironmentRequirements(VariableStore variableStore)
             => [new EnvironmentRequirement("ui.webapp", siteIdentifier)];
 
-        public override async Task<FetchSiteResult?> Execute(IServiceProvider serviceProvider, VariableStore variableStore, ArtifactStore artifactStore, ScopedLogger logger, CancellationToken cancellationToken)
+        public override async Task<FetchSiteResult?> Execute(RunContext context)
         {
-            WebConfigStore<SiteConfig> store = (WebConfigStore<SiteConfig>)serviceProvider.GetService(typeof(WebConfigStore<SiteConfig>))!;
+            WebConfigStore<SiteConfig> store = (WebConfigStore<SiteConfig>)context.Services.GetService(typeof(WebConfigStore<SiteConfig>))!;
             Uri baseUrl = new(store.GetConfig(siteIdentifier).BaseUrl, UriKind.Absolute);
 
             using HttpClient client = new() { BaseAddress = baseUrl };
-            using HttpResponseMessage response = await client.GetAsync(path.TrimStart('/'), cancellationToken).ConfigureAwait(false);
+            using HttpResponseMessage response = await client.GetAsync(path.TrimStart('/'), context.Deadline.Token).ConfigureAwait(false);
 
-            string body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            string body = await response.Content.ReadAsStringAsync(context.Deadline.Token).ConfigureAwait(false);
             return new FetchSiteResult((int)response.StatusCode, body);
         }
 

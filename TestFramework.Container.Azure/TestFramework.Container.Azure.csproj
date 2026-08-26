@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
 		<TargetFrameworks>net8.0;net10.0</TargetFrameworks>
@@ -9,7 +9,7 @@
 		     the documentation pass; it is a bridge, not a decision. -->
 		<NoWarn>$(NoWarn);CS1591</NoWarn>
 		<Title>TestFramework.Container.Azure</Title>
-		<Version>0.3.0</Version>
+		<Version>0.4.0</Version>
 		<Authors>DeadMoon0</Authors>
 		<Product>TestFramework</Product>
 		<Description>Docker-backed environment providers for TestFramework timelines for Azure components.</Description>
@@ -34,7 +34,7 @@
 		<!-- Container is consumed as a published package, not as a project, so the dependency this
 		     package declares is exactly the one a consumer resolves. Container must be published
 		     before this package ships against it. -->
-		<PackageReference Include="TestFramework.Container" Version="0.3.1" />
+		<PackageReference Include="TestFramework.Container" Version="0.4.0" />
 	</ItemGroup>
 
 	<ItemGroup>
@@ -62,9 +62,9 @@
 		<PackageReference Include="Testcontainers.CosmosDb" Version="4.11.0" />
 		<PackageReference Include="Testcontainers.MsSql" Version="4.11.0" />
 		<PackageReference Include="Testcontainers.ServiceBus" Version="4.11.0" />
-		<PackageReference Include="TestFramework.Azure" Version="0.3.0" />
-		<PackageReference Include="TestFramework.Config" Version="0.2.1" />
-		<PackageReference Include="TestFramework.Core" Version="0.3.0" />
+		<PackageReference Include="TestFramework.Azure" Version="0.4.0" />
+		<PackageReference Include="TestFramework.Config" Version="0.3.0" />
+		<PackageReference Include="TestFramework.Core" Version="0.4.0" />
 	</ItemGroup>
 
 	<ItemGroup>
