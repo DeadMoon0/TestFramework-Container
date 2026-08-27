@@ -44,7 +44,7 @@ BREAKING - RunningApi gained a NetworkBaseUrl parameter after BaseUrl, and appli
 		<PackageReference Include="Testcontainers.MsSql" Version="4.11.0" />
 		<PackageReference Include="TestFramework.Config" Version="0.3.0" />
 		<PackageReference Include="TestFramework.Core" Version="0.4.0" />
-		<PackageReference Include="TestFramework.Web" Version="0.4.0" />
+		<PackageReference Include="TestFramework.Web" Version="0.5.0" />
 	</ItemGroup>
 
 	<ItemGroup>
