@@ -59,7 +59,7 @@ internal sealed class SiteEnvComponent : WebEnvComponentBase
             return null;
 
         INetwork network = webEnvironment.GetRequiredRuntimeState<INetwork>(DockerWebEnvironment.NetworkComponentId);
-        SiteTargetResolver targets = new(webEnvironment, context.Services);
+        SiteTargetResolver targets = new(webEnvironment, context);
 
         // Declaration order in, declaration order out, however the starts interleave.
         IReadOnlyList<DockerSiteDefinition> ordered = [.. definitions.OrderBy(definition => definition.Identifier.ToString(), StringComparer.Ordinal)];
@@ -393,10 +393,29 @@ internal sealed class SiteEnvComponent : WebEnvComponentBase
 
     /// <summary>
     /// Resolves a route or binding target to an address: a container the environment declared wins;
-    /// otherwise the address the target's configuration entry names, so the same site definition
-    /// serves a containerized and a deployed backend.
+    /// otherwise the address the run holds for it, so the same site definition serves a containerized and a
+    /// deployed backend.
     /// </summary>
-    private sealed class SiteTargetResolver(DockerWebEnvironment webEnvironment, IServiceProvider serviceProvider)
+    /// <remarks>
+    /// <para>
+    /// The fallback used to read a configuration store, which made this the last "ask the environment, else
+    /// read the file" branch in the family - the shape §4 says should not exist, because the file is in the
+    /// graph.
+    /// </para>
+    /// <para>
+    /// The gain is that the viewpoint becomes sayable. A proxy location is read inside a container and a
+    /// binding is read on the host; a store holds one address and cannot tell them apart, so this branch
+    /// relied on the two being the same. They are, for an entry somebody wrote down - a declared address is
+    /// published for both viewpoints - so nothing was resolving wrongly. What is removed is the invariant:
+    /// the caller says which side it is asking from, and the answer follows whatever supplied the resource.
+    /// </para>
+    /// </remarks>
+    /// <remarks>
+    /// Internal rather than private so its own cases can drive it. The deployed-backend branch is half of
+    /// what a site definition promises - the same definition serves a container and a deployed service -
+    /// and reaching it through a started nginx would test the parts that already have smoke coverage.
+    /// </remarks>
+    internal sealed class SiteTargetResolver(DockerWebEnvironment webEnvironment, RunContext context)
     {
         public Uri NetworkUrl(SiteTargetKind kind, string identifier)
             => Resolve(kind, identifier, networkFacing: true);
@@ -407,7 +426,7 @@ internal sealed class SiteEnvComponent : WebEnvComponentBase
         public SiteAddressBook CreateAddressBook()
             => new(identifier => HostUrl(SiteTargetKind.Api, identifier), identifier => HostUrl(SiteTargetKind.Stub, identifier));
 
-        private Uri Resolve(SiteTargetKind kind, string identifier, bool networkFacing)
+        internal Uri Resolve(SiteTargetKind kind, string identifier, bool networkFacing)
         {
             if (kind == SiteTargetKind.Api)
             {
@@ -417,7 +436,7 @@ internal sealed class SiteEnvComponent : WebEnvComponentBase
                     return networkFacing ? api.NetworkBaseUrl : api.BaseUrl;
                 }
 
-                if (TryGetConfiguredBaseUrl<TestFramework.Web.Configuration.ApiConfig>(identifier, config => config.BaseUrl) is { } configured)
+                if (TryGetSuppliedBaseUrl(WebEnvironmentResourceKinds.RestApi, identifier, networkFacing) is { } configured)
                     return configured;
 
                 throw TargetUnresolvable("API", identifier, $"Include the {nameof(DockerApiDefinition)} for it, or configure 'Api:{identifier}:BaseUrl'.");
@@ -429,20 +448,20 @@ internal sealed class SiteEnvComponent : WebEnvComponentBase
                 return networkFacing ? stub.NetworkBaseUrl : stub.HostBaseUrl;
             }
 
-            if (TryGetConfiguredBaseUrl<StubConfig>(identifier, config => config.BaseUrl) is { } configuredStub)
+            if (TryGetSuppliedBaseUrl(WebEnvironmentResourceKinds.Stub, identifier, networkFacing) is { } configuredStub)
                 return configuredStub;
 
             throw TargetUnresolvable("stub", identifier, $"Include the {nameof(StubDefinition)} for it, or configure 'Stub:{identifier}:BaseUrl'.");
         }
 
-        private Uri? TryGetConfiguredBaseUrl<TConfig>(string identifier, Func<TConfig, string> selectBaseUrl)
+        private Uri? TryGetSuppliedBaseUrl(string kind, string identifier, bool networkFacing)
         {
-            WebConfigStore<TConfig>? store = serviceProvider.GetService<WebConfigStore<TConfig>>();
-            if (store is null || !store.TryGetConfig(identifier, out TConfig? config) || config is null)
-                return null;
+            ResourceVantage vantage = networkFacing ? ResourceVantage.Network : ResourceVantage.Host;
 
-            string baseUrl = selectBaseUrl(config);
-            return string.IsNullOrWhiteSpace(baseUrl) ? null : new Uri(baseUrl, UriKind.Absolute);
+            return context.Values.TryGet(ValueRef.For(kind, identifier, ValueNames.BaseUrl), vantage, out string? baseUrl)
+                && baseUrl is { Length: > 0 }
+                    ? new Uri(baseUrl, UriKind.Absolute)
+                    : null;
         }
 
         private static FrameworkConfigurationException TargetUnresolvable(string kind, string identifier, string recovery)
