@@ -17,6 +17,11 @@ using TestFramework.Azure.Configuration.SpecificConfigs;
 using TestFramework.Container.Sources;
 using TestFramework.Core.Artifacts;
 using TestFramework.Core.Exceptions;
+using TestFramework.Azure;
+using TestFramework.Core.Environment.Graph;
+using TestFramework.Azure.StorageAccount;
+using TestFramework.Azure.DB.CosmosDB;
+using TestFramework.Azure.ServiceBus;
 using TestFramework.Core.Environment;
 using TestFramework.Core.Logging;
 using TestFramework.Core.Variables;
@@ -56,7 +61,7 @@ internal sealed class FunctionAppEnvComponent(DockerAzureEnvironment owner) : Do
         // not on access, and it costs nothing next to a container start.
         List<PlannedFunctionApp> planned = [];
         foreach (string identifier in dockerEnvironment.UsedFunctionAppIdentifiers.OrderBy(x => x, StringComparer.Ordinal))
-            planned.Add(await PrepareFunctionAppAsync(dockerEnvironment, context.Services, identifier, context.Logger, context.Deadline.Token).ConfigureAwait(false));
+            planned.Add(await PrepareFunctionAppAsync(dockerEnvironment, context, identifier).ConfigureAwait(false));
 
         IReadOnlyList<StartedFunctionApp> started = await ContainerStartCoordinator.StartAllAsync(
             planned,
@@ -64,11 +69,15 @@ internal sealed class FunctionAppEnvComponent(DockerAzureEnvironment owner) : Do
             result => result.Container,
             context.Deadline.Token).ConfigureAwait(false);
 
-        // Publishing is a config-store write, so it happens once every start has settled.
+        // Published once every start has settled, so a half-started set never advertises addresses.
         foreach (StartedFunctionApp app in started)
         {
-            FunctionAppConfig current = functionStore!.GetConfig(app.Identifier);
-            functionStore.AddConfig(app.Identifier, current with { BaseUrl = app.BaseUrl });
+            PublishOn(context).Produce(
+                AzureEnvironmentResourceKinds.FunctionAppKind,
+                app.Identifier,
+                ValueNames.BaseUrl,
+                ResourceVantage.Host,
+                app.BaseUrl);
         }
 
         return new FunctionAppComponentState(started);
@@ -76,11 +85,12 @@ internal sealed class FunctionAppEnvComponent(DockerAzureEnvironment owner) : Do
 
     private static async Task<PlannedFunctionApp> PrepareFunctionAppAsync(
         DockerAzureEnvironment dockerEnvironment,
-        IServiceProvider serviceProvider,
-        string identifier,
-        ScopedLogger logger,
-        CancellationToken cancellationToken)
+        RunContext context,
+        string identifier)
     {
+        ScopedLogger logger = context.Logger;
+        CancellationToken cancellationToken = context.Deadline.Token;
+
         FunctionAppDefinitionDescriptor descriptor = dockerEnvironment.GetRequiredFunctionAppDescriptor(identifier);
         DockerFunctionAppRegistration registration = descriptor.Registration;
 
@@ -97,7 +107,7 @@ internal sealed class FunctionAppEnvComponent(DockerAzureEnvironment owner) : Do
 
         string image = ResolveHostImage(registration, plan, identifier, logger);
 
-        Dictionary<string, string> appSettings = BuildAppSettings(dockerEnvironment, serviceProvider, descriptor, logger);
+        Dictionary<string, string> appSettings = BuildAppSettings(dockerEnvironment, context, descriptor, logger);
         appSettings["AzureFunctionsJobHost__Logging__Console__IsEnabled"] = "true";
         appSettings["AzureWebJobsScriptRoot"] = FunctionAppRoot;
         appSettings["FUNCTIONS_WORKER_RUNTIME"] = "dotnet-isolated";
@@ -281,7 +291,17 @@ internal sealed class FunctionAppEnvComponent(DockerAzureEnvironment owner) : Do
         }
     }
 
-    private static Dictionary<string, string> BuildAppSettings(DockerAzureEnvironment dockerEnvironment, IServiceProvider serviceProvider, FunctionAppDefinitionDescriptor descriptor, ScopedLogger? logger = null)
+    /// <summary>
+    /// The settings the Functions host is started with, which name every resource it binds to.
+    /// </summary>
+    /// <remarks>
+    /// Asked of the run rather than of the configuration store. These are peer containers that started in
+    /// this same setup, on ports the operating system chose, and a store holds what a person declared - so
+    /// reading the store here is how a host used to be handed a default port and a blank connection string.
+    /// The rewrite that follows each value is separate and still needed: a coordinate the test process can
+    /// reach is not one this container can, and the endpoint map is what knows the difference.
+    /// </remarks>
+    private static Dictionary<string, string> BuildAppSettings(DockerAzureEnvironment dockerEnvironment, RunContext context, FunctionAppDefinitionDescriptor descriptor, ScopedLogger? logger = null)
     {
         DockerFunctionAppRegistration registration = descriptor.Registration;
         Dictionary<string, string> settings = new(StringComparer.OrdinalIgnoreCase)
@@ -295,7 +315,7 @@ internal sealed class FunctionAppEnvComponent(DockerAzureEnvironment owner) : Do
             switch (binding.Kind)
             {
                 case FunctionAppResourceBindingKind.Storage:
-                    StorageAccountConfig storage = dockerEnvironment.GetOrCreateConfigStore<StorageAccountConfig>(serviceProvider, [binding.ResourceIdentifier], "Function App environment setup")!.GetConfig(binding.ResourceIdentifier);
+                    StorageAccountConfig storage = StorageAccountResources.Resolve(context, binding.ResourceIdentifier);
                     string rewrittenStorage = dockerEnvironment.GetEndpointMap().RewriteStorageForContainer(storage.ConnectionString);
                     settings[binding.PrimarySettingName] = rewrittenStorage;
                     if (binding.SecondarySettingName is not null)
@@ -309,7 +329,7 @@ internal sealed class FunctionAppEnvComponent(DockerAzureEnvironment owner) : Do
                     }
                     break;
                 case FunctionAppResourceBindingKind.Cosmos:
-                    CosmosContainerDbConfig cosmos = dockerEnvironment.GetOrCreateConfigStore<CosmosContainerDbConfig>(serviceProvider, [binding.ResourceIdentifier], "Function App environment setup")!.GetConfig(binding.ResourceIdentifier);
+                    CosmosContainerDbConfig cosmos = CosmosResources.Resolve(context, binding.ResourceIdentifier);
                     settings[binding.PrimarySettingName] = dockerEnvironment.GetEndpointMap().RewriteCosmosForContainer(cosmos.ConnectionString);
                     if (binding.SecondarySettingName is not null)
                         settings[binding.SecondarySettingName] = cosmos.DatabaseName;
@@ -317,7 +337,7 @@ internal sealed class FunctionAppEnvComponent(DockerAzureEnvironment owner) : Do
                         settings[binding.TertiarySettingName] = cosmos.ContainerName;
                     break;
                 case FunctionAppResourceBindingKind.ServiceBusTrigger:
-                    ServiceBusConfig triggerBus = dockerEnvironment.GetOrCreateConfigStore<ServiceBusConfig>(serviceProvider, [binding.ResourceIdentifier], "Function App environment setup")!.GetConfig(binding.ResourceIdentifier);
+                    ServiceBusConfig triggerBus = ServiceBusResources.Resolve(context, binding.ResourceIdentifier);
                     settings[binding.PrimarySettingName] = dockerEnvironment.GetEndpointMap().RewriteServiceBusForContainer(triggerBus.ConnectionString);
                     if (binding.ServiceBusEndpoint is { } triggerEndpoint)
                     {
@@ -328,7 +348,7 @@ internal sealed class FunctionAppEnvComponent(DockerAzureEnvironment owner) : Do
                     }
                     break;
                 case FunctionAppResourceBindingKind.ServiceBusReply:
-                    ServiceBusConfig replyBus = dockerEnvironment.GetOrCreateConfigStore<ServiceBusConfig>(serviceProvider, [binding.ResourceIdentifier], "Function App environment setup")!.GetConfig(binding.ResourceIdentifier);
+                    ServiceBusConfig replyBus = ServiceBusResources.Resolve(context, binding.ResourceIdentifier);
                     settings[binding.PrimarySettingName] = dockerEnvironment.GetEndpointMap().RewriteServiceBusForContainer(replyBus.ConnectionString);
                     if (binding.ServiceBusEndpoint is { } replyEndpoint && binding.SecondarySettingName is not null)
                         settings[binding.SecondarySettingName] = replyEndpoint.EntityName;

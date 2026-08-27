@@ -18,6 +18,7 @@ using TestFramework.Core.Environment;
 using TestFramework.Core.Exceptions;
 using TestFramework.Core.Logging;
 using TestFramework.Core.Variables;
+using TestFramework.Web;
 using TestFramework.Web.Configuration;
 
 namespace TestFramework.Container.Web.Components;
@@ -56,7 +57,6 @@ internal sealed class ApiEnvComponent : WebEnvComponentBase
         if (definitions.Count == 0)
             return null;
 
-        WebConfigStore<ApiConfig> configStore = GetRequiredConfigStore(context.Services);
         INetwork network = webEnvironment.GetRequiredRuntimeState<INetwork>(DockerWebEnvironment.NetworkComponentId);
 
         // Declaration order in, declaration order out, however the starts interleave.
@@ -96,7 +96,7 @@ internal sealed class ApiEnvComponent : WebEnvComponentBase
         List<RunningApi> apis = [];
         foreach (StartedApi api in started)
         {
-            Publish(configStore, api.Planned.Definition.Identifier, api.BaseUrl, api.Planned.Spec.HealthPath);
+            Publish(context, api);
             apis.Add(new RunningApi(api.Planned.Definition.Identifier, api.Container, api.BaseUrl, api.NetworkBaseUrl, api.Planned.Plan, api.Planned.SettingsFileName, api.Planned.SettingsJson));
             context.Logger.LogInformation("API '{0}' is reachable at '{1}'.", api.Planned.Definition.Identifier, api.BaseUrl);
         }
@@ -283,29 +283,37 @@ internal sealed class ApiEnvComponent : WebEnvComponentBase
         }
     }
 
-    private static WebConfigStore<ApiConfig> GetRequiredConfigStore(IServiceProvider serviceProvider)
-        => serviceProvider.GetService<WebConfigStore<ApiConfig>>()
-        ?? throw new FrameworkConfigurationException(
-            "The run has no API configuration store, so the container has nowhere to publish its address. "
-            + "Call LoadWebConfig() on the config instance the run is set up with.");
-
-    private static void Publish(WebConfigStore<ApiConfig> configStore, string identifier, Uri baseUrl, string? healthPath)
+    /// <summary>
+    /// Publishes where this application ended up, for both viewpoints.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Published rather than written back into <c>TestFramework.Web</c>'s configuration store. That store
+    /// holds what a person declared; a container's port is chosen by the operating system when it starts, so
+    /// where this application ended up is a resource value and the run holds those.
+    /// </para>
+    /// <para>
+    /// Both viewpoints, which the store could not express at all: the test process reaches the mapped host
+    /// port and a peer container reaches the network alias, and a store with one <c>BaseUrl</c> forced
+    /// everything inside the network to be given the address that only works outside it.
+    /// </para>
+    /// <para>
+    /// The health path is published only when the definition states one. Left unpublished, a configured entry
+    /// keeps whatever it declared and an entry that does not exist falls back to the record's own default,
+    /// which is what the container default was a copy of.
+    /// </para>
+    /// </remarks>
+    private static void Publish(RunContext context, StartedApi api)
     {
-        if (configStore.TryGetConfig(identifier, out ApiConfig? existing) && existing is not null)
-        {
-            configStore.AddConfig(identifier, existing with
-            {
-                BaseUrl = baseUrl.ToString(),
-                HealthPath = healthPath ?? existing.HealthPath,
-            });
+        string identifier = api.Planned.Definition.Identifier;
+        EnvironmentResources resources = PublishOn(context);
 
-            return;
+        resources.Produce(WebEnvironmentResourceKinds.RestApiKind, identifier, ValueNames.BaseUrl, ResourceVantage.Host, api.BaseUrl.ToString());
+        resources.Produce(WebEnvironmentResourceKinds.RestApiKind, identifier, ValueNames.BaseUrl, ResourceVantage.Network, api.NetworkBaseUrl.ToString());
+
+        if (api.Planned.Spec.HealthPath is { Length: > 0 } healthPath)
+        {
+            resources.Produce(WebEnvironmentResourceKinds.RestApiKind, identifier, nameof(ApiConfig.HealthPath), healthPath);
         }
-
-        configStore.AddConfig(identifier, new ApiConfig
-        {
-            BaseUrl = baseUrl.ToString(),
-            HealthPath = healthPath ?? DockerWebDefaults.ApiHealthPath,
-        });
     }
 }

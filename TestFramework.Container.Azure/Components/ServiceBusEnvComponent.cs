@@ -10,6 +10,8 @@ using Testcontainers.ServiceBus;
 using TestFramework.Azure.Configuration;
 using TestFramework.Azure.Configuration.SpecificConfigs;
 using TestFramework.Core.Artifacts;
+using TestFramework.Azure;
+using TestFramework.Core.Environment.Graph;
 using TestFramework.Core.Environment;
 using TestFramework.Core.Logging;
 using TestFramework.Core.Variables;
@@ -33,7 +35,9 @@ internal sealed class ServiceBusEnvComponent : DockerAzureEnvComponent
             return null;
         }
 
-        ConfigStore<ServiceBusConfig>? configStore = EnvComponentConfigStoreGuard.GetRequiredStore<ServiceBusConfig>(dockerEnvironment, context.Services, dockerEnvironment.UsedServiceBusIdentifiers, "Service Bus environment setup");
+        // Called for its effect, not its result: it refuses a used identifier with no configuration entry, and
+        // seeds the store the run resolves for the ones that have defaults. Nothing writes to it any more.
+        _ = EnvComponentConfigStoreGuard.GetRequiredStore<ServiceBusConfig>(dockerEnvironment, context.Services, dockerEnvironment.UsedServiceBusIdentifiers, "Service Bus environment setup");
         INetwork network = dockerEnvironment.GetRequiredRuntimeState<INetwork>(DockerAzureEnvironment.NetworkComponentId);
         MsSqlContainer msSqlContainer = dockerEnvironment.GetRequiredRuntimeState<MsSqlContainer>(DockerAzureEnvironment.MsSqlComponentId);
         MaterializedServiceBusTopology materializedTopology = ServiceBusTopologyMaterializer.Materialize(dockerEnvironment.GetServiceBusTopologySource(), context.Logger);
@@ -54,13 +58,17 @@ internal sealed class ServiceBusEnvComponent : DockerAzureEnvComponent
         ServiceBusAdministrationClient administrationClient = new(container.GetHttpConnectionString());
         await administrationClient.GetNamespacePropertiesAsync(context.Deadline.Token).ConfigureAwait(false);
 
-        if (configStore is not null)
+        // Published rather than written back into the Azure package's configuration store. That store holds
+        // what a person declared, and a mapped port is not something a person can declare - it is chosen when
+        // the container starts. Where a resource ended up belongs to the run.
+        foreach (string identifier in dockerEnvironment.UsedServiceBusIdentifiers)
         {
-            foreach (string identifier in dockerEnvironment.UsedServiceBusIdentifiers)
-            {
-                ServiceBusConfig current = configStore.GetConfig(identifier);
-                configStore.AddConfig(identifier, current with { ConnectionString = connectionString });
-            }
+            PublishOn(context).Produce(
+                AzureEnvironmentResourceKinds.ServiceBusKind,
+                identifier,
+                ValueNames.ConnectionString,
+                ResourceVantage.Host,
+                connectionString);
         }
 
         ServiceBusRuntimeState runtimeState = new(container, materializedTopology.IsTemporary ? materializedTopology.ConfigPath : null);

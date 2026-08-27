@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using TestFramework.Azure;
 using TestFramework.Azure.Configuration;
@@ -95,12 +95,12 @@ internal static class DockerAzureSmokeConfigFactory
                 functionAppStore.AddConfig("func", CreateFunctionAppConfig());
                 services.AddSingleton(functionAppStore);
 
-                services.AddDbContext<DockerAzureEnvironmentSmokeTests.SmokeSqlDbContext>((serviceProvider, options) =>
-                {
-                    SqlDatabaseConfig config = serviceProvider.GetRequiredService<ConfigStore<SqlDatabaseConfig>>().GetConfig("sql");
-                    options.UseSqlServer(config.ConnectionString);
-                });
-                services.AddSqlArtifactContexts(registry => registry.AddForIdentifier<DockerAzureEnvironmentSmokeTests.SmokeSqlDbContext>("sql"));
+                // No AddDbContext, and no reading of a configuration store: the options handed to this callback
+                // already point at the database this run is using, whether a person wrote its address down or
+                // the container published one while starting.
+                services.AddSqlArtifactContexts(registry => registry.AddForIdentifier<DockerAzureEnvironmentSmokeTests.SmokeSqlDbContext>(
+                    "sql",
+                    options => new DockerAzureEnvironmentSmokeTests.SmokeSqlDbContext(options)));
             })
             .Build();
 

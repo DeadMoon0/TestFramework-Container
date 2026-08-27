@@ -12,6 +12,8 @@ using TestFramework.Core.Environment;
 using TestFramework.Core.Exceptions;
 using TestFramework.Core.Logging;
 using TestFramework.Core.Variables;
+using TestFramework.Core.Environment.Graph;
+using TestFramework.Web;
 using TestFramework.Web.Configuration;
 using TestFramework.Web.Sql;
 using TestFramework.Web.Sql.Model;
@@ -45,7 +47,6 @@ internal sealed class SqlServerEnvComponent : WebEnvComponentBase
             return null;
         }
 
-        WebConfigStore<SqlConfig> configStore = GetRequiredConfigStore(context.Services);
         SqlModelRegistry registry = SqlConfigResolver.ResolveModelRegistry(context.Services);
         INetwork network = webEnvironment.GetRequiredRuntimeState<INetwork>(DockerWebEnvironment.NetworkComponentId);
 
@@ -76,7 +77,7 @@ internal sealed class SqlServerEnvComponent : WebEnvComponentBase
 
             await SqlDatabaseProvisioner.ApplySchemaAsync(endpoint.HostConnectionString, spec, registry, context.Logger, context.Deadline.Token).ConfigureAwait(false);
 
-            Publish(configStore, definition.Identifier, endpoint.HostConnectionString, webEnvironment.SqlPassword);
+            Publish(context, definition.Identifier, endpoint);
             databases[definition.Identifier] = endpoint;
 
             context.Logger.LogInformation("SQL identifier '{0}' is served by the database '{1}'.", definition.Identifier.ToString(), spec.DatabaseName);
@@ -97,29 +98,34 @@ internal sealed class SqlServerEnvComponent : WebEnvComponentBase
             await asyncDisposable.DisposeAsync().ConfigureAwait(false);
     }
 
-    private static WebConfigStore<SqlConfig> GetRequiredConfigStore(IServiceProvider serviceProvider)
-        => serviceProvider.GetService<WebConfigStore<SqlConfig>>()
-        ?? throw new FrameworkConfigurationException(
-            "The run has no SQL configuration store, so the container has nowhere to publish its connection strings. "
-            + "Call LoadWebConfig() on the config instance the run is set up with.");
-
-    private static void Publish(WebConfigStore<SqlConfig> configStore, string identifier, string connectionString, string password)
+    /// <summary>
+    /// Publishes how to reach this database, for both viewpoints.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Published rather than written back into <c>TestFramework.Web</c>'s configuration store. That store
+    /// holds what a person declared; the port this container ended up on is a resource value, and the run
+    /// holds those.
+    /// </para>
+    /// <para>
+    /// Both connection strings, which the store could not express: the test process reaches the mapped host
+    /// port and a peer container reaches the network alias, and a store with one <c>ConnectionString</c>
+    /// forced everything inside the network to be handed the address that only works outside it.
+    /// </para>
+    /// <para>
+    /// Each string already carries the container's own credentials, so nothing about them is published
+    /// separately - a password does not belong in a value store that a run can snapshot and log. The
+    /// store write this replaces also nulled a declared server and integrated-security flag, because a
+    /// container owns the whole connection; a produced value cannot un-declare anything, so for a database
+    /// that is both configured and containerised those declared credentials are still applied on top. See
+    /// entry 20 of the debt ledger - it needs an origin-aware read to close properly.
+    /// </para>
+    /// </remarks>
+    private static void Publish(RunContext context, string identifier, SqlDatabaseEndpoint endpoint)
     {
-        SqlConfig current = configStore.TryGetConfig(identifier, out SqlConfig? existing) && existing is not null
-            ? existing
-            : new SqlConfig();
+        EnvironmentResources resources = PublishOn(context);
 
-        // The container owns the whole connection. Leaving a configured server, or integrated
-        // security meant for a developer machine, in place would silently point the run elsewhere.
-        configStore.AddConfig(identifier, current with
-        {
-            ConnectionString = connectionString,
-            Server = null,
-            Database = null,
-            IntegratedSecurity = false,
-            UserName = MsSqlContainerOptions.UserName,
-            Password = password,
-            TrustServerCertificate = true,
-        });
+        resources.Produce(WebEnvironmentResourceKinds.SqlKind, identifier, ValueNames.ConnectionString, ResourceVantage.Host, endpoint.HostConnectionString);
+        resources.Produce(WebEnvironmentResourceKinds.SqlKind, identifier, ValueNames.ConnectionString, ResourceVantage.Network, endpoint.NetworkConnectionString);
     }
 }

@@ -14,6 +14,8 @@ using TestFramework.Core.Steps;
 using TestFramework.Core.Steps.Options;
 using TestFramework.Core.Timelines;
 using TestFramework.Core.Variables;
+using TestFramework.Core.Environment.Graph;
+using TestFramework.Web;
 using TestFramework.Web.Configuration;
 using TestFramework.Web.Extensions;
 using TestFramework.Web.Identifier;
@@ -304,10 +306,15 @@ public class SiteContainerSmokeTests
         => Assert.IsType<FetchSiteResult>(run.Step(stepName).LastResult.Result);
 
     /// <summary>
-    /// Fetches a path from a site the way a browser step would find it: by identifier, from the
-    /// published configuration. Declaring the browser steps' own requirement kind is deliberate --
-    /// it proves the environment maps <c>ui.webapp</c> to the site component.
+    /// Fetches a path from a site the way a browser step would find it: by identifier, from the run.
+    /// Declaring the browser steps' own requirement kind is deliberate -- it proves the environment maps
+    /// <c>ui.webapp</c> to the site component.
     /// </summary>
+    /// <remarks>
+    /// It asks the run rather than a configuration store, because that is where a started container's
+    /// address now is. The host viewpoint, because this step runs in the test process; the same identifier
+    /// answers a peer container with the network alias instead, which a single-address store could not say.
+    /// </remarks>
     private sealed class FetchSiteStep(string siteIdentifier, string path) : Step<FetchSiteResult>, IHasEnvironmentRequirements
     {
         public override string Name => "fetch-site";
@@ -321,8 +328,11 @@ public class SiteContainerSmokeTests
 
         public override async Task<FetchSiteResult?> Execute(RunContext context)
         {
-            WebConfigStore<SiteConfig> store = (WebConfigStore<SiteConfig>)context.Services.GetService(typeof(WebConfigStore<SiteConfig>))!;
-            Uri baseUrl = new(store.GetConfig(siteIdentifier).BaseUrl, UriKind.Absolute);
+            Uri baseUrl = new(
+                context.Values.Require(
+                    ValueRef.For(WebEnvironmentResourceKinds.Site, siteIdentifier, ValueNames.BaseUrl),
+                    ResourceVantage.Host),
+                UriKind.Absolute);
 
             using HttpClient client = new() { BaseAddress = baseUrl };
             using HttpResponseMessage response = await client.GetAsync(path.TrimStart('/'), context.Deadline.Token).ConfigureAwait(false);

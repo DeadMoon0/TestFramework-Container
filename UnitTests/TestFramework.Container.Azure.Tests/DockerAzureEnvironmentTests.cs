@@ -250,7 +250,9 @@ public class DockerAzureEnvironmentTests
         Dictionary<string, string> settings = (Dictionary<string, string>)typeof(DockerAzureEnvironment).Assembly
             .GetType("TestFramework.Container.Azure.Components.FunctionAppEnvComponent")!
             .GetMethod("BuildAppSettings", BindingFlags.Static | BindingFlags.NonPublic)!
-            .Invoke(null, [environment, serviceProvider, descriptor, null])!;
+            // A detached context: the declared entries above are the whole point of this case, and a context
+            // with no run resolves them straight through. A real run publishes over them.
+            .Invoke(null, [environment, RunContext.Detached(serviceProvider), descriptor, null])!;
 
         Assert.Contains(DockerAzureEnvironment.AzuriteNetworkAlias, settings["StorageAccountConnectionString"]);
         Assert.Equal(settings["StorageAccountConnectionString"], settings["AzureWebJobsStorage"]);

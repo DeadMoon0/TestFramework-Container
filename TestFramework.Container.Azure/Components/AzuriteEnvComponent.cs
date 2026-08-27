@@ -9,6 +9,8 @@ using System.Threading.Tasks;
 using TestFramework.Azure.Configuration;
 using TestFramework.Azure.Configuration.SpecificConfigs;
 using TestFramework.Core.Artifacts;
+using TestFramework.Azure;
+using TestFramework.Core.Environment.Graph;
 using TestFramework.Core.Environment;
 using TestFramework.Core.Logging;
 using TestFramework.Core.Variables;
@@ -32,7 +34,9 @@ internal sealed class AzuriteEnvComponent : DockerAzureEnvComponent
             return null;
         }
 
-        ConfigStore<StorageAccountConfig>? configStore = EnvComponentConfigStoreGuard.GetRequiredStore<StorageAccountConfig>(dockerEnvironment, context.Services, dockerEnvironment.UsedStorageIdentifiers, "Azurite environment setup");
+        // Called for its effect, not its result: it refuses a used identifier with no configuration entry, and
+        // seeds the store the run resolves for the ones that have defaults. Nothing writes to it any more.
+        _ = EnvComponentConfigStoreGuard.GetRequiredStore<StorageAccountConfig>(dockerEnvironment, context.Services, dockerEnvironment.UsedStorageIdentifiers, "Azurite environment setup");
         INetwork network = dockerEnvironment.GetRequiredRuntimeState<INetwork>(DockerAzureEnvironment.NetworkComponentId);
         IContainer container = new ContainerBuilder(dockerEnvironment.GetAzuriteImage())
             .WithNetwork(network)
@@ -49,13 +53,17 @@ internal sealed class AzuriteEnvComponent : DockerAzureEnvComponent
         string connectionString = dockerEnvironment.GetEndpointMap().CreateAzuriteConnectionString(container);
         ConnectionStringGuards.EnsureAzurite(connectionString);
 
-        if (configStore is not null)
+        // Published rather than written back into the Azure package's configuration store. That store holds
+        // what a person declared, and a mapped port is not something a person can declare - it is chosen when
+        // the container starts. Where a resource ended up belongs to the run.
+        foreach (string identifier in dockerEnvironment.UsedStorageIdentifiers)
         {
-            foreach (string identifier in dockerEnvironment.UsedStorageIdentifiers)
-            {
-                StorageAccountConfig current = configStore.GetConfig(identifier);
-                configStore.AddConfig(identifier, current with { ConnectionString = connectionString });
-            }
+            PublishOn(context).Produce(
+                AzureEnvironmentResourceKinds.StorageKind,
+                identifier,
+                ValueNames.ConnectionString,
+                ResourceVantage.Host,
+                connectionString);
         }
 
         dockerEnvironment.SetRuntimeState(Id, container);

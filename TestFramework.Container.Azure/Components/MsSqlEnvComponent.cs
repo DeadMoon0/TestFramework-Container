@@ -9,6 +9,8 @@ using Testcontainers.ServiceBus;
 using TestFramework.Azure.Configuration;
 using TestFramework.Azure.Configuration.SpecificConfigs;
 using TestFramework.Core.Artifacts;
+using TestFramework.Azure;
+using TestFramework.Core.Environment.Graph;
 using TestFramework.Core.Environment;
 using TestFramework.Core.Logging;
 using TestFramework.Core.Variables;
@@ -34,7 +36,7 @@ internal sealed class MsSqlEnvComponent : DockerAzureEnvComponent
             return null;
         }
 
-        ConfigStore<SqlDatabaseConfig>? configStore = EnvComponentConfigStoreGuard.GetRequiredStore<SqlDatabaseConfig>(dockerEnvironment, context.Services, dockerEnvironment.UsedSqlIdentifiers, "SQL environment setup");
+        EnvironmentResources resources = PublishOn(context);
         INetwork network = dockerEnvironment.GetRequiredRuntimeState<INetwork>(DockerAzureEnvironment.NetworkComponentId);
         MsSqlContainer container = MsSqlContainerFactory.Create(
             new MsSqlContainerOptions(
@@ -50,13 +52,19 @@ internal sealed class MsSqlEnvComponent : DockerAzureEnvComponent
         await ContainerReadiness.WaitForSqlAsync(connectionString, dockerEnvironment.GetMsSqlReadinessTimeout(), "the SQL container", context.Deadline.Token).ConfigureAwait(false);
         ConnectionStringGuards.EnsureSql(connectionString);
 
-        if (configStore is not null)
+        // The last of these in the family, and it published rather than writing. A DbContext used to take its
+        // connection string when its registration was built, from a service provider with no run in sight, so
+        // writing this store was the only channel that reached one. SqlDbContextRegistry now builds a context
+        // from options the framework points at the run's database, which removed the need for the channel
+        // instead of hiding it.
+        foreach (string identifier in dockerEnvironment.UsedSqlIdentifiers)
         {
-            foreach (string identifier in dockerEnvironment.UsedSqlIdentifiers)
-            {
-                SqlDatabaseConfig current = configStore.GetConfig(identifier);
-                configStore.AddConfig(identifier, current with { ConnectionString = connectionString });
-            }
+            resources.Produce(
+                AzureEnvironmentResourceKinds.SqlKind,
+                identifier,
+                ValueNames.ConnectionString,
+                ResourceVantage.Host,
+                connectionString);
         }
 
         dockerEnvironment.SetRuntimeState(Id, container);

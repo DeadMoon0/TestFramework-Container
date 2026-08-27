@@ -20,6 +20,8 @@ using TestFramework.Azure.Configuration;
 using TestFramework.Azure.Configuration.SpecificConfigs;
 using TestFramework.Azure.DB.CosmosDB;
 using TestFramework.Core.Artifacts;
+using TestFramework.Azure.StorageAccount;
+using TestFramework.Azure.ServiceBus;
 using TestFramework.Core.Environment;
 using TestFramework.Core.Exceptions;
 using TestFramework.Core.Logging;
@@ -89,9 +91,9 @@ internal sealed class AzureResetEnvComponent(DockerAzureEnvironment owner) : Doc
         Stopwatch stopwatch = Stopwatch.StartNew();
         context.Logger.LogInformation("Purging the declared Azure resources so this run starts from an empty environment.");
 
-        await RunPurgeAsync("storage", () => PurgeStorageAsync(dockerEnvironment, context.Services, context.Logger, context.Deadline.Token), context.Logger, context.Deadline.Token).ConfigureAwait(false);
-        await RunPurgeAsync("Cosmos", () => PurgeCosmosAsync(dockerEnvironment, context.Services, context.Logger, context.Deadline.Token), context.Logger, context.Deadline.Token).ConfigureAwait(false);
-        await RunPurgeAsync("Service Bus", () => PurgeServiceBusAsync(dockerEnvironment, context.Services, context.Logger, context.Deadline.Token), context.Logger, context.Deadline.Token).ConfigureAwait(false);
+        await RunPurgeAsync("storage", () => PurgeStorageAsync(dockerEnvironment, context), context.Logger, context.Deadline.Token).ConfigureAwait(false);
+        await RunPurgeAsync("Cosmos", () => PurgeCosmosAsync(dockerEnvironment, context), context.Logger, context.Deadline.Token).ConfigureAwait(false);
+        await RunPurgeAsync("Service Bus", () => PurgeServiceBusAsync(dockerEnvironment, context), context.Logger, context.Deadline.Token).ConfigureAwait(false);
         await RunPurgeAsync("SQL", () => PurgeSqlAsync(dockerEnvironment, context.Services, context.Logger, context.Deadline.Token), context.Logger, context.Deadline.Token).ConfigureAwait(false);
 
         context.Logger.LogInformation($"Finished purging the declared Azure resources in {stopwatch.Elapsed:g}.");
@@ -139,22 +141,18 @@ internal sealed class AzureResetEnvComponent(DockerAzureEnvironment owner) : Doc
         return Task.CompletedTask;
     }
 
-    private static async Task PurgeStorageAsync(DockerAzureEnvironment dockerEnvironment, IServiceProvider serviceProvider, ScopedLogger logger, CancellationToken cancellationToken)
+    private static async Task PurgeStorageAsync(DockerAzureEnvironment dockerEnvironment, RunContext context)
     {
         IReadOnlyCollection<string> identifiers = dockerEnvironment.UsedStorageIdentifiers;
         if (identifiers.Count == 0)
             return;
 
-        ConfigStore<StorageAccountConfig>? store = dockerEnvironment.GetOrCreateConfigStore<StorageAccountConfig>(serviceProvider, identifiers, "Azure reset");
-        if (store is null)
-            return;
-
         // Several identifiers share the one emulator account, and one pass over it clears them all.
-        foreach (string connectionString in DistinctConnectionStrings(identifiers, identifier => store.GetConfig(identifier).ConnectionString))
+        foreach (string connectionString in DistinctConnectionStrings(identifiers, identifier => StorageAccountResources.Resolve(context, identifier).ConnectionString))
         {
-            await PurgeBlobContainersAsync(connectionString, logger, cancellationToken).ConfigureAwait(false);
-            await PurgeTablesAsync(connectionString, logger, cancellationToken).ConfigureAwait(false);
-            await PurgeQueuesAsync(connectionString, logger, cancellationToken).ConfigureAwait(false);
+            await PurgeBlobContainersAsync(connectionString, context.Logger, context.Deadline.Token).ConfigureAwait(false);
+            await PurgeTablesAsync(connectionString, context.Logger, context.Deadline.Token).ConfigureAwait(false);
+            await PurgeQueuesAsync(connectionString, context.Logger, context.Deadline.Token).ConfigureAwait(false);
         }
     }
 
@@ -202,19 +200,18 @@ internal sealed class AzureResetEnvComponent(DockerAzureEnvironment owner) : Doc
             logger.LogInformation($"Cleared {names.Count} storage queue(s): {string.Join(", ", names.OrderBy(x => x, StringComparer.Ordinal))}.");
     }
 
-    private static async Task PurgeCosmosAsync(DockerAzureEnvironment dockerEnvironment, IServiceProvider serviceProvider, ScopedLogger logger, CancellationToken cancellationToken)
+    private static async Task PurgeCosmosAsync(DockerAzureEnvironment dockerEnvironment, RunContext context)
     {
         IReadOnlyCollection<string> identifiers = dockerEnvironment.UsedCosmosIdentifiers;
         if (identifiers.Count == 0)
             return;
 
-        ConfigStore<CosmosContainerDbConfig>? store = dockerEnvironment.GetOrCreateConfigStore<CosmosContainerDbConfig>(serviceProvider, identifiers, "Azure reset");
-        if (store is null)
-            return;
+        ScopedLogger logger = context.Logger;
+        CancellationToken cancellationToken = context.Deadline.Token;
 
         foreach (string identifier in identifiers.OrderBy(x => x, StringComparer.Ordinal))
         {
-            CosmosContainerDbConfig config = store.GetConfig(identifier);
+            CosmosContainerDbConfig config = CosmosResources.Resolve(context, identifier);
             if (!dockerEnvironment.CosmosPartitionKeyPaths.TryGetValue(identifier, out string? partitionKeyPath))
             {
                 logger.LogWarning($"Cosmos identifier '{identifier}' has no recorded partition key path, so its container was left as it is.");
@@ -282,22 +279,21 @@ internal sealed class AzureResetEnvComponent(DockerAzureEnvironment owner) : Doc
         }
     }
 
-    private static async Task PurgeServiceBusAsync(DockerAzureEnvironment dockerEnvironment, IServiceProvider serviceProvider, ScopedLogger logger, CancellationToken cancellationToken)
+    private static async Task PurgeServiceBusAsync(DockerAzureEnvironment dockerEnvironment, RunContext context)
     {
         IReadOnlyCollection<string> identifiers = dockerEnvironment.UsedServiceBusIdentifiers;
         if (identifiers.Count == 0)
             return;
 
-        ConfigStore<ServiceBusConfig>? store = dockerEnvironment.GetOrCreateConfigStore<ServiceBusConfig>(serviceProvider, identifiers, "Azure reset");
-        if (store is null)
-            return;
+        ScopedLogger logger = context.Logger;
+        CancellationToken cancellationToken = context.Deadline.Token;
 
         // The emulator builds its topology from the config file it was started with, so deleting and
         // recreating an entity would leave it with a topology it never agreed to. Messages go, the
         // entities stay.
         foreach (string identifier in identifiers.OrderBy(x => x, StringComparer.Ordinal))
         {
-            ServiceBusConfig config = store.GetConfig(identifier);
+            ServiceBusConfig config = ServiceBusResources.Resolve(context, identifier);
             await using ServiceBusClient client = new(config.ConnectionString);
 
             if (config.IsQueue)

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -158,13 +158,10 @@ public abstract class DockerSqlDefinition : DockerAzureDefinition
 
     protected virtual string? DatabaseName => null;
 
-    protected virtual string? ContextType => null;
-
     internal SqlDatabaseConfig BuildConfig(string connectionString) => new()
     {
         ConnectionString = connectionString,
         DatabaseName = DatabaseName ?? throw new FrameworkConfigurationException($"Override '{nameof(DatabaseName)}' on '{GetType().Name}' to provide a SQL database name."),
-        ContextType = ContextType,
     };
 
     internal bool TryCreateDefaultConfig(out SqlDatabaseConfig config)

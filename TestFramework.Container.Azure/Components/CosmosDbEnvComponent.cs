@@ -13,6 +13,8 @@ using TestFramework.Azure.Configuration;
 using TestFramework.Azure.Configuration.SpecificConfigs;
 using TestFramework.Azure.DB.CosmosDB;
 using TestFramework.Core.Artifacts;
+using TestFramework.Azure;
+using TestFramework.Core.Environment.Graph;
 using TestFramework.Core.Environment;
 using TestFramework.Core.Exceptions;
 using TestFramework.Core.Logging;
@@ -80,16 +82,27 @@ internal sealed class CosmosDbEnvComponent : DockerAzureEnvComponent
         });
         await WaitForGatewayAsync(client, DescribeCosmosEndpoint(connectionString), context.Logger, context.Deadline.Token).ConfigureAwait(false);
 
+        // Published rather than written back into the Azure package's configuration store. That store holds
+        // what a person declared, and a mapped port is not something a person can declare - it is chosen when
+        // the container starts. Where a resource ended up belongs to the run.
         if (configStore is not null)
         {
             foreach (string identifier in dockerEnvironment.UsedCosmosIdentifiers)
             {
-                CosmosContainerDbConfig current = configStore.GetConfig(identifier);
-                CosmosContainerDbConfig updated = current with { ConnectionString = connectionString };
-                configStore.AddConfig(identifier, updated);
+                PublishOn(context).Produce(
+                    AzureEnvironmentResourceKinds.CosmosKind,
+                    identifier,
+                    ValueNames.ConnectionString,
+                    ResourceVantage.Host,
+                    connectionString);
 
-                if (dockerEnvironment.CosmosPartitionKeyPaths.TryGetValue(identifier, out string? partitionKeyPath))
-                    await DeploySchemaAsync(identifier, updated, partitionKeyPath, context.Logger, context.Deadline.Token).ConfigureAwait(false);
+                if (!dockerEnvironment.CosmosPartitionKeyPaths.TryGetValue(identifier, out string? partitionKeyPath))
+                    continue;
+
+                // The declared entry names the database and container; the endpoint is this one. Built here
+                // rather than read back out of the store, because nothing put it there any more.
+                CosmosContainerDbConfig target = configStore.GetConfig(identifier) with { ConnectionString = connectionString };
+                await DeploySchemaAsync(identifier, target, partitionKeyPath, context.Logger, context.Deadline.Token).ConfigureAwait(false);
             }
         }
 

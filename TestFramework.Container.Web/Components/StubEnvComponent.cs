@@ -12,9 +12,11 @@ using DotNet.Testcontainers.Networks;
 using Microsoft.Extensions.DependencyInjection;
 using TestFramework.Core.Artifacts;
 using TestFramework.Core.Environment;
+using TestFramework.Core.Environment.Graph;
 using TestFramework.Core.Exceptions;
 using TestFramework.Core.Logging;
 using TestFramework.Core.Variables;
+using TestFramework.Web;
 using TestFramework.Web.Configuration;
 using TestFramework.Web.Stub;
 using TestFramework.Web.Stub.Mappings;
@@ -49,7 +51,6 @@ internal sealed class StubEnvComponent : WebEnvComponentBase
         if (definitions.Count == 0)
             return null;
 
-        WebConfigStore<StubConfig> configStore = GetRequiredConfigStore(context.Services);
         INetwork network = webEnvironment.GetRequiredRuntimeState<INetwork>(DockerWebEnvironment.NetworkComponentId);
 
         // Declaration order in, declaration order out, however the starts interleave.
@@ -61,13 +62,12 @@ internal sealed class StubEnvComponent : WebEnvComponentBase
             result => result.Container,
             context.Deadline.Token).ConfigureAwait(false);
 
-        // The admin client reads the published address, so counting has to follow publishing, and
-        // publishing is a config-store write that stays serial.
+        // The admin client resolves the address through the run, so counting has to follow publishing.
         List<RunningStub> stubs = [];
         foreach (StartedStub stub in started)
         {
-            Publish(configStore, stub.Identifier, stub.HostBaseUrl);
-            int loaded = await CountLoadedMappingsAsync(context.Services, stub.Identifier, context.Deadline.Token).ConfigureAwait(false);
+            Publish(context, stub);
+            int loaded = await CountLoadedMappingsAsync(context, stub.Identifier, context.Deadline.Token).ConfigureAwait(false);
             await EnsureMappingsLoadedAsync(stub.Container, stub.Identifier, stub.DeclaredMappings, loaded, context.Logger, context.Deadline.Token).ConfigureAwait(false);
 
             stubs.Add(new RunningStub(stub.Identifier, stub.Container, stub.HostBaseUrl, stub.NetworkBaseUrl, loaded));
@@ -197,8 +197,8 @@ internal sealed class StubEnvComponent : WebEnvComponentBase
         }
     }
 
-    private static Task<int> CountLoadedMappingsAsync(IServiceProvider serviceProvider, string identifier, CancellationToken cancellationToken)
-        => StubConfigResolver.CreateAdminClient(serviceProvider, identifier).GetMappingCountAsync(cancellationToken);
+    private static Task<int> CountLoadedMappingsAsync(RunContext context, string identifier, CancellationToken cancellationToken)
+        => StubConfigResolver.CreateAdminClient(context, identifier).GetMappingCountAsync(cancellationToken);
 
     private static async Task EnsureMappingsLoadedAsync(IContainer container, string identifier, int declared, int loaded, ScopedLogger logger, CancellationToken cancellationToken)
     {
@@ -217,18 +217,27 @@ internal sealed class StubEnvComponent : WebEnvComponentBase
             ]);
     }
 
-    private static WebConfigStore<StubConfig> GetRequiredConfigStore(IServiceProvider serviceProvider)
-        => serviceProvider.GetService<WebConfigStore<StubConfig>>()
-        ?? throw new FrameworkConfigurationException(
-            "The run has no stub configuration store, so the container has nowhere to publish its address. "
-            + "Call LoadWebConfig() on the config instance the run is set up with.");
-
-    private static void Publish(WebConfigStore<StubConfig> configStore, string identifier, Uri baseUrl)
+    /// <summary>
+    /// Publishes where this stub ended up, for both viewpoints.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Published rather than written back into <c>TestFramework.Web</c>'s configuration store. That store
+    /// holds what a person declared; a container's port is chosen by the operating system when it starts, so
+    /// where this stub ended up is a resource value and the run holds those.
+    /// </para>
+    /// <para>
+    /// Both viewpoints, which the store could not express at all: the test process reaches the mapped host
+    /// port and a peer container reaches the network alias, and a store with one <c>BaseUrl</c> forced
+    /// everything inside the network to be given the address that only works outside it.
+    /// </para>
+    /// </remarks>
+    private static void Publish(RunContext context, StartedStub stub)
     {
-        StubConfig published = configStore.TryGetConfig(identifier, out StubConfig? existing) && existing is not null
-            ? existing with { BaseUrl = baseUrl.ToString() }
-            : new StubConfig { BaseUrl = baseUrl.ToString() };
+        EnvironmentResources resources = PublishOn(context);
 
-        configStore.AddConfig(identifier, published with { AdminPath = DockerWebDefaults.StubAdminPath });
+        resources.Produce(WebEnvironmentResourceKinds.StubKind, stub.Identifier, ValueNames.BaseUrl, ResourceVantage.Host, stub.HostBaseUrl.ToString());
+        resources.Produce(WebEnvironmentResourceKinds.StubKind, stub.Identifier, ValueNames.BaseUrl, ResourceVantage.Network, stub.NetworkBaseUrl.ToString());
+        resources.Produce(WebEnvironmentResourceKinds.StubKind, stub.Identifier, WebEnvironmentResourceKinds.AdminPathValue, DockerWebDefaults.StubAdminPath);
     }
 }

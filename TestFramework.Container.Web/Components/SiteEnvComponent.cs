@@ -18,6 +18,7 @@ using TestFramework.Core.Environment;
 using TestFramework.Core.Exceptions;
 using TestFramework.Core.Logging;
 using TestFramework.Core.Variables;
+using TestFramework.Web;
 using TestFramework.Web.Configuration;
 using TestFramework.Web.Site;
 using TestFramework.Web.Stub;
@@ -57,7 +58,6 @@ internal sealed class SiteEnvComponent : WebEnvComponentBase
         if (definitions.Count == 0)
             return null;
 
-        WebConfigStore<SiteConfig> configStore = GetRequiredConfigStore(context.Services);
         INetwork network = webEnvironment.GetRequiredRuntimeState<INetwork>(DockerWebEnvironment.NetworkComponentId);
         SiteTargetResolver targets = new(webEnvironment, context.Services);
 
@@ -120,7 +120,7 @@ internal sealed class SiteEnvComponent : WebEnvComponentBase
         List<RunningSite> sites = [];
         foreach (StartedSite site in started)
         {
-            Publish(configStore, site.Planned.Definition.Identifier, site.BaseUrl);
+            Publish(context, site);
             sites.Add(new RunningSite(site.Planned.Definition.Identifier, site.Container, site.BaseUrl, site.Planned.Plan, site.Planned.NginxConfig, site.Planned.GeneratedFiles));
             context.Logger.LogInformation("Site '{0}' is reachable at '{1}'.", site.Planned.Definition.Identifier, site.BaseUrl);
         }
@@ -352,19 +352,34 @@ internal sealed class SiteEnvComponent : WebEnvComponentBase
         }
     }
 
-    private static WebConfigStore<SiteConfig> GetRequiredConfigStore(IServiceProvider serviceProvider)
-        => serviceProvider.GetService<WebConfigStore<SiteConfig>>()
-        ?? throw new FrameworkConfigurationException(
-            "The run has no site configuration store, so the container has nowhere to publish its address. "
-            + "Call LoadWebConfig() on the config instance the run is set up with.");
-
-    private static void Publish(WebConfigStore<SiteConfig> configStore, string identifier, Uri baseUrl)
+    /// <summary>
+    /// Publishes where this site ended up, for both viewpoints.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Published rather than written back into <c>TestFramework.Web</c>'s configuration store. That store
+    /// holds what a person declared; a container's port is chosen by the operating system when it starts, so
+    /// where this site ended up is a resource value and the run holds those.
+    /// </para>
+    /// <para>
+    /// The network address is built from the alias this container was given and the port it serves on, both
+    /// of which are stated a few lines above rather than guessed. The store had one <c>BaseUrl</c> and so
+    /// could only ever hold the host one, which is why a browser bridge and a site's own route resolver each
+    /// grew their own way of asking the same question.
+    /// </para>
+    /// </remarks>
+    private static void Publish(RunContext context, StartedSite site)
     {
-        SiteConfig published = configStore.TryGetConfig(identifier, out SiteConfig? existing) && existing is not null
-            ? existing with { BaseUrl = baseUrl.ToString() }
-            : new SiteConfig { BaseUrl = baseUrl.ToString() };
+        string identifier = site.Planned.Definition.Identifier;
+        EnvironmentResources resources = PublishOn(context);
 
-        configStore.AddConfig(identifier, published);
+        resources.Produce(WebEnvironmentResourceKinds.SiteKind, identifier, ValueNames.BaseUrl, ResourceVantage.Host, site.BaseUrl.ToString());
+        resources.Produce(
+            WebEnvironmentResourceKinds.SiteKind,
+            identifier,
+            ValueNames.BaseUrl,
+            ResourceVantage.Network,
+            $"http://{NetworkAlias(identifier)}:{site.Planned.Spec.InternalPort}/");
     }
 
     private sealed record PlannedSite(
