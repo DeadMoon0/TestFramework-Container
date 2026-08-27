@@ -1,10 +1,7 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.Extensions.DependencyInjection;
-using TestFramework.Azure.Configuration;
-using TestFramework.Azure.Configuration.SpecificConfigs;
 using TestFramework.Config;
 using TestFramework.Config.Builder.InstanceBuilder;
 using TestFramework.Core.Artifacts;
@@ -74,7 +71,6 @@ public class DockerAzureHostedCollectionFixture<TState>
     private readonly TState _state = new();
     private PersistentEnvironmentContext<DockerAzurePersistentSetup>? _persistentContext;
     private ConfigInstance? _persistentConfig;
-    private IServiceProvider? _persistentServiceProvider;
 
     /// <summary>
     /// Boots the persistent container stack. Signature-compatible with <c>Xunit.IAsyncLifetime</c> v2.
@@ -86,7 +82,6 @@ public class DockerAzureHostedCollectionFixture<TState>
         DockerAzurePersistentSetup setup = new(_state.CreateEnvironment(), persistentConfig, _state.PersistentRequirements, _state.PersistentSetupTimeout);
 
         _persistentConfig = persistentConfig;
-        _persistentServiceProvider = persistentServiceProvider;
 
         // Awaited rather than constructed: bootstrapping starts the container stack, and doing that
         // in a constructor blocked the test collection's thread for the whole setup timeout.
@@ -111,40 +106,17 @@ public class DockerAzureHostedCollectionFixture<TState>
         return new HostedEnvironmentProvider(persistentContext.CreateEnvironment(), configServiceProvider);
     }
 
+    /// <remarks>
+    /// A sub-instance replays the persistent instance's registrations, so the resources that instance declared
+    /// are already this run's. Nothing is copied across: a declaration is a fact, and a run reads it from the
+    /// graph rather than from a container-held object that a previous run could have edited.
+    /// </remarks>
     private ConfigInstance CreateRunConfig(Action<IConfigInstanceBuilder>? configure = null)
     {
         ConfigInstance persistentConfig = _persistentConfig ?? throw new FrameworkStateException("The hosted Docker Azure fixture has not finished initialization.");
         IConfigInstanceBuilder builder = persistentConfig.SetupSubInstance();
-        builder.AddService(services =>
-        {
-            services.AddSingleton(CloneStore(GetRequiredStore<StorageAccountConfig>()));
-            services.AddSingleton(CloneStore(GetRequiredStore<CosmosContainerDbConfig>()));
-            services.AddSingleton(CloneStore(GetRequiredStore<SqlDatabaseConfig>()));
-            services.AddSingleton(CloneStore(GetRequiredStore<ServiceBusConfig>()));
-            services.AddSingleton(CloneStore(GetRequiredStore<FunctionAppConfig>()));
-        });
         configure?.Invoke(builder);
         return builder.Build();
-    }
-
-    private ConfigStore<TConfig> GetRequiredStore<TConfig>() where TConfig : class
-    {
-        IServiceProvider persistentServiceProvider = _persistentServiceProvider ?? throw new FrameworkStateException("The hosted Docker Azure fixture has not finished initialization.");
-        return persistentServiceProvider.GetRequiredService<ConfigStore<TConfig>>();
-    }
-
-    private static ConfigStore<TConfig> CloneStore<TConfig>(ConfigStore<TConfig> source)
-    {
-        IReadOnlyDictionary<string, TConfig> snapshot = source.Snapshot();
-        using IEnumerator<KeyValuePair<string, TConfig>> enumerator = snapshot.GetEnumerator();
-        if (!enumerator.MoveNext())
-            return new ConfigStore<TConfig>();
-
-        ConfigStore<TConfig> store = ConfigStore<TConfig>.Create(enumerator.Current.Key, enumerator.Current.Value);
-        while (enumerator.MoveNext())
-            store.AddConfig(enumerator.Current.Key, enumerator.Current.Value);
-
-        return store;
     }
 
     private sealed class DockerAzurePersistentSetup : IConfigPersistentEnvironmentSetup

@@ -41,7 +41,7 @@ internal sealed class CosmosDbEnvComponent : DockerAzureEnvComponent
             return null;
         }
 
-        ConfigStore<CosmosContainerDbConfig>? configStore = EnvComponentConfigStoreGuard.GetRequiredStore<CosmosContainerDbConfig>(dockerEnvironment, context.Services, dockerEnvironment.UsedCosmosIdentifiers, "Cosmos environment setup");
+        EnvComponentResourceGuard.EnsureSupplied(context, AzureEnvironmentResourceKinds.CosmosKind, dockerEnvironment.UsedCosmosIdentifiers, "Cosmos environment setup");
         INetwork network = dockerEnvironment.GetRequiredRuntimeState<INetwork>(DockerAzureEnvironment.NetworkComponentId);
         string cosmosImage = dockerEnvironment.GetCosmosDbImage();
         ContainerBuilder builder = new ContainerBuilder(cosmosImage)
@@ -85,25 +85,23 @@ internal sealed class CosmosDbEnvComponent : DockerAzureEnvComponent
         // Published rather than written back into the Azure package's configuration store. That store holds
         // what a person declared, and a mapped port is not something a person can declare - it is chosen when
         // the container starts. Where a resource ended up belongs to the run.
-        if (configStore is not null)
+        foreach (string identifier in dockerEnvironment.UsedCosmosIdentifiers)
         {
-            foreach (string identifier in dockerEnvironment.UsedCosmosIdentifiers)
-            {
-                PublishOn(context).Produce(
-                    AzureEnvironmentResourceKinds.CosmosKind,
-                    identifier,
-                    ValueNames.ConnectionString,
-                    ResourceVantage.Host,
-                    connectionString);
+            PublishOn(context).Produce(
+                AzureEnvironmentResourceKinds.CosmosKind,
+                identifier,
+                ValueNames.ConnectionString,
+                ResourceVantage.Host,
+                connectionString);
 
-                if (!dockerEnvironment.CosmosPartitionKeyPaths.TryGetValue(identifier, out string? partitionKeyPath))
-                    continue;
+            if (!dockerEnvironment.CosmosPartitionKeyPaths.TryGetValue(identifier, out string? partitionKeyPath))
+                continue;
 
-                // The declared entry names the database and container; the endpoint is this one. Built here
-                // rather than read back out of the store, because nothing put it there any more.
-                CosmosContainerDbConfig target = configStore.GetConfig(identifier) with { ConnectionString = connectionString };
-                await DeploySchemaAsync(identifier, target, partitionKeyPath, context.Logger, context.Deadline.Token).ConfigureAwait(false);
-            }
+            // Read back from the run, which is where the address above has just gone. The declared entry
+            // names the database and the container; this one also carries the endpoint the emulator ended
+            // up on, so nothing has to staple the two together by hand.
+            CosmosContainerDbConfig target = context.Configured<CosmosContainerDbConfig>(identifier);
+            await DeploySchemaAsync(identifier, target, partitionKeyPath, context.Logger, context.Deadline.Token).ConfigureAwait(false);
         }
 
         dockerEnvironment.SetRuntimeState(Id, container);

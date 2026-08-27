@@ -7,8 +7,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Testcontainers.MsSql;
 using Testcontainers.ServiceBus;
-using TestFramework.Azure.Configuration;
-using TestFramework.Azure.Configuration.SpecificConfigs;
 using TestFramework.Core.Artifacts;
 using TestFramework.Azure;
 using TestFramework.Core.Environment.Graph;
@@ -37,7 +35,7 @@ internal sealed class ServiceBusEnvComponent : DockerAzureEnvComponent
 
         // Called for its effect, not its result: it refuses a used identifier with no configuration entry, and
         // seeds the store the run resolves for the ones that have defaults. Nothing writes to it any more.
-        _ = EnvComponentConfigStoreGuard.GetRequiredStore<ServiceBusConfig>(dockerEnvironment, context.Services, dockerEnvironment.UsedServiceBusIdentifiers, "Service Bus environment setup");
+        EnvComponentResourceGuard.EnsureSupplied(context, AzureEnvironmentResourceKinds.ServiceBusKind, dockerEnvironment.UsedServiceBusIdentifiers, "Service Bus environment setup");
         INetwork network = dockerEnvironment.GetRequiredRuntimeState<INetwork>(DockerAzureEnvironment.NetworkComponentId);
         MsSqlContainer msSqlContainer = dockerEnvironment.GetRequiredRuntimeState<MsSqlContainer>(DockerAzureEnvironment.MsSqlComponentId);
         MaterializedServiceBusTopology materializedTopology = ServiceBusTopologyMaterializer.Materialize(dockerEnvironment.GetServiceBusTopologySource(), context.Logger);

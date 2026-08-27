@@ -6,8 +6,6 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using TestFramework.Azure.Configuration;
-using TestFramework.Azure.Configuration.SpecificConfigs;
 using TestFramework.Core.Artifacts;
 using TestFramework.Azure;
 using TestFramework.Core.Environment.Graph;
@@ -34,9 +32,7 @@ internal sealed class AzuriteEnvComponent : DockerAzureEnvComponent
             return null;
         }
 
-        // Called for its effect, not its result: it refuses a used identifier with no configuration entry, and
-        // seeds the store the run resolves for the ones that have defaults. Nothing writes to it any more.
-        _ = EnvComponentConfigStoreGuard.GetRequiredStore<StorageAccountConfig>(dockerEnvironment, context.Services, dockerEnvironment.UsedStorageIdentifiers, "Azurite environment setup");
+        EnvComponentResourceGuard.EnsureSupplied(context, AzureEnvironmentResourceKinds.StorageKind, dockerEnvironment.UsedStorageIdentifiers, "Azurite environment setup");
         INetwork network = dockerEnvironment.GetRequiredRuntimeState<INetwork>(DockerAzureEnvironment.NetworkComponentId);
         IContainer container = new ContainerBuilder(dockerEnvironment.GetAzuriteImage())
             .WithNetwork(network)

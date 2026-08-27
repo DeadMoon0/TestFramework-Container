@@ -768,6 +768,42 @@ internal sealed class DockerAzureDefinitionState
         return _functionAppDescriptors.TryGetValue(identifier, out descriptor);
     }
 
+    /// <summary>
+    /// Every configuration a definition supplies for itself, whether or not this run turns out to use it.
+    /// </summary>
+    /// <remarks>
+    /// Enumerated from the definitions rather than from resolved usage, because a run composes its
+    /// resources before a single step has run and usage is decided later - inside the step that creates
+    /// the components. Declaring one nobody uses costs a node no reader ever asks about; waiting for
+    /// usage would mean declaring after the graph was built, which is the thing declarations are not
+    /// allowed to do.
+    /// </remarks>
+    /// <returns>The record type, the identifier it belongs to, and the record.</returns>
+    public IEnumerable<(Type ConfigType, string Identifier, object Config)> DefaultConfigs()
+    {
+        foreach (DockerAzureDefinitionMetadata metadata in _definitionMetadata.Values)
+        {
+            switch (metadata.Definition)
+            {
+                case DockerStorageDefinition storage when storage.TryCreateDefaultConfig(out StorageAccountConfig storageConfig):
+                    yield return (typeof(StorageAccountConfig), storage.Identifier, storageConfig);
+                    break;
+                case DockerCosmosDefinition cosmos when cosmos.TryCreateDefaultConfig(out CosmosContainerDbConfig cosmosConfig):
+                    yield return (typeof(CosmosContainerDbConfig), cosmos.Identifier, cosmosConfig);
+                    break;
+                case DockerSqlDefinition sql when sql.TryCreateDefaultConfig(out SqlDatabaseConfig sqlConfig):
+                    yield return (typeof(SqlDatabaseConfig), sql.Identifier, sqlConfig);
+                    break;
+                case DockerServiceBusDefinition serviceBus when serviceBus.TryCreateDefaultConfig(out ServiceBusConfig serviceBusConfig):
+                    yield return (typeof(ServiceBusConfig), serviceBus.Identifier, serviceBusConfig);
+                    break;
+                case DockerFunctionAppDefinition functionApp when functionApp.TryCreateDefaultConfig(out FunctionAppConfig functionAppConfig):
+                    yield return (typeof(FunctionAppConfig), functionApp.Identifier, functionAppConfig);
+                    break;
+            }
+        }
+    }
+
     public bool TryGetDefaultConfig(Type configType, string identifier, out object? config)
     {
         if (!_definitionMetadataByIdentity.TryGetValue(GetRealizedIdentity(configType, identifier), out DockerAzureDefinitionMetadata? metadata))

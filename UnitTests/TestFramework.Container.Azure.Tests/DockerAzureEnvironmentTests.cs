@@ -4,6 +4,7 @@ using Newtonsoft.Json;
 using System.Reflection;
 using TestFramework.Azure.DB.CosmosDB;
 using TestFramework.Azure.FunctionApp;
+using TestFramework.Azure;
 using TestFramework.Azure.Configuration;
 using TestFramework.Azure.Configuration.SpecificConfigs;
 using TestFramework.Azure.DB.SqlServer;
@@ -15,9 +16,12 @@ using TestFramework.Azure.Trigger.IsLive;
 using TestFramework.Container.Azure;
 using TestFramework.Container.Sources;
 using TestFramework.Container.Azure.Contracts;
+using TestFramework.Azure.Extensions;
+using TestFramework.Config;
 using TestFramework.Core.Artifacts;
 using TestFramework.Core.Debugger;
 using TestFramework.Core.Environment;
+using TestFramework.Core.Environment.Graph;
 using TestFramework.Core.Exceptions;
 using TestFramework.Core.Logging;
 using TestFramework.Core.Steps;
@@ -223,28 +227,22 @@ public class DockerAzureEnvironmentTests
             .GetMethod("GetRequiredFunctionAppDescriptor", BindingFlags.Instance | BindingFlags.NonPublic)!
             .Invoke(environment, [new FunctionAppIdentifier("func")])!;
 
-        ServiceProvider serviceProvider = new ServiceCollection()
-            .AddSingleton(ConfigStore<StorageAccountConfig>.Create("storage", new StorageAccountConfig
+        // Declared the way a person declares a resource - as configuration - rather than by registering a
+        // store. A store is not a channel any more: what a run knows about a resource is its resource values,
+        // and those are what BuildAppSettings reads through.
+        using ServiceProvider serviceProvider = ConfigInstance.Create()
+            .LoadAzureConfig()
+            .OverrideConfig(new Dictionary<string, string?>
             {
-                ConnectionString = "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=key=;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;QueueEndpoint=http://127.0.0.1:10001/devstoreaccount1;TableEndpoint=http://127.0.0.1:10002/devstoreaccount1;",
-                QueueContainerName = null,
-                BlobContainerName = "blob-container",
-                TableContainerName = "table-container"
-            }))
-            .AddSingleton(ConfigStore<CosmosContainerDbConfig>.Create("cosmos", new CosmosContainerDbConfig
-            {
-                ConnectionString = "AccountEndpoint=https://localhost:8081/;AccountKey=key=;",
-                DatabaseName = "test-db",
-                ContainerName = "test-container"
-            }))
-            .AddSingleton(ConfigStore<ServiceBusConfig>.Create("bus", new ServiceBusConfig
-            {
-                ConnectionString = "Endpoint=sb://localhost/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=key=;",
-                QueueName = null,
-                TopicName = null,
-                SubscriptionName = null,
-                RequiredSession = false
-            }))
+                ["StorageAccount:storage:ConnectionString"] = "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=key=;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;QueueEndpoint=http://127.0.0.1:10001/devstoreaccount1;TableEndpoint=http://127.0.0.1:10002/devstoreaccount1;",
+                ["StorageAccount:storage:BlobContainerName"] = "blob-container",
+                ["StorageAccount:storage:TableContainerName"] = "table-container",
+                ["CosmosDb:cosmos:ConnectionString"] = "AccountEndpoint=https://localhost:8081/;AccountKey=key=;",
+                ["CosmosDb:cosmos:DatabaseName"] = "test-db",
+                ["CosmosDb:cosmos:ContainerName"] = "test-container",
+                ["ServiceBus:bus:ConnectionString"] = "Endpoint=sb://localhost/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=key=;",
+                ["ServiceBus:bus:RequiredSession"] = "false",
+            })
             .BuildServiceProvider();
 
         Dictionary<string, string> settings = (Dictionary<string, string>)typeof(DockerAzureEnvironment).Assembly
@@ -273,50 +271,60 @@ public class DockerAzureEnvironmentTests
         Assert.DoesNotContain(FunctionAppResourceSettingNames.ServiceBusReplyIdentifier, settings.Keys);
     }
 
+    /// <summary>
+    /// A Function App nobody wrote a configuration entry for is declared by its definition.
+    /// </summary>
+    /// <remarks>
+    /// Asserted on the environment's own declarations rather than on a store, because a store is not how a
+    /// run learns anything any more. This used to pass while the run could not read a word of it: the
+    /// default reached a store, the store reached nobody, and no test noticed because every fixture in the
+    /// family also wrote the entry into configuration.
+    /// </remarks>
     [Fact]
-    public void GetOrCreateConfigStore_SynthesizesDefinitionDefaults_WhenStoreWasNotRegistered()
+    public void ADefinitionDeclaresTheFunctionAppNobodyConfigured()
     {
         DockerAzureEnvironment environment = DockerAzureEnvironment.For<SynthesizedFunctionAppDefinition>();
-        var functionStep = new IsLiveTrigger().FunctionApp("auto-func");
 
-        environment.ResolveComponents([], ((IHasEnvironmentRequirements)functionStep).GetEnvironmentRequirements(null!));
+        // Deliberately not resolved first: a run composes its resources before any step has run, so a
+        // declaration that needed resolution would arrive too late to be one.
+        IReadOnlyDictionary<ValueKey, string> declared = DeclaredValues(environment, AzureEnvironmentResourceKinds.FunctionApp, "auto-func");
 
-        ServiceProvider serviceProvider = new ServiceCollection().BuildServiceProvider();
-
-        ConfigStore<FunctionAppConfig> functionStore = (ConfigStore<FunctionAppConfig>)typeof(DockerAzureEnvironment)
-            .GetMethod("GetOrCreateConfigStore", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .MakeGenericMethod(typeof(FunctionAppConfig))
-            .Invoke(environment, [serviceProvider, environment.UsedFunctionAppIdentifiers, "Function App environment setup"])!;
-
-        FunctionAppConfig config = functionStore.GetConfig("auto-func");
-        Assert.Equal("http://localhost/", config.BaseUrl);
-        Assert.Equal("unused", config.Code);
-        Assert.Equal("unused", config.AdminCode);
+        Assert.Equal("http://localhost/", declared[new ValueKey(ValueNames.BaseUrl, ResourceVantage.Host)]);
+        Assert.Equal("unused", declared[new ValueKey(AzureEnvironmentResourceKinds.CodeValue)]);
+        Assert.Equal("unused", declared[new ValueKey(AzureEnvironmentResourceKinds.AdminCodeValue)]);
     }
 
+    /// <summary>
+    /// A run reads a definition's names for a Cosmos container that only exists in a container.
+    /// </summary>
+    /// <remarks>
+    /// The end of it: the record comes back through the one reader, built by the shape that owns it, from
+    /// values the environment declared. The address is a placeholder here and is meant to be - a real run
+    /// publishes over it while the emulator starts.
+    /// </remarks>
     [Fact]
-    public void CreateRunScopedServiceProvider_ResolvesSynthesizedCosmosStore_ForActivatedIdentifiers()
+    public void ARunReadsWhatTheCosmosDefinitionNamed()
     {
         DockerAzureEnvironment environment = DockerAzureEnvironment.For<DefaultedCosmosDefinition>();
-        ArtifactInstanceGeneric[] artifacts =
-        [
-            CreateArtifactInstance<CosmosDbItemArtifactDescriber<TestCosmosItem>, CosmosDbItemArtifactData<TestCosmosItem>, CosmosDbItemArtifactReference<TestCosmosItem>>(
-                new CosmosDbItemArtifactDescriber<TestCosmosItem>(),
-                "cosmos-artifact",
-                new CosmosDbItemArtifactReference<TestCosmosItem>("cosmos-default", Var.Const(new Microsoft.Azure.Cosmos.PartitionKey("tenant-1")), Var.Const("id")),
-                new CosmosDbItemArtifactData<TestCosmosItem>(new TestCosmosItem("id", "tenant-1")))
-        ];
 
-        environment.ResolveComponents(artifacts, []);
+        using ServiceProvider services = ConfigInstance.Create()
+            .LoadAzureConfig()
+            .AddService(registered => registered.AddSingleton<IResourceNodeSource>(environment))
+            .BuildServiceProvider();
 
-        IServiceProvider runServiceProvider = ((IRunScopedServiceProviderFactory)environment)
-            .CreateRunScopedServiceProvider(new ServiceCollection().BuildServiceProvider());
-
-        ConfigStore<CosmosContainerDbConfig> cosmosStore = runServiceProvider.GetRequiredService<ConfigStore<CosmosContainerDbConfig>>();
-        CosmosContainerDbConfig config = cosmosStore.GetConfig("cosmos-default");
+        CosmosContainerDbConfig config = RunContext.Detached(services).Configured<CosmosContainerDbConfig>("cosmos-default");
 
         Assert.Equal("test-db", config.DatabaseName);
         Assert.Equal("test-container", config.ContainerName);
+    }
+
+    private static IReadOnlyDictionary<ValueKey, string> DeclaredValues(IResourceNodeSource source, string kind, string identifier)
+    {
+        ResourceNode node = Assert.Single(source.Nodes.Where(candidate =>
+            string.Equals(candidate.KindName, kind, StringComparison.Ordinal)
+            && string.Equals(candidate.Identifier, identifier, StringComparison.Ordinal)));
+
+        return node.DeclaredValues;
     }
 
     [Fact]
@@ -475,8 +483,17 @@ public class DockerAzureEnvironmentTests
         Assert.Contains("conflicting partition key paths", exception.Message);
     }
 
+    /// <summary>
+    /// A storage account this run needs and nothing describes is refused before a container starts.
+    /// </summary>
+    /// <remarks>
+    /// The message changed with the rule it enforces. It used to name a configuration store and tell the
+    /// caller to register one; a run answers for its own configuration now, so that advice pointed at a
+    /// channel reaching nothing and following it exactly would have changed nothing. Renamed as well as
+    /// rewritten, because a case called "without config store" is a case that will drift back.
+    /// </remarks>
     [Fact]
-    public async Task AzuriteEnvComponent_ThrowsWhenStorageIdentifiersAreUsedWithoutConfigStore()
+    public async Task AStorageAccountNothingDescribesIsRefusedBeforeAnythingStarts()
     {
         DockerAzureEnvironment environment = DockerAzureEnvironment.For<TestStorageDefinition>();
         var blobStep = new IsLiveTrigger().Blob("storage");
@@ -491,7 +508,12 @@ public class DockerAzureEnvironmentTests
         [environment, RunContext.Detached(new ServiceCollection().BuildServiceProvider())])!;
 
         FrameworkConfigurationException exception = await Assert.ThrowsAsync<FrameworkConfigurationException>(async () => await createTask);
-        Assert.Contains("ConfigStore<StorageAccountConfig>", exception.Message);
+        Assert.Contains("nothing in this run supplies it", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("azure.storage/'storage'", exception.Message, StringComparison.Ordinal);
+
+        // Both ways out, because from here they are the same answer.
+        Assert.Contains("Add the configuration entry", exception.ToString(), StringComparison.Ordinal);
+        Assert.Contains("give the definition", exception.ToString(), StringComparison.Ordinal);
     }
 
     [Fact]

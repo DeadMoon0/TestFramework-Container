@@ -5,7 +5,7 @@ using System.Linq;
 using System.Reflection;
 using TestFramework.Azure;
 using TestFramework.Azure.Configuration;
-using TestFramework.Azure.Configuration.SpecificConfigs;
+using TestFramework.Config.Configuration;
 using TestFramework.Azure.DB.CosmosDB;
 using TestFramework.Azure.DB.SqlServer;
 using TestFramework.Azure.Identifier;
@@ -15,12 +15,13 @@ using TestFramework.Azure.StorageAccount.Table;
 using TestFramework.Container.Sources;
 using TestFramework.Core.Artifacts;
 using TestFramework.Core.Environment;
+using TestFramework.Core.Environment.Graph;
 using TestFramework.Core.Exceptions;
 using TestFramework.Core.Logging;
 
 namespace TestFramework.Container.Azure;
 
-public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedServiceProviderFactory, IPersistentEnvironmentStateSink
+public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedServiceProviderFactory, IPersistentEnvironmentStateSink, IResourceNodeSource
 {
     public static readonly EnvComponentIdentifier NetworkComponentId = "docker-network";
     public static readonly EnvComponentIdentifier FunctionAppComponentId = "functionapp";
@@ -39,9 +40,7 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
     private static readonly DockerEndpointMap EndpointMapInstance = new();
 
     private readonly Dictionary<EnvComponentIdentifier, object?> _runtimeStates = [];
-    private readonly Dictionary<Type, object> _synthesizedConfigStores = [];
     private readonly object _runtimeStateGate = new();
-    private readonly object _configStoreGate = new();
     private readonly DockerAzureDefinitionState _definitionState = new();
     private readonly Dictionary<Type, DockerAzureDefinition> _includedDefinitions = [];
     private DockerAzureResolutionSnapshot _lastResolutionSnapshot = DockerAzureResolutionSnapshot.Empty;
@@ -80,6 +79,8 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
 
     public DockerAzureEnvironment()
     {
+        _definitionNodes = new DefinitionDefaults(_definitionState);
+
         AddComponent(new Components.DockerNetworkEnvComponent());
         AddComponent(new Components.FunctionAppEnvComponent(this));
         AddComponent(new Components.MsSqlEnvComponent());
@@ -191,7 +192,6 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
         _usedServiceBusIdentifiers.Clear();
         _usedFunctionAppIdentifiers.Clear();
         CosmosPartitionKeyPaths.Clear();
-        _synthesizedConfigStores.Clear();
         _resolutionSummaryLogged = false;
 
         foreach (ArtifactInstanceGeneric artifact in artifacts)
@@ -448,30 +448,54 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
         return _definitionState.MsSqlPassword ?? _generatedMsSqlPassword;
     }
 
-    internal ConfigStore<TConfig>? GetOrCreateConfigStore<TConfig>(IServiceProvider serviceProvider, IReadOnlyCollection<string> identifiers, string componentName)
+    /// <inheritdoc />
+    public string SourceName => "Docker definition";
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// <para>
+    /// A definition may say what its resource is - the database a Cosmos container lives in, the blob
+    /// container a storage account serves - and for a resource that only exists in a container, that is
+    /// the only place the name can come from: nobody wrote a configuration entry for a database that is
+    /// created when the run starts. These reach a run the same way a file's entries do, so a step asking
+    /// where something is never learns which of the two answered.
+    /// </para>
+    /// <para>
+    /// They lose to a configuration entry naming the same resource, which is the composition order rather
+    /// than a rule here: a default is for what nobody wrote down, and somebody who wrote it down meant it.
+    /// The address in these is a placeholder and is meant to be - where a container ends up is published
+    /// while it starts, and a published value outranks any declaration.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<ResourceNode> Nodes => _definitionNodes.Nodes;
+
+    private readonly DefinitionDefaults _definitionNodes;
+
+    /// <summary>
+    /// The definitions' own configuration, as declared resources.
+    /// </summary>
+    /// <remarks>
+    /// Read when the graph is first composed rather than at construction: definitions arrive through
+    /// <c>Include</c> afterwards, so an environment that enumerated them now would declare nothing.
+    /// </remarks>
+    private sealed class DefinitionDefaults(DockerAzureDefinitionState definitions) : DeclaredNodeSource
     {
-        if (identifiers.Count == 0)
-            return null;
+        public override string SourceName => "Docker definition";
 
-        ConfigStore<TConfig>? store = serviceProvider.GetService(typeof(ConfigStore<TConfig>)) as ConfigStore<TConfig>;
-        lock (_configStoreGate)
+        protected override IEnumerable<DeclaredResource> Declarations
         {
-            if (store is null)
+            get
             {
-                if (!_synthesizedConfigStores.TryGetValue(typeof(TConfig), out object? synthesizedStore))
+                foreach ((Type configType, string identifier, object config) in definitions.DefaultConfigs())
                 {
-                    synthesizedStore = new ConfigStore<TConfig>();
-                    _synthesizedConfigStores[typeof(TConfig)] = synthesizedStore;
+                    // The package that owns the record owns the mapping too. Writing it again here would be
+                    // a second opinion about which values an entry holds, and the two would only differ in
+                    // the cases nobody thought to check.
+                    IConfigShape shape = AzureConfigShapes.For(configType);
+                    yield return new DeclaredResource(shape.Kind, identifier, shape.Values(config), this.SourceName);
                 }
-
-                store = (ConfigStore<TConfig>)synthesizedStore;
             }
-
-            foreach (string identifier in identifiers.OrderBy(x => x, StringComparer.Ordinal))
-                EnsureConfigPresent(store, identifier, componentName);
         }
-
-        return store;
     }
 
     public IServiceProvider CreateRunScopedServiceProvider(IServiceProvider baseServiceProvider)
@@ -583,36 +607,6 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
     private static bool MatchesGenericType(Type candidate, Type genericTypeDefinition)
     {
         return candidate.IsGenericType && candidate.GetGenericTypeDefinition() == genericTypeDefinition;
-    }
-
-    private void EnsureConfigPresent<TConfig>(ConfigStore<TConfig> store, string identifier, string componentName)
-    {
-        if (store.Snapshot().ContainsKey(identifier))
-            return;
-
-        if (_definitionState.TryGetDefaultConfig(typeof(TConfig), identifier, out object? defaultConfig) && defaultConfig is TConfig typedConfig)
-        {
-            store.AddConfig(identifier, typedConfig);
-            return;
-        }
-
-        throw new FrameworkConfigurationException($"{componentName} requires ConfigStore<{typeof(TConfig).Name}> for identifier '{identifier}', and no component default config was defined for that identifier.");
-    }
-
-    internal IReadOnlyCollection<string> GetUsedIdentifiersFor(Type configType)
-    {
-        if (configType == typeof(StorageAccountConfig))
-            return UsedStorageIdentifiers;
-        if (configType == typeof(CosmosContainerDbConfig))
-            return UsedCosmosIdentifiers;
-        if (configType == typeof(SqlDatabaseConfig))
-            return UsedSqlIdentifiers;
-        if (configType == typeof(ServiceBusConfig))
-            return UsedServiceBusIdentifiers;
-        if (configType == typeof(FunctionAppConfig))
-            return UsedFunctionAppIdentifiers;
-
-        throw new UnsupportedFrameworkValueException($"Unsupported config type '{configType.FullName}' for Docker Azure store resolution.");
     }
 
     protected override void OnRequirementResolved(EnvironmentRequirement requirement)

@@ -94,7 +94,7 @@ internal sealed class AzureResetEnvComponent(DockerAzureEnvironment owner) : Doc
         await RunPurgeAsync("storage", () => PurgeStorageAsync(dockerEnvironment, context), context.Logger, context.Deadline.Token).ConfigureAwait(false);
         await RunPurgeAsync("Cosmos", () => PurgeCosmosAsync(dockerEnvironment, context), context.Logger, context.Deadline.Token).ConfigureAwait(false);
         await RunPurgeAsync("Service Bus", () => PurgeServiceBusAsync(dockerEnvironment, context), context.Logger, context.Deadline.Token).ConfigureAwait(false);
-        await RunPurgeAsync("SQL", () => PurgeSqlAsync(dockerEnvironment, context.Services, context.Logger, context.Deadline.Token), context.Logger, context.Deadline.Token).ConfigureAwait(false);
+        await RunPurgeAsync("SQL", () => PurgeSqlAsync(dockerEnvironment, context), context.Logger, context.Deadline.Token).ConfigureAwait(false);
 
         context.Logger.LogInformation($"Finished purging the declared Azure resources in {stopwatch.Elapsed:g}.");
         return null;
@@ -148,7 +148,7 @@ internal sealed class AzureResetEnvComponent(DockerAzureEnvironment owner) : Doc
             return;
 
         // Several identifiers share the one emulator account, and one pass over it clears them all.
-        foreach (string connectionString in DistinctConnectionStrings(identifiers, identifier => StorageAccountResources.Resolve(context, identifier).ConnectionString))
+        foreach (string connectionString in DistinctConnectionStrings(identifiers, identifier => context.Configured<StorageAccountConfig>(identifier).ConnectionString))
         {
             await PurgeBlobContainersAsync(connectionString, context.Logger, context.Deadline.Token).ConfigureAwait(false);
             await PurgeTablesAsync(connectionString, context.Logger, context.Deadline.Token).ConfigureAwait(false);
@@ -211,7 +211,7 @@ internal sealed class AzureResetEnvComponent(DockerAzureEnvironment owner) : Doc
 
         foreach (string identifier in identifiers.OrderBy(x => x, StringComparer.Ordinal))
         {
-            CosmosContainerDbConfig config = CosmosResources.Resolve(context, identifier);
+            CosmosContainerDbConfig config = context.Configured<CosmosContainerDbConfig>(identifier);
             if (!dockerEnvironment.CosmosPartitionKeyPaths.TryGetValue(identifier, out string? partitionKeyPath))
             {
                 logger.LogWarning($"Cosmos identifier '{identifier}' has no recorded partition key path, so its container was left as it is.");
@@ -293,7 +293,7 @@ internal sealed class AzureResetEnvComponent(DockerAzureEnvironment owner) : Doc
         // entities stay.
         foreach (string identifier in identifiers.OrderBy(x => x, StringComparer.Ordinal))
         {
-            ServiceBusConfig config = ServiceBusResources.Resolve(context, identifier);
+            ServiceBusConfig config = context.Configured<ServiceBusConfig>(identifier);
             await using ServiceBusClient client = new(config.ConnectionString);
 
             if (config.IsQueue)
@@ -354,19 +354,25 @@ internal sealed class AzureResetEnvComponent(DockerAzureEnvironment owner) : Doc
         return drained;
     }
 
-    private static async Task PurgeSqlAsync(DockerAzureEnvironment dockerEnvironment, IServiceProvider serviceProvider, ScopedLogger logger, CancellationToken cancellationToken)
+    /// <remarks>
+    /// The address comes from the run, like the three purges above it. Reading it from the declared entry
+    /// instead pointed the purge at whatever a person had written down - a placeholder, for a containerised
+    /// server, because the port a container binds is chosen when it starts. It was the last of the four to
+    /// still read a store, and it is why this one is worth saying out loud: the purge that silently does
+    /// nothing is worse than the purge that fails, since the run then starts on a previous run's data.
+    /// </remarks>
+    private static async Task PurgeSqlAsync(DockerAzureEnvironment dockerEnvironment, RunContext context)
     {
         IReadOnlyCollection<string> identifiers = dockerEnvironment.UsedSqlIdentifiers;
         if (identifiers.Count == 0)
             return;
 
-        ConfigStore<SqlDatabaseConfig>? store = dockerEnvironment.GetOrCreateConfigStore<SqlDatabaseConfig>(serviceProvider, identifiers, "Azure reset");
-        if (store is null)
-            return;
+        ScopedLogger logger = context.Logger;
+        CancellationToken cancellationToken = context.Deadline.Token;
 
         foreach (string identifier in identifiers.OrderBy(x => x, StringComparer.Ordinal))
         {
-            SqlDatabaseConfig config = store.GetConfig(identifier);
+            SqlDatabaseConfig config = context.Configured<SqlDatabaseConfig>(identifier);
             string databaseName = config.DatabaseName;
 
             if (IsProtectedDatabase(databaseName))

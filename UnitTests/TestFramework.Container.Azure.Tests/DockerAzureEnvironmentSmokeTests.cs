@@ -281,21 +281,11 @@ public class DockerAzureEnvironmentSmokeTests
             .Trigger(new InspectServiceBusConfigStep()).Name("inspect-servicebus-config")
             .Build();
 
+        // One key, overriding one entry of the persistent slice's declaration. The rest of the entry - and every
+        // address the running containers published over it - is inherited, which is what the old store
+        // registration could not express: a store replaced the whole entry or nothing.
         TimelineRun run = await timeline.SetupRun().SetEnv(_fixture.GetEnv(builder =>
-        {
-            builder.AddService(services =>
-            {
-                ConfigStore<ServiceBusConfig> serviceBusStore = ConfigStore<ServiceBusConfig>.Create("bus", new ServiceBusConfig
-                {
-                    ConnectionString = "Endpoint=sb://localhost/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=local",
-                    QueueName = "run-override-queue",
-                    TopicName = null,
-                    SubscriptionName = null,
-                    RequiredSession = false,
-                });
-                services.AddSingleton(serviceBusStore);
-            });
-        })).RunAsync();
+            builder.OverrideConfig("ServiceBus:bus:QueueName", "run-override-queue"))).RunAsync();
 
         run.EnsureRanToCompletion();
 
@@ -371,7 +361,7 @@ public class DockerAzureEnvironmentSmokeTests
 
         public override Task<InspectServiceBusConfigResult?> Execute(RunContext context)
         {
-            ServiceBusConfig config = ((ConfigStore<ServiceBusConfig>)context.Services.GetService(typeof(ConfigStore<ServiceBusConfig>))!).GetConfig("bus");
+            ServiceBusConfig config = context.Configured<ServiceBusConfig>("bus");
             return Task.FromResult<InspectServiceBusConfigResult?>(new(config.QueueName ?? throw new InvalidOperationException("Service Bus queue name was not configured.")));
         }
 

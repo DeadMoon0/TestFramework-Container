@@ -1,48 +1,26 @@
 using System;
-using System.Collections.Generic;
-using System.Reflection;
-using TestFramework.Azure.Configuration;
 
 namespace TestFramework.Container.Azure;
 
-internal sealed class DockerAzureRunScopedServiceProvider(DockerAzureEnvironment environment, IServiceProvider baseServiceProvider, IServiceProvider? fallbackConfigServiceProvider = null) : IServiceProvider
+/// <summary>
+/// Makes the environment itself resolvable for the length of one run.
+/// </summary>
+/// <remarks>
+/// <para>
+/// It used to do one more thing, and that thing was most of it: a caller resolving
+/// <c>ConfigStore&lt;T&gt;</c> got one synthesised on the spot, seeded from whatever the definitions
+/// named. That was the only way a container-only resource could reach anybody, back when reading
+/// configuration meant reading a store.
+/// </para>
+/// <para>
+/// A definition declares to the run now, so the synthesised store was a second answer to a question that
+/// already had one - and the weaker of the two, since it held declarations and never saw an address any
+/// container published. Two channels for one thing is the shape this whole migration has been removing,
+/// and leaving the losing one in place is how it would have come back.
+/// </para>
+/// </remarks>
+internal sealed class DockerAzureRunScopedServiceProvider(DockerAzureEnvironment environment, IServiceProvider baseServiceProvider) : IServiceProvider
 {
-    private static readonly MethodInfo GetOrCreateConfigStoreMethod = typeof(DockerAzureEnvironment)
-        .GetMethod(nameof(DockerAzureEnvironment.GetOrCreateConfigStore), BindingFlags.Instance | BindingFlags.NonPublic)!;
-
     public object? GetService(Type serviceType)
-    {
-        if (serviceType == typeof(DockerAzureEnvironment))
-        {
-            return environment;
-        }
-
-        object? service = baseServiceProvider.GetService(serviceType);
-        if (service is not null)
-            return service;
-
-        if (!serviceType.IsGenericType || serviceType.GetGenericTypeDefinition() != typeof(ConfigStore<>))
-            return null;
-
-        Type configType = serviceType.GetGenericArguments()[0];
-        IReadOnlyCollection<string> identifiers = environment.GetUsedIdentifiersFor(configType);
-        if (identifiers.Count == 0)
-            return null;
-
-        IServiceProvider storeProvider = fallbackConfigServiceProvider is null
-            ? baseServiceProvider
-            : new ConfigStoreFallbackServiceProvider(baseServiceProvider, fallbackConfigServiceProvider);
-
-        return GetOrCreateConfigStoreMethod
-            .MakeGenericMethod(configType)
-            .Invoke(environment, [storeProvider, identifiers, "Timeline run service resolution"]);
-    }
-
-    private sealed class ConfigStoreFallbackServiceProvider(IServiceProvider primary, IServiceProvider fallback) : IServiceProvider
-    {
-        public object? GetService(Type serviceType)
-        {
-            return primary.GetService(serviceType) ?? fallback.GetService(serviceType);
-        }
-    }
+        => serviceType == typeof(DockerAzureEnvironment) ? environment : baseServiceProvider.GetService(serviceType);
 }

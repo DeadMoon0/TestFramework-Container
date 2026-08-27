@@ -51,7 +51,7 @@ internal sealed class FunctionAppEnvComponent(DockerAzureEnvironment owner) : Do
         if (dockerEnvironment.UsedFunctionAppIdentifiers.Count == 0)
             return new FunctionAppComponentState([]);
 
-        ConfigStore<FunctionAppConfig>? functionStore = EnvComponentConfigStoreGuard.GetRequiredStore<FunctionAppConfig>(dockerEnvironment, context.Services, dockerEnvironment.UsedFunctionAppIdentifiers, "Function App environment setup");
+        EnvComponentResourceGuard.EnsureSupplied(context, AzureEnvironmentResourceKinds.FunctionAppKind, dockerEnvironment.UsedFunctionAppIdentifiers, "Function App environment setup");
         INetwork network = dockerEnvironment.GetRequiredRuntimeState<INetwork>(DockerAzureEnvironment.NetworkComponentId);
         DockerEndpointMap endpointMap = dockerEnvironment.GetEndpointMap();
 
@@ -315,7 +315,7 @@ internal sealed class FunctionAppEnvComponent(DockerAzureEnvironment owner) : Do
             switch (binding.Kind)
             {
                 case FunctionAppResourceBindingKind.Storage:
-                    StorageAccountConfig storage = StorageAccountResources.Resolve(context, binding.ResourceIdentifier);
+                    StorageAccountConfig storage = context.Configured<StorageAccountConfig>(binding.ResourceIdentifier);
                     string rewrittenStorage = dockerEnvironment.GetEndpointMap().RewriteStorageForContainer(storage.ConnectionString);
                     settings[binding.PrimarySettingName] = rewrittenStorage;
                     if (binding.SecondarySettingName is not null)
@@ -329,7 +329,7 @@ internal sealed class FunctionAppEnvComponent(DockerAzureEnvironment owner) : Do
                     }
                     break;
                 case FunctionAppResourceBindingKind.Cosmos:
-                    CosmosContainerDbConfig cosmos = CosmosResources.Resolve(context, binding.ResourceIdentifier);
+                    CosmosContainerDbConfig cosmos = context.Configured<CosmosContainerDbConfig>(binding.ResourceIdentifier);
                     settings[binding.PrimarySettingName] = dockerEnvironment.GetEndpointMap().RewriteCosmosForContainer(cosmos.ConnectionString);
                     if (binding.SecondarySettingName is not null)
                         settings[binding.SecondarySettingName] = cosmos.DatabaseName;
@@ -337,7 +337,7 @@ internal sealed class FunctionAppEnvComponent(DockerAzureEnvironment owner) : Do
                         settings[binding.TertiarySettingName] = cosmos.ContainerName;
                     break;
                 case FunctionAppResourceBindingKind.ServiceBusTrigger:
-                    ServiceBusConfig triggerBus = ServiceBusResources.Resolve(context, binding.ResourceIdentifier);
+                    ServiceBusConfig triggerBus = context.Configured<ServiceBusConfig>(binding.ResourceIdentifier);
                     settings[binding.PrimarySettingName] = dockerEnvironment.GetEndpointMap().RewriteServiceBusForContainer(triggerBus.ConnectionString);
                     if (binding.ServiceBusEndpoint is { } triggerEndpoint)
                     {
@@ -348,7 +348,7 @@ internal sealed class FunctionAppEnvComponent(DockerAzureEnvironment owner) : Do
                     }
                     break;
                 case FunctionAppResourceBindingKind.ServiceBusReply:
-                    ServiceBusConfig replyBus = ServiceBusResources.Resolve(context, binding.ResourceIdentifier);
+                    ServiceBusConfig replyBus = context.Configured<ServiceBusConfig>(binding.ResourceIdentifier);
                     settings[binding.PrimarySettingName] = dockerEnvironment.GetEndpointMap().RewriteServiceBusForContainer(replyBus.ConnectionString);
                     if (binding.ServiceBusEndpoint is { } replyEndpoint && binding.SecondarySettingName is not null)
                         settings[binding.SecondarySettingName] = replyEndpoint.EntityName;
