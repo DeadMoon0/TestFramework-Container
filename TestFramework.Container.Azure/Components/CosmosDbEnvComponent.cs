@@ -44,6 +44,11 @@ internal sealed class CosmosDbEnvComponent : DockerAzureEnvComponent
         EnvComponentResourceGuard.EnsureSupplied(context, AzureEnvironmentResourceKinds.CosmosKind, dockerEnvironment.UsedCosmosIdentifiers, "Cosmos environment setup");
         INetwork network = dockerEnvironment.GetRequiredRuntimeState<INetwork>(DockerAzureEnvironment.NetworkComponentId);
         string cosmosImage = dockerEnvironment.GetCosmosDbImage();
+
+        // Recorded on the run because nobody stated it: the tag lives in this package's defaults, so a run
+        // that passed could not say which image proved it and a bump would change every consumer's result
+        // with no diff on their side. §5's third demand, and the reason a finished run is worth handing over.
+        context.EffectiveSettings.Record(ImageSource, "cosmos:Image", cosmosImage);
         ContainerBuilder builder = new ContainerBuilder(cosmosImage)
             .WithNetwork(network)
             .WithNetworkAliases(DockerAzureEnvironment.CosmosDbNetworkAlias)

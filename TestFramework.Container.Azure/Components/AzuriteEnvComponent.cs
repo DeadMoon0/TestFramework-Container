@@ -34,7 +34,14 @@ internal sealed class AzuriteEnvComponent : DockerAzureEnvComponent
 
         EnvComponentResourceGuard.EnsureSupplied(context, AzureEnvironmentResourceKinds.StorageKind, dockerEnvironment.UsedStorageIdentifiers, "Azurite environment setup");
         INetwork network = dockerEnvironment.GetRequiredRuntimeState<INetwork>(DockerAzureEnvironment.NetworkComponentId);
-        IContainer container = new ContainerBuilder(dockerEnvironment.GetAzuriteImage())
+        string azuriteImage = dockerEnvironment.GetAzuriteImage();
+
+        // Recorded on the run because nobody stated it: the tag lives in this package's defaults, so a run
+        // that passed could not say which image proved it and a bump would change every consumer's result
+        // with no diff on their side. §5's third demand, and the reason a finished run is worth handing over.
+        context.EffectiveSettings.Record(ImageSource, "azurite:Image", azuriteImage);
+
+        IContainer container = new ContainerBuilder(azuriteImage)
             .WithNetwork(network)
             .WithNetworkAliases(DockerAzureEnvironment.AzuriteNetworkAlias)
             .WithPortBinding(10000, true)

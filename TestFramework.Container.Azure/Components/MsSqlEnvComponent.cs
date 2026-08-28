@@ -38,9 +38,16 @@ internal sealed class MsSqlEnvComponent : DockerAzureEnvComponent
 
         EnvironmentResources resources = PublishOn(context);
         INetwork network = dockerEnvironment.GetRequiredRuntimeState<INetwork>(DockerAzureEnvironment.NetworkComponentId);
+        string msSqlImage = dockerEnvironment.GetMsSqlImage();
+
+        // Recorded on the run because nobody stated it: the tag lives in this package's defaults, so a run
+        // that passed could not say which image proved it and a bump would change every consumer's result
+        // with no diff on their side. §5's third demand, and the reason a finished run is worth handing over.
+        context.EffectiveSettings.Record(ImageSource, "mssql:Image", msSqlImage);
+
         MsSqlContainer container = MsSqlContainerFactory.Create(
             new MsSqlContainerOptions(
-                dockerEnvironment.GetMsSqlImage(),
+                msSqlImage,
                 dockerEnvironment.GetMsSqlPassword(),
                 dockerEnvironment.GetMsSqlMemoryLimitMb(),
                 [ServiceBusBuilder.DatabaseNetworkAlias]),

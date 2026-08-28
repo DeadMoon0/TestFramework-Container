@@ -1,4 +1,4 @@
-using DotNet.Testcontainers.Containers;
+﻿using DotNet.Testcontainers.Containers;
 using DotNet.Testcontainers.Networks;
 using System;
 using System.Threading;
@@ -10,6 +10,9 @@ namespace TestFramework.Container.Azure.Components;
 
 internal abstract class DockerAzureEnvComponent : EnvComponent
 {
+    /// <summary>Who recorded it, so another package's "Image" is a different entry rather than a clash.</summary>
+    private protected const string ImageSource = "TestFramework.Container.Azure";
+
     protected DockerAzureEnvironment GetDockerEnvironment(IEnvironmentProvider environment)
     {
         if (environment is DockerAzureEnvironment dockerEnvironment)

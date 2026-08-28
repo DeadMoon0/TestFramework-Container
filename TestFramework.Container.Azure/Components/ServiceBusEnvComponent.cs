@@ -40,7 +40,14 @@ internal sealed class ServiceBusEnvComponent : DockerAzureEnvComponent
         MsSqlContainer msSqlContainer = dockerEnvironment.GetRequiredRuntimeState<MsSqlContainer>(DockerAzureEnvironment.MsSqlComponentId);
         MaterializedServiceBusTopology materializedTopology = ServiceBusTopologyMaterializer.Materialize(dockerEnvironment.GetServiceBusTopologySource(), context.Logger);
 
-        ServiceBusContainer container = new ServiceBusBuilder(dockerEnvironment.GetServiceBusImage())
+        string serviceBusImage = dockerEnvironment.GetServiceBusImage();
+
+        // Recorded on the run because nobody stated it: the tag lives in this package's defaults, so a run
+        // that passed could not say which image proved it and a bump would change every consumer's result
+        // with no diff on their side. §5's third demand, and the reason a finished run is worth handing over.
+        context.EffectiveSettings.Record(ImageSource, "servicebus:Image", serviceBusImage);
+
+        ServiceBusContainer container = new ServiceBusBuilder(serviceBusImage)
             .WithAcceptLicenseAgreement(true)
             .WithMsSqlContainer(network, msSqlContainer, ServiceBusBuilder.DatabaseNetworkAlias, dockerEnvironment.GetMsSqlPassword())
             .WithConfig(materializedTopology.ConfigPath)
