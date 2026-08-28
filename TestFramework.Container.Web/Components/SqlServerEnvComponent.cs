@@ -81,7 +81,7 @@ internal sealed class SqlServerEnvComponent : WebEnvComponentBase
 
             await SqlDatabaseProvisioner.ApplySchemaAsync(endpoint.HostConnectionString, spec, registry, context.Logger, context.Deadline.Token).ConfigureAwait(false);
 
-            Publish(context, definition.Identifier, endpoint);
+            Publish(context, definition.Identifier, spec.DatabaseName, endpoint);
             databases[definition.Identifier] = endpoint;
 
             context.Logger.LogInformation("SQL identifier '{0}' is served by the database '{1}'.", definition.Identifier.ToString(), spec.DatabaseName);
@@ -117,6 +117,10 @@ internal sealed class SqlServerEnvComponent : WebEnvComponentBase
     /// forced everything inside the network to be handed the address that only works outside it.
     /// </para>
     /// <para>
+    /// The database name goes with them, without a vantage: it is the one fact about this database that
+    /// does not change with where you stand, and a probe that verifies the catalog needs it.
+    /// </para>
+    /// <para>
     /// Each string already carries the container's own credentials, so nothing about them is published
     /// separately - a password does not belong in a value store that a run can snapshot and log. The
     /// store write this replaces also nulled a declared server and integrated-security flag, because a
@@ -125,11 +129,17 @@ internal sealed class SqlServerEnvComponent : WebEnvComponentBase
     /// entry 20 of the debt ledger - it needs an origin-aware read to close properly.
     /// </para>
     /// </remarks>
-    private static void Publish(RunContext context, string identifier, SqlDatabaseEndpoint endpoint)
+    private static void Publish(RunContext context, string identifier, string databaseName, SqlDatabaseEndpoint endpoint)
     {
         EnvironmentResources resources = PublishOn(context);
 
         resources.Produce(WebEnvironmentResourceKinds.SqlKind, identifier, ValueNames.ConnectionString, ResourceVantage.Host, endpoint.HostConnectionString);
         resources.Produce(WebEnvironmentResourceKinds.SqlKind, identifier, ValueNames.ConnectionString, ResourceVantage.Network, endpoint.NetworkConnectionString);
+
+        // The name of the database this component just created, which is the same seen from either side.
+        // A Database-level liveness probe compares DB_NAME() against what the run holds, so a container
+        // that publishes only a connection string leaves the probe nothing to verify and it refuses -
+        // correctly, rather than passing on whatever catalog the login happens to default to.
+        resources.Produce(WebEnvironmentResourceKinds.SqlKind, identifier, WebEnvironmentResourceKinds.DatabaseNameValue, databaseName);
     }
 }
