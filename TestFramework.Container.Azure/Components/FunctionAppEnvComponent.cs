@@ -107,6 +107,10 @@ internal sealed class FunctionAppEnvComponent(DockerAzureEnvironment owner) : Do
 
         string image = ResolveHostImage(registration, plan, identifier, logger);
 
+        // Recorded on the run like the four emulator images: the host tag is derived (or defaulted)
+        // rather than stated, so a run that passed could not otherwise say which host proved it.
+        context.EffectiveSettings.Record(ImageSource, $"functionapp:{identifier}:Image", image);
+
         Dictionary<string, string> appSettings = BuildAppSettings(dockerEnvironment, context, descriptor, logger);
         appSettings["AzureFunctionsJobHost__Logging__Console__IsEnabled"] = "true";
         appSettings["AzureWebJobsScriptRoot"] = FunctionAppRoot;
@@ -268,7 +272,10 @@ internal sealed class FunctionAppEnvComponent(DockerAzureEnvironment owner) : Do
         foreach (StartedFunctionApp app in functionAppState.Apps)
         {
             await ContainerLogCapture.CaptureAsync(app.Container, $"Function App '{app.Identifier}'", context.Logger, context.Deadline.Token).ConfigureAwait(false);
-            await app.Container.DisposeAsync().ConfigureAwait(false);
+
+            // The CLI route first, like every other container teardown in the family: disposing
+            // through the client can leave a container behind when the daemon is busy.
+            await ContainerDockerCommands.ForceRemoveContainerAsync(app.Container, context.Deadline.Token).ConfigureAwait(false);
 
             // A publish this run made into the temp directory is the run's litter. A directory the
             // caller named, or a project's own build output, is not.

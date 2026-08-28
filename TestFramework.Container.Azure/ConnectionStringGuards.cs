@@ -30,15 +30,30 @@ internal static class ConnectionStringGuards
     {
         DbConnectionStringBuilder builder = new SqlConnectionStringBuilder(connectionString);
         string dataSource = builder["Data Source"]?.ToString() ?? builder["Server"]?.ToString() ?? string.Empty;
+
+        // The address alone is echoed, never the string: a SQL connection string carries a password.
         if (!IsLocalEndpoint(dataSource))
-            throw new FrameworkConfigurationException("SQL connection string must target a local Docker emulator endpoint.");
+            throw new FrameworkConfigurationException(
+                $"The SQL connection string must target a local Docker emulator endpoint, but it points at '{dataSource}'.",
+                [RemoteDaemonHint]);
     }
 
     private static void EnsureContainsLocalHost(string connectionString, string name)
     {
         if (!IsLocalEndpoint(connectionString))
-            throw new FrameworkConfigurationException($"{name} connection string must target a local Docker emulator endpoint.");
+            throw new FrameworkConfigurationException($"The {name} connection string must target a local Docker emulator endpoint.", [RemoteDaemonHint]);
     }
+
+    /// <summary>
+    /// The way out this guard can honestly name.
+    /// </summary>
+    /// <remarks>
+    /// The guard exists so a reset can never purge a real Azure resource, and it draws the line at
+    /// loopback. A remote Docker daemon (TESTFRAMEWORK_CONTAINER_HOST_IP, a remote DOCKER_HOST) puts
+    /// every emulator behind a non-local address, so this environment cannot tell it from the real
+    /// thing and refuses. Saying so beats a bare refusal that names no cause.
+    /// </remarks>
+    private const string RemoteDaemonHint = "The Docker Azure environment requires a local Docker daemon: against a remote daemon the emulators answer on a remote address, which this guard cannot tell apart from a real Azure resource.";
 
     private static bool IsLocalEndpoint(string value)
     {

@@ -90,25 +90,29 @@ public class DockerWebEnvironment : EnvironmentProviderBase
         MapArtifact(typeof(SqlRowArtifactDescriber<>), SqlServerComponentId);
     }
 
+    private readonly HashSet<string> _usedSqlIdentifiers = [];
+    private readonly HashSet<string> _usedApiIdentifiers = [];
+    private readonly HashSet<string> _usedStubIdentifiers = [];
+    private readonly HashSet<string> _usedSiteIdentifiers = [];
+
     /// <summary>
     /// The SQL identifiers the last resolution found in use.
     /// </summary>
-    public HashSet<string> UsedSqlIdentifiers { get; } = [];
+    /// <remarks>
+    /// Read-only, because <see cref="ResolveComponents"/> clears and refills it. Anything a caller added
+    /// by hand would disappear on the next resolution, which is not a thing a public collection should
+    /// let you attempt.
+    /// </remarks>
+    public IReadOnlyCollection<string> UsedSqlIdentifiers => _usedSqlIdentifiers;
 
-    /// <summary>
-    /// The API identifiers the last resolution found in use.
-    /// </summary>
-    public HashSet<string> UsedApiIdentifiers { get; } = [];
+    /// <inheritdoc cref="UsedSqlIdentifiers" />
+    public IReadOnlyCollection<string> UsedApiIdentifiers => _usedApiIdentifiers;
 
-    /// <summary>
-    /// The stub identifiers the last resolution found in use.
-    /// </summary>
-    public HashSet<string> UsedStubIdentifiers { get; } = [];
+    /// <inheritdoc cref="UsedSqlIdentifiers" />
+    public IReadOnlyCollection<string> UsedStubIdentifiers => _usedStubIdentifiers;
 
-    /// <summary>
-    /// The site identifiers the last resolution found in use.
-    /// </summary>
-    public HashSet<string> UsedSiteIdentifiers { get; } = [];
+    /// <inheritdoc cref="UsedSqlIdentifiers" />
+    public IReadOnlyCollection<string> UsedSiteIdentifiers => _usedSiteIdentifiers;
 
     /// <summary>
     /// The image the stub servers run.
@@ -275,17 +279,17 @@ public class DockerWebEnvironment : EnvironmentProviderBase
     {
         ArgumentNullException.ThrowIfNull(artifacts);
 
-        UsedSqlIdentifiers.Clear();
-        UsedApiIdentifiers.Clear();
-        UsedStubIdentifiers.Clear();
-        UsedSiteIdentifiers.Clear();
+        _usedSqlIdentifiers.Clear();
+        _usedApiIdentifiers.Clear();
+        _usedStubIdentifiers.Clear();
+        _usedSiteIdentifiers.Clear();
 
         foreach (ArtifactInstanceGeneric artifact in artifacts)
         {
             // The reference states which database it belongs to, so no reflection over artifact
             // types is needed to find out.
             if (artifact.Reference is ISqlArtifactReference sqlReference)
-                UsedSqlIdentifiers.Add(sqlReference.SqlIdentifier);
+                _usedSqlIdentifiers.Add(sqlReference.SqlIdentifier);
         }
 
         HashSet<EnvComponentIdentifier> resolved = [.. base.ResolveComponents(artifacts, requirements)];
@@ -314,9 +318,13 @@ public class DockerWebEnvironment : EnvironmentProviderBase
     /// <summary>
     /// Publishes the state a created component produced.
     /// </summary>
+    /// <remarks>
+    /// Internal, because an outside caller overwriting a component's live state mid-run would make
+    /// teardown skip the real containers silently. Reachable must not mean manipulable.
+    /// </remarks>
     /// <param name="identifier">The component that produced it.</param>
     /// <param name="state">The state.</param>
-    public void SetRuntimeState(EnvComponentIdentifier identifier, object? state)
+    internal void SetRuntimeState(EnvComponentIdentifier identifier, object? state)
     {
         lock (_runtimeStateGate)
             _runtimeStates[identifier] = state;
@@ -328,7 +336,7 @@ public class DockerWebEnvironment : EnvironmentProviderBase
     /// <typeparam name="TState">The expected state type.</typeparam>
     /// <param name="identifier">The component that produced it.</param>
     /// <exception cref="FrameworkStateException">The component has not produced that state.</exception>
-    public TState GetRequiredRuntimeState<TState>(EnvComponentIdentifier identifier)
+    internal TState GetRequiredRuntimeState<TState>(EnvComponentIdentifier identifier)
     {
         lock (_runtimeStateGate)
         {
@@ -345,18 +353,18 @@ public class DockerWebEnvironment : EnvironmentProviderBase
         ArgumentNullException.ThrowIfNull(requirement);
 
         if (string.Equals(requirement.ResourceKind, WebEnvironmentResourceKinds.Sql, StringComparison.Ordinal))
-            UsedSqlIdentifiers.Add(requirement.ResourceIdentifier);
+            _usedSqlIdentifiers.Add(requirement.ResourceIdentifier);
 
         if (string.Equals(requirement.ResourceKind, WebEnvironmentResourceKinds.RestApi, StringComparison.Ordinal))
-            UsedApiIdentifiers.Add(requirement.ResourceIdentifier);
+            _usedApiIdentifiers.Add(requirement.ResourceIdentifier);
 
         if (string.Equals(requirement.ResourceKind, WebEnvironmentResourceKinds.Stub, StringComparison.Ordinal))
-            UsedStubIdentifiers.Add(requirement.ResourceIdentifier);
+            _usedStubIdentifiers.Add(requirement.ResourceIdentifier);
 
         if (string.Equals(requirement.ResourceKind, WebEnvironmentResourceKinds.Site, StringComparison.Ordinal)
             || string.Equals(requirement.ResourceKind, UiWebAppResourceKind, StringComparison.Ordinal))
         {
-            UsedSiteIdentifiers.Add(requirement.ResourceIdentifier);
+            _usedSiteIdentifiers.Add(requirement.ResourceIdentifier);
         }
     }
 

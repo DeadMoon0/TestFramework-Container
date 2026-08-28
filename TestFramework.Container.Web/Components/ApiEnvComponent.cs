@@ -76,13 +76,22 @@ internal sealed class ApiEnvComponent : WebEnvComponentBase
             ContainerSourcePlan plan = await ContainerSourceResolver.PlanAsync(definition.Source, context.Deadline.Token).ConfigureAwait(false);
             plan = await ContainerImageBuilder.BuildAsync(plan, identifier, context.Logger, context.Deadline.Token).ConfigureAwait(false);
 
+            string image = ResolveRunImage(definition, spec, plan);
+
+            // Recorded on the run because nobody stated it: for a built or derived image, a run that
+            // passed could not otherwise say which image proved it. §5's third demand.
+            context.EffectiveSettings.Record(ImageSource, $"api:{identifier}:Image", image);
+
             IReadOnlyDictionary<string, string> settings = ComposeSettings(webEnvironment, definition, spec);
             string settingsFileName = ApiSettingsFile.FileName(spec.EnvironmentName);
             string settingsJson = new JsonPathDocument(settingsFileName).Compose(settings, existing: null);
 
-            context.Logger.LogInformation("API '{0}' settings '{1}':{2}{3}", identifier, settingsFileName, Environment.NewLine, settingsJson);
+            // Keys only: the values carry the database connection strings, credentials included, and a
+            // value the store redacts in every listing must not reappear through a log line. The full
+            // document stays readable on the component state for the test that needs it.
+            context.Logger.LogInformation("API '{0}' settings '{1}' keys: {2}", identifier, settingsFileName, string.Join(", ", settings.Keys.OrderBy(x => x, StringComparer.Ordinal)));
 
-            planned.Add(new PlannedApi(definition, spec, plan, settingsFileName, settingsJson));
+            planned.Add(new PlannedApi(definition, spec, plan, image, settingsFileName, settingsJson));
         }
 
         // Phase two races: creating the container, starting it and waiting it out are independent per
@@ -138,8 +147,8 @@ internal sealed class ApiEnvComponent : WebEnvComponentBase
     private static async Task<StartedApi> StartApiAsync(PlannedApi planned, INetwork network, ScopedLogger logger, CancellationToken cancellationToken)
     {
         string alias = NetworkAlias(planned.Definition.Identifier);
-        IContainer container = BuildContainer(planned.Spec, planned.Plan, network, alias, planned.SettingsFileName, planned.SettingsJson);
-        await StartAsync(container, planned.Definition, planned.Plan.Image ?? "(built from output)", logger, cancellationToken).ConfigureAwait(false);
+        IContainer container = BuildContainer(planned, network, alias);
+        await StartAsync(container, planned.Definition, planned.Image, logger, cancellationToken).ConfigureAwait(false);
 
         Uri baseUrl = ContainerEndpoints.HostEndpoint(container, planned.Spec.InternalPort);
         Uri networkBaseUrl = ContainerEndpoints.NetworkEndpoint(alias, planned.Spec.InternalPort);
@@ -148,7 +157,7 @@ internal sealed class ApiEnvComponent : WebEnvComponentBase
         return new StartedApi(planned, container, baseUrl, networkBaseUrl);
     }
 
-    private sealed record PlannedApi(DockerApiDefinition Definition, DockerApiSpec Spec, ContainerSourcePlan Plan, string SettingsFileName, string SettingsJson);
+    private sealed record PlannedApi(DockerApiDefinition Definition, DockerApiSpec Spec, ContainerSourcePlan Plan, string Image, string SettingsFileName, string SettingsJson);
 
     private sealed record StartedApi(PlannedApi Planned, IContainer Container, Uri BaseUrl, Uri NetworkBaseUrl);
 
@@ -190,18 +199,68 @@ internal sealed class ApiEnvComponent : WebEnvComponentBase
         return settings;
     }
 
-    private static IContainer BuildContainer(
-        DockerApiSpec spec,
-        ContainerSourcePlan plan,
-        INetwork network,
-        string networkAlias,
-        string settingsFileName,
-        string settingsJson)
+    /// <summary>
+    /// The one decision of what image an application runs on, made before anything starts.
+    /// </summary>
+    /// <remarks>
+    /// There used to be two deciders: the source plan resolved a runtime image (honouring
+    /// <c>WithRuntimeImage</c> and the project's SDK kind) and this component then derived its own from
+    /// the target framework, so a declared override was logged in the plan and silently dropped at run
+    /// time. Now the plan's answer is the answer, an API-level <c>WithImage</c> beats a derived one and
+    /// contradicts a declared one out loud, and a source with no way to choose refuses here - before a
+    /// container is built - rather than mid-start.
+    /// </remarks>
+    private static string ResolveRunImage(DockerApiDefinition definition, DockerApiSpec spec, ContainerSourcePlan plan)
     {
-        string port = spec.InternalPort.ToString(CultureInfo.InvariantCulture);
-        string image = plan.Image ?? spec.ResolveImage(plan.TargetFramework ?? throw new FrameworkStateException("The plan has neither an image nor a target framework to choose one from."));
+        string? declaredOnApi = string.IsNullOrWhiteSpace(spec.Image) ? null : spec.Image;
 
-        ContainerBuilder builder = new ContainerBuilder(image)
+        if (plan.Image is { } producedImage)
+        {
+            if (declaredOnApi is not null && !string.Equals(declaredOnApi, producedImage, StringComparison.Ordinal))
+            {
+                throw new FrameworkConfigurationException(
+                    $"'{definition.GetType().Name}' declares the image '{declaredOnApi}', but its source already produces the image that runs ('{producedImage}'), so one of the two would be ignored.",
+                    ["Remove WithImage(...), or declare the image as the source with ContainerSource.Image(...)."]);
+            }
+
+            return producedImage;
+        }
+
+        if (plan.AssemblyFileName is null)
+        {
+            throw new FrameworkConfigurationException(
+                $"The source of API '{definition.Identifier}' ('{plan.OutputDirectory}') holds no runnable application, so there is nothing to start.",
+                ["Ship a directory holding a published application, or declare the project with ContainerSource.Project(...)."]);
+        }
+
+        if (declaredOnApi is not null)
+        {
+            if (definition.Source is ProjectContainerSource { RuntimeImage: { } declaredOnSource }
+                && !string.Equals(declaredOnApi, declaredOnSource, StringComparison.Ordinal))
+            {
+                throw new FrameworkConfigurationException(
+                    $"'{definition.GetType().Name}' declares the image '{declaredOnApi}' and its source declares '{declaredOnSource}', so the one that would win is not obvious.",
+                    ["Remove one of the two declarations."]);
+            }
+
+            return declaredOnApi;
+        }
+
+        return plan.RuntimeImage
+            ?? spec.ResolveImage(plan.TargetFramework ?? throw new FrameworkConfigurationException(
+                $"The source of API '{definition.Identifier}' names no image and no target framework to derive one from.",
+                ["Call WithImage(\"...\") on the definition to name the runtime image."]));
+    }
+
+    private static IContainer BuildContainer(PlannedApi planned, INetwork network, string networkAlias)
+    {
+        DockerApiSpec spec = planned.Spec;
+        ContainerSourcePlan plan = planned.Plan;
+        string settingsFileName = planned.SettingsFileName;
+        string settingsJson = planned.SettingsJson;
+        string port = spec.InternalPort.ToString(CultureInfo.InvariantCulture);
+
+        ContainerBuilder builder = new ContainerBuilder(planned.Image)
             .WithNetwork(network)
             .WithNetworkAliases(networkAlias)
             .WithPortBinding(spec.InternalPort, true)

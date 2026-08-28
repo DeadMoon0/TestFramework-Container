@@ -127,10 +127,31 @@ public static class SitePayloadBuilder
         logger.LogInformation("Site '{0}' copied {1} source file(s) to '{2}'.", identifier, copied, contextRoot);
         logger.LogInformation("Site '{0}' builds in '{1}': {2}", identifier, buildImage, shellCommand);
 
-        string arguments = $"run --rm -v \"{contextRoot}:/src\" -w /src {buildImage} sh -lc \"{shellCommand.Replace("\"", "\\\"", StringComparison.Ordinal)}\"";
+        // The container is named so an abandoned build can be reached: killing the CLI client stops
+        // nothing daemon-side, and '--rm' removes a container only when it exits. Without the name, a
+        // wedged 'npm ci' - the exact wedge the timeout exists for - kept running forever.
+        string containerName = $"tf-sitebuild-{Guid.NewGuid():N}"[..24];
+        string arguments = $"run --rm --name {containerName} --label {ContainerLeftovers.BuildLabel}={ContainerLeftovers.BuildLabelValue} -v \"{contextRoot}:/src\" -w /src {buildImage} sh -lc \"{shellCommand.Replace("\"", "\\\"", StringComparison.Ordinal)}\"";
 
         Stopwatch stopwatch = Stopwatch.StartNew();
-        ContainerDockerCommands.CommandResult result = await ContainerDockerCommands.RunAsync(arguments, timeout, cancellationToken).ConfigureAwait(false);
+        ContainerDockerCommands.CommandResult result;
+        try
+        {
+            result = await ContainerDockerCommands.RunAsync(arguments, timeout, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            await RemoveAbandonedBuildContainerAsync(containerName).ConfigureAwait(false);
+            throw;
+        }
+
+        if (result.ExitCode == -1)
+        {
+            // -1 is the runner's own verdict: the client was killed on timeout, so the daemon-side
+            // container is still running the wedged build and has to be stopped by name.
+            await RemoveAbandonedBuildContainerAsync(containerName).ConfigureAwait(false);
+        }
+
         if (result.ExitCode != 0)
         {
             // The context is kept on failure: it holds the exact sources the build saw.
@@ -153,6 +174,19 @@ public static class SitePayloadBuilder
             TemporaryRoot = contextRoot,
             BuiltAtUtc = File.GetLastWriteTimeUtc(Path.Combine(builtDist, "index.html")),
         };
+    }
+
+    private static async Task RemoveAbandonedBuildContainerAsync(string containerName)
+    {
+        try
+        {
+            // Best effort on a token of its own: this runs precisely when the caller's token is spent.
+            await ContainerDockerCommands.RunAsync($"rm -f {containerName}", TimeSpan.FromSeconds(30), CancellationToken.None).ConfigureAwait(false);
+        }
+        catch
+        {
+            // A leftover build container is litter, never a reason to hide the failure that made it.
+        }
     }
 
     private static void EnsureBuiltPayload(string distDirectory, string identifier)

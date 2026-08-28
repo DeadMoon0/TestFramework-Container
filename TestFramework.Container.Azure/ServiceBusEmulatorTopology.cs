@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using TestFramework.Core.Exceptions;
 using TestFramework.Core.Logging;
@@ -175,7 +176,10 @@ internal sealed class ServiceBusRuntimeState(ServiceBusContainer container, stri
 
     public async ValueTask DisposeAsync()
     {
-        await Container.DisposeAsync().ConfigureAwait(false);
+        // The CLI route first, like every other container teardown in the family: disposing through
+        // the client can leave a container behind when the daemon is busy. On its own token, because
+        // disposal has none; the CLI runner applies its own ceiling.
+        await ContainerDockerCommands.ForceRemoveContainerAsync(Container, CancellationToken.None).ConfigureAwait(false);
 
         if (!string.IsNullOrWhiteSpace(temporaryConfigPath) && File.Exists(temporaryConfigPath))
             File.Delete(temporaryConfigPath);

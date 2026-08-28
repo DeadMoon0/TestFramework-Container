@@ -115,7 +115,11 @@ internal sealed class CosmosDbEnvComponent : DockerAzureEnvComponent
 
     public override async Task DeconstructAsync(object? state, IEnvironmentProvider environment, RunContext context)
     {
-        if (state is IAsyncDisposable asyncDisposable)
+        // The CLI route first, like every other container teardown in the family: disposing through
+        // the client can leave a container behind when the daemon is busy.
+        if (state is IContainer container)
+            await ContainerDockerCommands.ForceRemoveContainerAsync(container, context.Deadline.Token).ConfigureAwait(false);
+        else if (state is IAsyncDisposable asyncDisposable)
             await asyncDisposable.DisposeAsync().ConfigureAwait(false);
     }
     private static async Task WaitForGatewayAsync(CosmosClient client, string endpoint, ScopedLogger logger, CancellationToken cancellationToken)

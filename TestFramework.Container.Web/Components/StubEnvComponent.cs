@@ -53,6 +53,10 @@ internal sealed class StubEnvComponent : WebEnvComponentBase
 
         INetwork network = webEnvironment.GetRequiredRuntimeState<INetwork>(DockerWebEnvironment.NetworkComponentId);
 
+        // Recorded on the run because nobody stated it: the tag lives in this package's defaults, so a
+        // run that passed could not otherwise say which image proved it. §5's third demand.
+        context.EffectiveSettings.Record(ImageSource, "stub:Image", webEnvironment.StubImage);
+
         // Declaration order in, declaration order out, however the starts interleave.
         IReadOnlyList<StubDefinition> ordered = [.. definitions.OrderBy(definition => definition.Identifier.ToString(), StringComparer.Ordinal)];
 

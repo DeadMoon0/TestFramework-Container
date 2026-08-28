@@ -1,4 +1,5 @@
 ﻿using TestFramework.Core.Steps;
+using DotNet.Testcontainers.Containers;
 using DotNet.Testcontainers.Networks;
 using System;
 using System.Collections.Generic;
@@ -80,7 +81,11 @@ internal sealed class MsSqlEnvComponent : DockerAzureEnvComponent
 
     public override async Task DeconstructAsync(object? state, IEnvironmentProvider environment, RunContext context)
     {
-        if (state is IAsyncDisposable asyncDisposable)
+        // The CLI route first, like every other container teardown in the family: disposing through
+        // the client can leave a container behind when the daemon is busy.
+        if (state is IContainer container)
+            await ContainerDockerCommands.ForceRemoveContainerAsync(container, context.Deadline.Token).ConfigureAwait(false);
+        else if (state is IAsyncDisposable asyncDisposable)
             await asyncDisposable.DisposeAsync().ConfigureAwait(false);
     }
 

@@ -9,6 +9,11 @@ namespace TestFramework.Container.Web.Components;
 internal abstract class WebEnvComponentBase : EnvComponent
 {
     /// <summary>
+    /// The source name effective settings from this package are recorded under.
+    /// </summary>
+    private protected const string ImageSource = "TestFramework.Container.Web";
+
+    /// <summary>
     /// Returns the environment as the provider this component belongs to.
     /// </summary>
     /// <param name="environment">The environment the component was created by, possibly wrapped.</param>

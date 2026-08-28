@@ -277,7 +277,9 @@ public sealed record DockerApiSpec(
     /// <param name="targetFramework">The moniker the application was built for, such as <c>net10.0</c>.</param>
     /// <remarks>
     /// The image follows the application rather than being fixed, so an application that moves to a
-    /// newer framework does not silently run on an older runtime.
+    /// newer framework does not silently run on an older runtime. The environment consults this only
+    /// when the source plan resolved no runtime image of its own - the plan's answer already honours
+    /// <c>WithRuntimeImage(...)</c> and the project's SDK kind, and two deciders once disagreed.
     /// </remarks>
     public string ResolveImage(string targetFramework)
     {

@@ -150,13 +150,7 @@ public static class DockerfileGenerator
     {
         IEnumerable<string> patterns =
         [
-            "**/bin/",
-            "**/obj/",
-            "**/.git/",
-            "**/.vs/",
-            "**/artifacts/",
-            "**/node_modules/",
-            "**/TestResults/",
+            .. InContainerBuild.ExcludedDirectories.Select(directory => $"**/{directory}/"),
             .. additionalPatterns ?? [],
         ];
 

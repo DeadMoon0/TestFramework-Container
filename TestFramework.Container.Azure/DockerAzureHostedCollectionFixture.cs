@@ -18,16 +18,10 @@ public interface IDockerAzureHostedFixtureState
     /// How long the one-off bootstrap of the persistent slice may take.
     /// </summary>
     /// <remarks>
-    /// Generous because it is a ceiling, not a delay: nothing waits for it when startup is quick, and
-    /// the cost of setting it too low is a green suite that fails for no reason. Two minutes was too
-    /// low. A persistent slice here can be a Docker network, Azurite, the Cosmos emulator, SQL Server,
-    /// the Service Bus emulator -- which only starts once SQL is serving -- and one or more Function
-    /// App hosts. That is minutes of legitimate work on a warm machine and more on a CI runner pulling
-    /// images for the first time; measured at about two and a half minutes warm locally, and it
-    /// overran two minutes on a hosted runner, where the timeout cancelled the token mid-start and
-    /// surfaced as a container readiness failure rather than as the timeout it was.
+    /// The one default for every road into a hosted stack; the war story behind its size lives at
+    /// <see cref="DockerAzureDefaults.PersistentSetupTimeout"/>.
     /// </remarks>
-    TimeSpan PersistentSetupTimeout => TimeSpan.FromMinutes(10);
+    TimeSpan PersistentSetupTimeout => DockerAzureDefaults.PersistentSetupTimeout;
 
     DockerAzureEnvironment CreateEnvironment();
 
@@ -119,97 +113,4 @@ public class DockerAzureHostedCollectionFixture<TState>
         return builder.Build();
     }
 
-    private sealed class DockerAzurePersistentSetup : IConfigPersistentEnvironmentSetup
-    {
-        private readonly DockerAzureEnvironment _environment;
-        private readonly ConfigInstance _persistentConfig;
-        private readonly IReadOnlyCollection<EnvironmentRequirement> _persistentRequirements;
-        private readonly TimeSpan _persistentSetupTimeout;
-
-        public DockerAzurePersistentSetup()
-            : this(new DockerAzureEnvironment(), ConfigInstance.Create().LoadDockerAzureConfig().Build(), Array.Empty<EnvironmentRequirement>(), TimeSpan.FromMinutes(2))
-        {
-        }
-
-        public DockerAzurePersistentSetup(DockerAzureEnvironment environment, ConfigInstance persistentConfig, IReadOnlyCollection<EnvironmentRequirement> persistentRequirements, TimeSpan persistentSetupTimeout)
-        {
-            _environment = environment.CloneDefinitions();
-            _persistentConfig = persistentConfig;
-            _persistentRequirements = persistentRequirements;
-            _persistentSetupTimeout = persistentSetupTimeout;
-        }
-
-        public IEnvironmentProvider CreateEnvironment()
-        {
-            DockerAzureEnvironment environment = _environment.CloneDefinitions();
-            environment.ResolveComponents(Array.Empty<ArtifactInstanceGeneric>(), _persistentRequirements);
-            return environment;
-        }
-
-        public ConfigInstance CreatePersistentConfig() => _persistentConfig;
-
-        public IReadOnlyCollection<EnvComponentIdentifier> GetPersistentComponentIdentifiers()
-            => DockerAzurePersistentRootMapper.Map(_environment, _persistentRequirements);
-
-        public TimeSpan GetPersistentSetupTimeout() => _persistentSetupTimeout;
-    }
-
-    private sealed class HostedEnvironmentProvider(IEnvironmentProvider inner, IServiceProvider configServiceProvider) : IEnvironmentProviderProxy, IRunScopedServiceProviderFactory, IAsyncDisposable, IDisposable
-    {
-        public IEnvironmentProvider InnerEnvironment => inner;
-
-        public bool SupportsParallelComponentCreation => inner.SupportsParallelComponentCreation;
-
-        public IReadOnlyCollection<EnvComponentIdentifier> ResolveComponents(IEnumerable<ArtifactInstanceGeneric> artifacts, IEnumerable<EnvironmentRequirement> requirements)
-            => inner.ResolveComponents(artifacts, requirements);
-
-        public EnvComponent GetComponent(EnvComponentIdentifier identifier)
-            => inner.GetComponent(identifier);
-
-        public IServiceProvider CreateRunScopedServiceProvider(IServiceProvider baseServiceProvider)
-        {
-            if (TryGetRunScopedFactory(inner, out IRunScopedServiceProviderFactory? factory))
-                return factory!.CreateRunScopedServiceProvider(new FallbackServiceProvider(baseServiceProvider, configServiceProvider));
-
-            return new FallbackServiceProvider(baseServiceProvider, configServiceProvider);
-        }
-
-        public void Dispose()
-        {
-            if (configServiceProvider is IDisposable disposable)
-                disposable.Dispose();
-        }
-
-        public ValueTask DisposeAsync()
-        {
-            if (configServiceProvider is IAsyncDisposable asyncDisposable)
-                return asyncDisposable.DisposeAsync();
-
-            if (configServiceProvider is IDisposable disposable)
-                disposable.Dispose();
-
-            return ValueTask.CompletedTask;
-        }
-
-        private static bool TryGetRunScopedFactory(IEnvironmentProvider environment, out IRunScopedServiceProviderFactory? factory)
-        {
-            if (environment is IRunScopedServiceProviderFactory directFactory)
-            {
-                factory = directFactory;
-                return true;
-            }
-
-            if (environment is IEnvironmentProviderProxy proxy)
-                return TryGetRunScopedFactory(proxy.InnerEnvironment, out factory);
-
-            factory = null;
-            return false;
-        }
-    }
-
-    private sealed class FallbackServiceProvider(IServiceProvider primary, IServiceProvider fallback) : IServiceProvider
-    {
-        public object? GetService(Type serviceType)
-            => primary.GetService(serviceType) ?? fallback.GetService(serviceType);
-    }
 }

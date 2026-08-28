@@ -50,6 +50,10 @@ internal sealed class SqlServerEnvComponent : WebEnvComponentBase
         SqlModelRegistry registry = SqlConfigResolver.ResolveModelRegistry(context.Services);
         INetwork network = webEnvironment.GetRequiredRuntimeState<INetwork>(DockerWebEnvironment.NetworkComponentId);
 
+        // Recorded on the run because nobody stated it: the tag lives in this package's defaults, so a
+        // run that passed could not otherwise say which image proved it. §5's third demand.
+        context.EffectiveSettings.Record(ImageSource, "sql:Image", webEnvironment.SqlImage);
+
         MsSqlContainer container = MsSqlContainerFactory.Create(
             new MsSqlContainerOptions(
                 webEnvironment.SqlImage,

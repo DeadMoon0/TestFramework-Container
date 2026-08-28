@@ -552,6 +552,23 @@ public static class DockerAzureDefaults
     /// has to be reproducible over time.
     /// </remarks>
     public const string CosmosDbImage = "mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview";
+
+    /// <summary>
+    /// How long the one-off bootstrap of a persistent container stack may take.
+    /// </summary>
+    /// <remarks>
+    /// Generous because it is a ceiling, not a delay: nothing waits for it when startup is quick, and
+    /// the cost of setting it too low is a green suite that fails for no reason. Two minutes was too
+    /// low. A persistent slice can be a Docker network, Azurite, the Cosmos emulator, SQL Server, the
+    /// Service Bus emulator - which only starts once SQL is serving - and one or more Function App
+    /// hosts. That is minutes of legitimate work on a warm machine and more on a CI runner pulling
+    /// images for the first time; measured at about two and a half minutes warm locally, and it
+    /// overran two minutes on a hosted runner, where the timeout cancelled the token mid-start and
+    /// surfaced as a container readiness failure rather than as the timeout it was. The one value for
+    /// every road into a hosted stack: the fixture and <c>DockerAzureHostedEnvironment.StartAsync</c>
+    /// once defaulted differently, and the lower default reproduced exactly that misdiagnosis.
+    /// </remarks>
+    public static readonly TimeSpan PersistentSetupTimeout = TimeSpan.FromMinutes(10);
     public const string CosmosDbEmulatorAccountKey = "C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==";
     /// <summary>
     /// The Service Bus emulator image started for declared Service Bus entities.

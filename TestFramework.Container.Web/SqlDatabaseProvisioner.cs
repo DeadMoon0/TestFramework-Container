@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Data.SqlClient;
+using TestFramework.Core.Exceptions;
 using TestFramework.Core.Logging;
 using TestFramework.Web.Sql.Model;
 using TestFramework.Web.Sql.Schema;
@@ -31,6 +32,12 @@ public static class SqlDatabaseProvisioner
         ArgumentException.ThrowIfNullOrWhiteSpace(serverConnectionString);
         ArgumentNullException.ThrowIfNull(spec);
         ArgumentNullException.ThrowIfNull(logger);
+
+        // Enforced here and not only in the builder, because the name goes into SQL text below and
+        // both this method and the spec's constructor are public: the rule must hold at the boundary
+        // that relies on it, not in a type this method never sees.
+        if (!DockerSqlSpec.IsValidDatabaseName(spec.DatabaseName))
+            throw new FrameworkConfigurationException($"The database name '{spec.DatabaseName}' is not a plain identifier, so it cannot be placed in a statement. Use letters, digits and underscores, starting with a letter or underscore.");
 
         string quoted = SqlModelMap.Quote(spec.DatabaseName);
 

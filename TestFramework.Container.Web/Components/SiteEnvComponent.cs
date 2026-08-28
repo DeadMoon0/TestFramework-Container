@@ -100,7 +100,12 @@ internal sealed class SiteEnvComponent : WebEnvComponentBase
             if (plan.Kind != SiteSourceKind.Image && generatedFiles.Count > 0)
                 plan = StagePayload(plan, generatedFiles, identifier, context.Logger);
 
-            planned.Add(new PlannedSite(definition, spec, plan, nginxConfig, generatedFiles));
+            PlannedSite plannedSite = new(definition, spec, plan, nginxConfig, generatedFiles);
+            planned.Add(plannedSite);
+
+            // Recorded on the run because nobody stated it: the serving image is a package default
+            // unless overridden, so a run that passed could not otherwise say which image proved it.
+            context.EffectiveSettings.Record(ImageSource, $"site:{identifier}:Image", ServingImage(plannedSite));
         }
 
         // Serving images are fetched up front, on the route that also works where the daemon's own

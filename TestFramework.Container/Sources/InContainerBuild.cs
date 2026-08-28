@@ -20,7 +20,15 @@ namespace TestFramework.Container.Sources;
 /// </remarks>
 public static class InContainerBuild
 {
-    private static readonly string[] ExcludedDirectories = ["bin", "obj", ".git", ".vs", "artifacts", "node_modules", "TestResults"];
+    /// <summary>
+    /// The directory names no build context should carry: build output, VCS state and package caches.
+    /// </summary>
+    /// <remarks>
+    /// The one list for both roads a context is assembled on: <see cref="CopySources"/> skips these
+    /// when copying, and <see cref="DockerfileGenerator.WriteDockerIgnore"/> turns the same names into
+    /// ignore patterns. Two lists drifted once written twice; an addition here reaches both.
+    /// </remarks>
+    internal static readonly string[] ExcludedDirectories = ["bin", "obj", ".git", ".vs", "artifacts", "node_modules", "TestResults"];
 
     /// <summary>
     /// Builds the image a plan describes and returns the plan with the image filled in.

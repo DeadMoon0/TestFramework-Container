@@ -218,17 +218,26 @@ public static class ContainerSourceResolver
     private static string? FindEntryAssembly(string outputDirectory)
     {
         // A runtime configuration sits beside the assembly it belongs to, which identifies the entry
-        // point without having to guess from file names.
-        string? runtimeConfig = Directory
+        // point without having to guess from file names. Two of them is a stated error, not a coin
+        // toss: an exe project referencing another exe routinely ships both runtime configurations,
+        // and picking one alphabetically would ship the wrong application silently.
+        List<string> candidates = [.. Directory
             .EnumerateFiles(outputDirectory, "*.runtimeconfig.json", SearchOption.TopDirectoryOnly)
-            .OrderBy(path => path, StringComparer.Ordinal)
-            .FirstOrDefault();
+            .Select(path => Path.GetFileName(path)[..^".runtimeconfig.json".Length])
+            .Where(name => File.Exists(Path.Combine(outputDirectory, $"{name}.dll")))
+            .OrderBy(name => name, StringComparer.Ordinal)];
 
-        if (runtimeConfig is null)
-            return null;
+        if (candidates.Count > 1)
+        {
+            throw new FrameworkConfigurationException(
+                $"'{outputDirectory}' holds {candidates.Count} runnable applications ({string.Join(", ", candidates)}), so which one to run is ambiguous.",
+                [
+                    "Ship a directory that holds one application.",
+                    "Or declare the project with ContainerSource.Project(...), which knows its own entry point.",
+                ]);
+        }
 
-        string name = Path.GetFileName(runtimeConfig)[..^".runtimeconfig.json".Length];
-        return File.Exists(Path.Combine(outputDirectory, $"{name}.dll")) ? $"{name}.dll" : null;
+        return candidates.Count == 1 ? $"{candidates[0]}.dll" : null;
     }
 
     private static DateTimeOffset? ReadTimestamp(string outputDirectory, string? assemblyFileName)
