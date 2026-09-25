@@ -1,8 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 using TestFramework.Container.Sources;
 using TestFramework.Core.Environment;
 using TestFramework.Core.Exceptions;
+using TestFramework.Core.Timelines;
 using TestFramework.Web;
 using TestFramework.Web.Identifier;
 using TestFramework.Web.Sql;
@@ -62,14 +65,14 @@ public class DockerWebEnvironmentApiTests
     }
 
     [Fact]
-    public void ResolveComponents_RecordsTheIdentifierAnApiStepRequires()
+    public void ResolveComponents_StartsTheApiForARequirementItDeclares()
     {
         DockerWebEnvironment environment = DockerWebEnvironment.For<StandaloneApiDefinition>();
 
         IReadOnlyCollection<EnvComponentIdentifier> resolved = environment.ResolveComponents([], [new EnvironmentRequirement(WebEnvironmentResourceKinds.RestApi, "orders")]);
 
         Assert.Contains(DockerWebEnvironment.ApiComponentId, resolved);
-        Assert.Contains("orders", environment.UsedApiIdentifiers);
+        Assert.Contains("web.restapi/orders", environment.Nodes.Select(node => node.ToString()));
     }
 
     [Fact]
@@ -95,15 +98,20 @@ public class DockerWebEnvironmentApiTests
     }
 
     [Fact]
-    public void ResolveComponents_FailsWhenARunUsesAnUndeclaredApiIdentifier()
+    public async Task AnApiNeitherADefinitionNorConfigurationDeclares_IsRefusedBeforeAnythingStarts()
     {
+        // The environment's own "no definition declares it" refusal is gone: its definitions are on the run's
+        // resource list, and the engine refuses what nothing declares - before a single container starts.
         DockerWebEnvironment environment = DockerWebEnvironment.For<StandaloneApiDefinition>();
+        Timeline timeline = Timeline.Create()
+            .Trigger(WebExt.Api.Http("billing").Get("api/invoices").Call()).Name("bill")
+            .Build();
 
-        FrameworkConfigurationException exception = Assert.Throws<FrameworkConfigurationException>(
-            () => environment.ResolveComponents([], [new EnvironmentRequirement(WebEnvironmentResourceKinds.RestApi, "billing")]));
+        FrameworkConfigurationException refusal = await Assert.ThrowsAsync<FrameworkConfigurationException>(
+            () => timeline.SetupRun().SetEnv(environment).RunAsync());
 
-        Assert.Contains("'billing'", exception.Message, StringComparison.Ordinal);
-        Assert.Contains("orders", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("Step 'bill' requires web.restapi 'billing'", refusal.Message, StringComparison.Ordinal);
+        Assert.Contains(refusal.AvailableOptions, option => option.StartsWith("web.restapi 'orders'", StringComparison.Ordinal));
     }
 
     [Fact]

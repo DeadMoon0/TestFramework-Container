@@ -371,7 +371,8 @@ DockerWebEnvironment.For<SampleSqlDefinition>()
 | `The run has no SQL configuration store` | `LoadWebConfig()` was not called on the config the run uses. |
 | `The run has no API configuration store` | The same, for an application. |
 | `declared N mapping(s) but the server loaded M` | The stub server rejected a mapping. Its log, already captured, names the file. |
-| `which no included definition declares` | A step, artifact or binding names an identifier no definition was included for. The message lists what is declared. |
+| `requires ... and nothing in this run declares it` | A step names an identifier that neither an included definition nor configuration declares. The engine refuses it before anything starts and lists what is declared. An identifier configuration declares is left to that system: one run can mix containers with deployed ones. |
+| `which no included definition declares` | A site or API binding names an identifier no definition was included for. The message lists what is declared. |
 | `does not name a database` | The definition's `Configure` never called `WithDatabase(...)`. |
 | `is not a plain identifier` | A database name goes into a statement verbatim, so only letters, digits and underscores are accepted. |
 | `the SQL Server container did not become usable` | The engine did not start within the readiness window. Check `docker logs`; a low memory limit is the usual cause. |

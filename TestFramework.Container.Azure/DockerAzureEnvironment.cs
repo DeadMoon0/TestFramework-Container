@@ -194,6 +194,13 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
         CosmosPartitionKeyPaths.Clear();
         _resolutionSummaryLogged = false;
 
+        // What the run needs arrives as this call's input - each requirement the engine routed here,
+        // already checked against the run's resources - rather than through the obsolete per-requirement
+        // hook. A Logic App requirement never arrives: this environment does not stand in for that kind, so
+        // a run can drive a live Logic App beside containerised storage.
+        foreach (EnvironmentRequirement requirement in requirements)
+            CaptureRequirement(requirement);
+
         foreach (ArtifactInstanceGeneric artifact in artifacts)
             CaptureIdentifiers(artifact.Reference);
 
@@ -609,7 +616,7 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
         return candidate.IsGenericType && candidate.GetGenericTypeDefinition() == genericTypeDefinition;
     }
 
-    protected override void OnRequirementResolved(EnvironmentRequirement requirement)
+    private void CaptureRequirement(EnvironmentRequirement requirement)
     {
         switch (requirement.ResourceKind)
         {
@@ -628,8 +635,6 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
             case AzureEnvironmentResourceKinds.FunctionApp:
                 _usedFunctionAppIdentifiers.Add(requirement.ResourceIdentifier);
                 break;
-            case AzureEnvironmentResourceKinds.LogicApp:
-                throw new UnsupportedFrameworkValueException($"DockerAzureEnvironment no longer supports Logic App resource '{requirement.ResourceIdentifier}'. Use a live Azure-hosted Logic App instead of Docker container hosting.");
         }
     }
 

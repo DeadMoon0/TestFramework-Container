@@ -1,6 +1,7 @@
 ﻿using TestFramework.Core.Steps;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using TestFramework.Core.Artifacts;
 using TestFramework.Core.Environment;
@@ -65,14 +66,23 @@ public class DockerWebEnvironmentTests
     }
 
     [Fact]
-    public void ResolveComponents_RecordsTheIdentifierAStepRequires()
+    public void EveryIncludedDefinition_IsDeclaredAsAResource_SoTheEngineCanCheckRequirementsBeforeTheRun()
+    {
+        DockerWebEnvironment environment = DockerWebEnvironment.For<MainDefinition>().Include<ReportingDefinition>();
+
+        string[] declared = [.. environment.Nodes.Select(node => node.ToString()).OrderBy(name => name, StringComparer.Ordinal)];
+
+        Assert.Equal(["web.sql/main", "web.sql/reporting"], declared);
+    }
+
+    [Fact]
+    public void ResolveComponents_StartsSqlForARequirementItDeclares()
     {
         DockerWebEnvironment environment = DockerWebEnvironment.For<MainDefinition>();
 
         IReadOnlyCollection<EnvComponentIdentifier> resolved = environment.ResolveComponents([], [new EnvironmentRequirement(WebEnvironmentResourceKinds.Sql, "main")]);
 
         Assert.Contains(DockerWebEnvironment.SqlServerComponentId, resolved);
-        Assert.Contains("main", environment.UsedSqlIdentifiers);
     }
 
     [Fact]
@@ -88,30 +98,19 @@ public class DockerWebEnvironmentTests
         IReadOnlyCollection<EnvComponentIdentifier> resolved = environment.ResolveComponents([artifact], []);
 
         Assert.Contains(DockerWebEnvironment.SqlServerComponentId, resolved);
-        Assert.Contains("main", environment.UsedSqlIdentifiers);
     }
 
     [Fact]
-    public void ResolveComponents_ForgetsIdentifiersFromAPreviousResolution()
+    public void AResourceItDoesNotDeclare_IsNotItsToServe_SoARunCanMixContainersWithDeployedSystems()
     {
-        DockerWebEnvironment environment = DockerWebEnvironment.For<MainDefinition>().Include<ReportingDefinition>();
-
-        environment.ResolveComponents([], [new EnvironmentRequirement(WebEnvironmentResourceKinds.Sql, "reporting")]);
-        environment.ResolveComponents([], [new EnvironmentRequirement(WebEnvironmentResourceKinds.Sql, "main")]);
-
-        Assert.Equal(["main"], environment.UsedSqlIdentifiers);
-    }
-
-    [Fact]
-    public void ResolveComponents_FailsWhenARunUsesAnIdentifierNoDefinitionDeclares()
-    {
+        // Damage before: it claimed every SQL, API, stub and site requirement, and refused one that
+        // configuration pointed at a deployed system. The engine now routes it only what it declares.
         DockerWebEnvironment environment = DockerWebEnvironment.For<MainDefinition>();
 
-        FrameworkConfigurationException exception = Assert.Throws<FrameworkConfigurationException>(
-            () => environment.ResolveComponents([], [new EnvironmentRequirement(WebEnvironmentResourceKinds.Sql, "reporting")]));
-
-        Assert.Contains("'reporting'", exception.Message, StringComparison.Ordinal);
-        Assert.Contains("main", exception.Message, StringComparison.Ordinal);
+        Assert.False(environment.ProvidesEveryResourceOf(WebEnvironmentResourceKinds.Sql));
+        Assert.False(environment.ProvidesEveryResourceOf(WebEnvironmentResourceKinds.RestApi));
+        Assert.False(environment.ProvidesEveryResourceOf(WebEnvironmentResourceKinds.Stub));
+        Assert.False(environment.ProvidesEveryResourceOf(WebEnvironmentResourceKinds.Site));
     }
 
     [Fact]

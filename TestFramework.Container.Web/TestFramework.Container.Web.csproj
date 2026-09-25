@@ -5,7 +5,7 @@
 		<GenerateDocumentationFile>true</GenerateDocumentationFile>
 		<IsTestProject>false</IsTestProject>
 		<Title>TestFramework.Container.Web</Title>
-		<Version>0.4.0</Version>
+		<Version>0.5.0</Version>
 		<Authors>DeadMoon0</Authors>
 		<Product>TestFramework</Product>
 		<Description>Docker-backed environment providers for TestFramework.Web timelines: builds and runs the application under test, starts the SQL Server behind it and the stubbed dependencies in front of it, and publishes every address into the running timeline.</Description>
@@ -17,8 +17,7 @@
 		<PackageTags>Test;UnitTest;IntegrationTest;Framework;Timeline;Docker;Web;Sql;SqlServer</PackageTags>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<Copyright>Copyright (c) DeadMoon0 2026</Copyright>
-		<PackageReleaseNotes>Adds DockerSiteDefinition: static web sites (Angular and other SPA builds, or any dist folder) served by an nginx container on the same environment network as the application, with declared proxy routes, SPA history fallback and generated runtime-config files. Sites publish their address into WebConfigStore&lt;SiteConfig&gt;, so browser timelines resolve them by identifier like every other resource.
-BREAKING - RunningApi gained a NetworkBaseUrl parameter after BaseUrl, and application containers now carry the network alias 'api-&lt;identifier&gt;' so sites can proxy to them. Requires TestFramework.Web 0.4.0.</PackageReleaseNotes>
+		<PackageReleaseNotes>Requires TestFramework.Core 0.6.0. DockerWebEnvironment now declares its definitions as the run's resources and provides only those, so one run can reach a containerised API and a deployed one; an identifier nothing declares is refused by the engine before anything starts. The UsedSqlIdentifiers, UsedApiIdentifiers, UsedStubIdentifiers and UsedSiteIdentifiers properties are obsolete, and a browser step now requires the site itself rather than ui.webapp.</PackageReleaseNotes>
 	</PropertyGroup>
 
 	<ItemGroup>
@@ -43,7 +42,7 @@ BREAKING - RunningApi gained a NetworkBaseUrl parameter after BaseUrl, and appli
 		<PackageReference Include="Testcontainers" Version="4.11.0" />
 		<PackageReference Include="Testcontainers.MsSql" Version="4.11.0" />
 		<PackageReference Include="TestFramework.Config" Version="0.3.0" />
-		<PackageReference Include="TestFramework.Core" Version="0.4.0" />
+		<PackageReference Include="TestFramework.Core" Version="0.6.0" />
 		<PackageReference Include="TestFramework.Web" Version="0.5.0" />
 	</ItemGroup>
 

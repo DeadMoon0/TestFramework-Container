@@ -450,14 +450,15 @@ public class DockerAzureEnvironmentTests
     }
 
     [Fact]
-    public void ResolveComponents_ThrowsWhenLogicAppRequirementIsUsed()
+    public void ALogicAppRequirement_IsNotThisEnvironmentsToServe_SoALiveLogicAppCanRunBesideContainers()
     {
+        // Damage before: any Logic App requirement threw, so a run could not use a live Logic App at all once
+        // this environment provided its storage.
         DockerAzureEnvironment environment = new();
         var logicAppStep = new IsLiveTrigger().LogicApp("logic");
 
-        UnsupportedFrameworkValueException exception = Assert.Throws<UnsupportedFrameworkValueException>(() => environment.ResolveComponents([], ((IHasEnvironmentRequirements)logicAppStep).GetEnvironmentRequirements(null!)));
-
-        Assert.Contains("no longer supports Logic App", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.False(environment.ProvidesEveryResourceOf(AzureEnvironmentResourceKinds.LogicApp));
+        Assert.Empty(environment.ResolveComponents([], ((IHasEnvironmentRequirements)logicAppStep).GetEnvironmentRequirements(null!)));
     }
 
     [Fact]

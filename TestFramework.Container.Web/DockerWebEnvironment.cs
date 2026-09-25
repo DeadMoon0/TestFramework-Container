@@ -4,6 +4,7 @@ using System.Linq;
 using TestFramework.Container.Web.Components;
 using TestFramework.Core.Artifacts;
 using TestFramework.Core.Environment;
+using TestFramework.Core.Environment.Graph;
 using TestFramework.Core.Exceptions;
 using TestFramework.Web;
 using TestFramework.Web.Sql;
@@ -28,7 +29,7 @@ namespace TestFramework.Container.Web;
 ///     .RunAsync();
 /// </code>
 /// </example>
-public class DockerWebEnvironment : EnvironmentProviderBase
+public class DockerWebEnvironment : EnvironmentProviderBase, IResourceNodeSource
 {
     /// <summary>
     /// The component that creates the Docker network the containers share.
@@ -55,16 +56,6 @@ public class DockerWebEnvironment : EnvironmentProviderBase
     /// </summary>
     public static readonly EnvComponentIdentifier SiteComponentId = "site";
 
-    /// <summary>
-    /// The requirement kind browser steps declare for the web application they drive.
-    /// </summary>
-    /// <remarks>
-    /// The string is the contract, not a package reference: it must match
-    /// <c>BrowserEnvironmentResourceKinds.WebApp</c> in TestFramework.UI.Browser. The site is the
-    /// application a browser loads, so a browser step's own requirement starts and validates the
-    /// declared site with no bridging call in between.
-    /// </remarks>
-    internal const string UiWebAppResourceKind = "ui.webapp";
 
     private readonly Dictionary<Type, DockerWebDefinition> _definitions = [];
     private readonly Dictionary<Type, StubDefinition> _stubDefinitions = [];
@@ -82,37 +73,52 @@ public class DockerWebEnvironment : EnvironmentProviderBase
         AddComponent(new ApiEnvComponent());
         AddComponent(new SiteEnvComponent());
 
-        MapResourceKind(WebEnvironmentResourceKinds.Sql, SqlServerComponentId);
-        MapResourceKind(WebEnvironmentResourceKinds.RestApi, ApiComponentId);
-        MapResourceKind(WebEnvironmentResourceKinds.Stub, StubComponentId);
-        MapResourceKind(WebEnvironmentResourceKinds.Site, SiteComponentId);
-        MapResourceKind(UiWebAppResourceKind, SiteComponentId);
-        MapArtifact(typeof(SqlRowArtifactDescriber<>), SqlServerComponentId);
+        // Each kind is provided for what this environment declares - one container per definition - and
+        // for nothing else. A run may therefore reach one API in a container and another deployed
+        // somewhere: a requirement for a resource configuration declared never reaches this environment.
+        MapDeclaredResources(WebEnvironmentResourceKinds.Sql, SqlServerComponentId);
+        MapDeclaredResources(WebEnvironmentResourceKinds.RestApi, ApiComponentId);
+        MapDeclaredResources(WebEnvironmentResourceKinds.Stub, StubComponentId);
+        MapDeclaredResources(WebEnvironmentResourceKinds.Site, SiteComponentId);
     }
 
-    private readonly HashSet<string> _usedSqlIdentifiers = [];
-    private readonly HashSet<string> _usedApiIdentifiers = [];
-    private readonly HashSet<string> _usedStubIdentifiers = [];
-    private readonly HashSet<string> _usedSiteIdentifiers = [];
+    /// <summary>
+    /// What this environment is called on the run's resource list.
+    /// </summary>
+    public string SourceName => "Docker web definition";
 
     /// <summary>
-    /// The SQL identifiers the last resolution found in use.
+    /// Every included definition, as a resource on the run's list - so a step requiring it is checked
+    /// before anything starts, and its requirement reaches this environment and no other.
     /// </summary>
     /// <remarks>
-    /// Read-only, because <see cref="ResolveComponents"/> clears and refills it. Anything a caller added
-    /// by hand would disappear on the next resolution, which is not a thing a public collection should
-    /// let you attempt.
+    /// Built on each read rather than kept: definitions are included after construction, and a list taken
+    /// early would quietly leave out the ones included later. The resources carry no values of their own -
+    /// their addresses only exist once the containers start, and are published then.
     /// </remarks>
-    public IReadOnlyCollection<string> UsedSqlIdentifiers => _usedSqlIdentifiers;
+    public IReadOnlyList<ResourceNode> Nodes => new DefinitionResources(this).Nodes;
+
+    /// <summary>
+    /// No longer maintained: what a run needs from this environment arrives with each component's context,
+    /// and the check that a used identifier is declared is the engine's, made before the run starts.
+    /// </summary>
+    [Obsolete("The environment no longer records what a run uses. Read EnvironmentResources.Required in a component's context; whether a requirement is declared is checked by the engine before the run starts.", error: true)]
+    public IReadOnlyCollection<string> UsedSqlIdentifiers => throw NoLongerRecorded();
 
     /// <inheritdoc cref="UsedSqlIdentifiers" />
-    public IReadOnlyCollection<string> UsedApiIdentifiers => _usedApiIdentifiers;
+    [Obsolete("The environment no longer records what a run uses. Read EnvironmentResources.Required in a component's context; whether a requirement is declared is checked by the engine before the run starts.", error: true)]
+    public IReadOnlyCollection<string> UsedApiIdentifiers => throw NoLongerRecorded();
 
     /// <inheritdoc cref="UsedSqlIdentifiers" />
-    public IReadOnlyCollection<string> UsedStubIdentifiers => _usedStubIdentifiers;
+    [Obsolete("The environment no longer records what a run uses. Read EnvironmentResources.Required in a component's context; whether a requirement is declared is checked by the engine before the run starts.", error: true)]
+    public IReadOnlyCollection<string> UsedStubIdentifiers => throw NoLongerRecorded();
 
     /// <inheritdoc cref="UsedSqlIdentifiers" />
-    public IReadOnlyCollection<string> UsedSiteIdentifiers => _usedSiteIdentifiers;
+    [Obsolete("The environment no longer records what a run uses. Read EnvironmentResources.Required in a component's context; whether a requirement is declared is checked by the engine before the run starts.", error: true)]
+    public IReadOnlyCollection<string> UsedSiteIdentifiers => throw NoLongerRecorded();
+
+    private static NotSupportedException NoLongerRecorded()
+        => new("DockerWebEnvironment no longer records the identifiers a run uses. Read EnvironmentResources.Required in a component's context instead.");
 
     /// <summary>
     /// The image the stub servers run.
@@ -279,24 +285,11 @@ public class DockerWebEnvironment : EnvironmentProviderBase
     {
         ArgumentNullException.ThrowIfNull(artifacts);
 
-        _usedSqlIdentifiers.Clear();
-        _usedApiIdentifiers.Clear();
-        _usedStubIdentifiers.Clear();
-        _usedSiteIdentifiers.Clear();
-
-        foreach (ArtifactInstanceGeneric artifact in artifacts)
-        {
-            // The reference states which database it belongs to, so no reflection over artifact
-            // types is needed to find out.
-            if (artifact.Reference is ISqlArtifactReference sqlReference)
-                _usedSqlIdentifiers.Add(sqlReference.SqlIdentifier);
-        }
-
         HashSet<EnvComponentIdentifier> resolved = [.. base.ResolveComponents(artifacts, requirements)];
 
         // A declared resource is started whether or not this particular timeline touches it: it was
         // asked for, and one SQL Server container serves every database anyway.
-        if (GetSqlDefinitions().Count > 0 || UsedSqlIdentifiers.Count > 0)
+        if (GetSqlDefinitions().Count > 0)
             resolved.Add(SqlServerComponentId);
 
         if (GetApiDefinitions().Count > 0)
@@ -308,7 +301,6 @@ public class DockerWebEnvironment : EnvironmentProviderBase
         if (GetSiteDefinitions().Count > 0)
             resolved.Add(SiteComponentId);
 
-        EnsureDeclaredIdentifiers();
         EnsureDeclaredApiBindings();
         EnsureDeclaredSiteBindings();
 
@@ -347,27 +339,6 @@ public class DockerWebEnvironment : EnvironmentProviderBase
         throw new FrameworkStateException($"The runtime state for environment component '{identifier}' is not available.");
     }
 
-    /// <inheritdoc />
-    protected override void OnRequirementResolved(EnvironmentRequirement requirement)
-    {
-        ArgumentNullException.ThrowIfNull(requirement);
-
-        if (string.Equals(requirement.ResourceKind, WebEnvironmentResourceKinds.Sql, StringComparison.Ordinal))
-            _usedSqlIdentifiers.Add(requirement.ResourceIdentifier);
-
-        if (string.Equals(requirement.ResourceKind, WebEnvironmentResourceKinds.RestApi, StringComparison.Ordinal))
-            _usedApiIdentifiers.Add(requirement.ResourceIdentifier);
-
-        if (string.Equals(requirement.ResourceKind, WebEnvironmentResourceKinds.Stub, StringComparison.Ordinal))
-            _usedStubIdentifiers.Add(requirement.ResourceIdentifier);
-
-        if (string.Equals(requirement.ResourceKind, WebEnvironmentResourceKinds.Site, StringComparison.Ordinal)
-            || string.Equals(requirement.ResourceKind, UiWebAppResourceKind, StringComparison.Ordinal))
-        {
-            _usedSiteIdentifiers.Add(requirement.ResourceIdentifier);
-        }
-    }
-
     private void EnsureUniqueStubIdentifier(StubDefinition candidate)
     {
         StubDefinition? conflicting = GetStubDefinitions().FirstOrDefault(existing =>
@@ -391,37 +362,6 @@ public class DockerWebEnvironment : EnvironmentProviderBase
 
         if (conflicting is not null)
             throw new FrameworkConfigurationException($"'{candidate.GetType().Name}' and '{conflicting.GetType().Name}' both declare the {kind} identifier '{identifier}'. One identifier is served by one definition.");
-    }
-
-    private void EnsureDeclaredIdentifiers()
-    {
-        EnsureDeclared(
-            UsedSqlIdentifiers,
-            [.. GetSqlDefinitions().Select(definition => definition.Identifier.Identifier)],
-            "SQL",
-            nameof(DockerSqlDefinition),
-            "which database to create");
-
-        EnsureDeclared(
-            UsedApiIdentifiers,
-            [.. GetApiDefinitions().Select(definition => definition.Identifier.Identifier)],
-            "API",
-            nameof(DockerApiDefinition),
-            "which application to run");
-
-        EnsureDeclared(
-            UsedStubIdentifiers,
-            [.. GetStubDefinitions().Select(definition => definition.Identifier.Identifier)],
-            "stub",
-            nameof(StubDefinition),
-            "which stub to serve");
-
-        EnsureDeclared(
-            UsedSiteIdentifiers,
-            [.. GetSiteDefinitions().Select(definition => definition.Identifier.Identifier)],
-            "site",
-            nameof(DockerSiteDefinition),
-            "which site to serve");
     }
 
     private void EnsureDeclaredSiteBindings()
@@ -502,20 +442,32 @@ public class DockerWebEnvironment : EnvironmentProviderBase
             + $"Include the {definitionTypeName} the application needs, so it can be given {whatItNeeds}.");
     }
 
-    private static void EnsureDeclared(
-        IReadOnlyCollection<string> used,
-        HashSet<string> declared,
-        string kind,
-        string definitionTypeName,
-        string whatItDecides)
+    /// <summary>
+    /// The included definitions as declared resources, read afresh each time the run's list is composed.
+    /// </summary>
+    private sealed class DefinitionResources(DockerWebEnvironment environment) : DeclaredNodeSource
     {
-        string[] missing = [.. used.Where(identifier => !declared.Contains(identifier)).OrderBy(identifier => identifier, StringComparer.Ordinal)];
-        if (missing.Length == 0)
-            return;
+        public override string SourceName => environment.SourceName;
 
-        throw new FrameworkConfigurationException(
-            $"The run uses the {kind} identifier(s) {string.Join(", ", missing.Select(identifier => $"'{identifier}'"))}, which no included definition declares. "
-            + $"Declared: {(declared.Count == 0 ? "none" : string.Join(", ", declared.OrderBy(identifier => identifier, StringComparer.Ordinal)))}. "
-            + $"Include a {definitionTypeName} for it, so the environment knows {whatItDecides}.");
+        protected override IEnumerable<DeclaredResource> Declarations
+        {
+            get
+            {
+                foreach (DockerSqlDefinition definition in environment.GetSqlDefinitions())
+                    yield return Declared(WebEnvironmentResourceKinds.SqlKind, definition.Identifier.Identifier);
+
+                foreach (DockerApiDefinition definition in environment.GetApiDefinitions())
+                    yield return Declared(WebEnvironmentResourceKinds.RestApiKind, definition.Identifier.Identifier);
+
+                foreach (StubDefinition definition in environment.GetStubDefinitions())
+                    yield return Declared(WebEnvironmentResourceKinds.StubKind, definition.Identifier.Identifier);
+
+                foreach (DockerSiteDefinition definition in environment.GetSiteDefinitions())
+                    yield return Declared(WebEnvironmentResourceKinds.SiteKind, definition.Identifier.Identifier);
+            }
+        }
+
+        private DeclaredResource Declared(ResourceKind kind, string identifier)
+            => new(kind, identifier, new Dictionary<ValueKey, string>(), $"{this.SourceName} '{identifier}'");
     }
 }

@@ -18,7 +18,6 @@ namespace TestFramework.Container.Web.Tests;
 /// </summary>
 public class DockerWebEnvironmentSiteTests
 {
-    private const string UiWebAppKind = "ui.webapp";
 
     private sealed class OrdersApiDefinition : DockerApiDefinition
     {
@@ -79,39 +78,16 @@ public class DockerWebEnvironmentSiteTests
     }
 
     [Fact]
-    public void ResolveComponents_RecordsTheIdentifierASiteRequirementNames()
+    public void ResolveComponents_StartsTheSiteForARequirementItDeclares()
     {
+        // A browser step no longer requires a "ui.webapp" this environment has to know about: it resolves
+        // the site of the same name itself and requires that, which is what reaches this environment.
         DockerWebEnvironment environment = new DockerWebEnvironment().Include<ShopSiteDefinition>();
 
         IReadOnlyCollection<EnvComponentIdentifier> resolved = environment.ResolveComponents([], [new EnvironmentRequirement(WebEnvironmentResourceKinds.Site, "shop")]);
 
         Assert.Contains(DockerWebEnvironment.SiteComponentId, resolved);
-        Assert.Contains("shop", environment.UsedSiteIdentifiers);
-    }
-
-    [Fact]
-    public void ResolveComponents_TreatsABrowserStepsOwnRequirementAsTheSite()
-    {
-        DockerWebEnvironment environment = new DockerWebEnvironment().Include<ShopSiteDefinition>();
-
-        // "ui.webapp" is what BrowserExt steps declare themselves: the site IS the web application,
-        // so no bridging call is needed on the identifier.
-        IReadOnlyCollection<EnvComponentIdentifier> resolved = environment.ResolveComponents([], [new EnvironmentRequirement(UiWebAppKind, "shop")]);
-
-        Assert.Contains(DockerWebEnvironment.SiteComponentId, resolved);
-        Assert.Contains("shop", environment.UsedSiteIdentifiers);
-    }
-
-    [Fact]
-    public void ResolveComponents_FailsWhenARunUsesAnUndeclaredSiteIdentifier()
-    {
-        DockerWebEnvironment environment = new DockerWebEnvironment().Include<ShopSiteDefinition>();
-
-        FrameworkConfigurationException exception = Assert.Throws<FrameworkConfigurationException>(
-            () => environment.ResolveComponents([], [new EnvironmentRequirement(UiWebAppKind, "admin")]));
-
-        Assert.Contains("'admin'", exception.Message, StringComparison.Ordinal);
-        Assert.Contains("shop", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("web.site/shop", environment.Nodes.Select(node => node.ToString()));
     }
 
     [Fact]
