@@ -307,8 +307,8 @@ public class SiteContainerSmokeTests
 
     /// <summary>
     /// Fetches a path from a site the way a browser step would find it: by identifier, from the run.
-    /// Declaring the browser steps' own requirement kind is deliberate -- it proves the environment maps
-    /// <c>ui.webapp</c> to the site component.
+    /// It requires the site itself, which is what a browser step requires for an application served by a
+    /// site of the same name -- and a requirement for a site this environment declared is what starts it.
     /// </summary>
     /// <remarks>
     /// It asks the run rather than a configuration store, because that is where a started container's
@@ -324,7 +324,7 @@ public class SiteContainerSmokeTests
         public override bool DoesReturn => true;
 
         public IReadOnlyCollection<EnvironmentRequirement> GetEnvironmentRequirements(VariableStore variableStore)
-            => [new EnvironmentRequirement("ui.webapp", siteIdentifier)];
+            => [new EnvironmentRequirement(WebEnvironmentResourceKinds.Site, siteIdentifier)];
 
         public override async Task<FetchSiteResult?> Execute(RunContext context)
         {

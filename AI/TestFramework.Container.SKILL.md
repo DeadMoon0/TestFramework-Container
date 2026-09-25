@@ -69,7 +69,7 @@
     - ContainerImageBuilder.BuildAsync(plan, identifier, logger, ct)
     - State: SqlServerComponentState.GetRequiredDatabase(id), ApiComponentState.GetRequiredApi(id), StubComponentState.GetRequiredStub(id), SiteComponentState.GetRequiredSite(id) with BaseUrl, NginxConfig and GeneratedFiles
     - Network aliases on the environment's network: sqlserver, api-{id}, stub-{id}, site-{id}; nginx proxy routes target api-{id}/stub-{id}
-    - A browser step's own requirement kind "ui.webapp" maps to the site component, so the site identifier IS the web-app identifier
+    - A browser step for an application with no address of its own requires the site of the same name, so the site identifier IS the web-app identifier; the environment starts the site because it declared it
     - ContainerEndpoints.HostEndpoint|NetworkEndpoint|HostSqlConnectionString|NetworkSqlConnectionString
     - ContainerReadiness.WaitForHttpAsync|WaitForHttpAnswerAsync|WaitForSqlAsync|WaitForSqlStatementAsync
     - ContainerOutputResolver.ResolveTargetFramework
