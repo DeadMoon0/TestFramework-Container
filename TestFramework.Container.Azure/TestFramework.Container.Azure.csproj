@@ -21,7 +21,7 @@
 		<PackageTags>Test;UnitTest;IntegrationTest;Framework;Timeline;Docker;Azure</PackageTags>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<Copyright>Copyright (c) DeadMoon0 2026</Copyright>
-		<PackageReleaseNotes>Requires TestFramework.Core 0.6.0. A Logic App requirement no longer throws: this environment does not stand in for Logic Apps, so a run can drive a live Logic App beside containerised storage, Cosmos, SQL and Service Bus.</PackageReleaseNotes>
+		<PackageReleaseNotes>Requires TestFramework.Core 0.6.0. REMOVED: the DockerAzureDefaults.MsSqlPassword constant - read the environment's generated password, or pin one with DockerAzureInfrastructureDefinition.MsSqlPassword. A Logic App requirement no longer throws: this environment does not stand in for Logic Apps, so a run can drive a live Logic App beside containerised storage, Cosmos, SQL and Service Bus.</PackageReleaseNotes>
 	</PropertyGroup>
 
 	<ItemGroup>

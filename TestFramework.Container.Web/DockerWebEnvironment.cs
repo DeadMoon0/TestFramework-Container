@@ -99,28 +99,6 @@ public class DockerWebEnvironment : EnvironmentProviderBase, IResourceNodeSource
     public IReadOnlyList<ResourceNode> Nodes => new DefinitionResources(this).Nodes;
 
     /// <summary>
-    /// No longer maintained: what a run needs from this environment arrives with each component's context,
-    /// and the check that a used identifier is declared is the engine's, made before the run starts.
-    /// </summary>
-    [Obsolete("The environment no longer records what a run uses. Read EnvironmentResources.Required in a component's context; whether a requirement is declared is checked by the engine before the run starts.", error: true)]
-    public IReadOnlyCollection<string> UsedSqlIdentifiers => throw NoLongerRecorded();
-
-    /// <inheritdoc cref="UsedSqlIdentifiers" />
-    [Obsolete("The environment no longer records what a run uses. Read EnvironmentResources.Required in a component's context; whether a requirement is declared is checked by the engine before the run starts.", error: true)]
-    public IReadOnlyCollection<string> UsedApiIdentifiers => throw NoLongerRecorded();
-
-    /// <inheritdoc cref="UsedSqlIdentifiers" />
-    [Obsolete("The environment no longer records what a run uses. Read EnvironmentResources.Required in a component's context; whether a requirement is declared is checked by the engine before the run starts.", error: true)]
-    public IReadOnlyCollection<string> UsedStubIdentifiers => throw NoLongerRecorded();
-
-    /// <inheritdoc cref="UsedSqlIdentifiers" />
-    [Obsolete("The environment no longer records what a run uses. Read EnvironmentResources.Required in a component's context; whether a requirement is declared is checked by the engine before the run starts.", error: true)]
-    public IReadOnlyCollection<string> UsedSiteIdentifiers => throw NoLongerRecorded();
-
-    private static NotSupportedException NoLongerRecorded()
-        => new("DockerWebEnvironment no longer records the identifiers a run uses. Read EnvironmentResources.Required in a component's context instead.");
-
-    /// <summary>
     /// The image the stub servers run.
     /// </summary>
     public string StubImage { get; private set; } = DockerWebDefaults.StubImage;
