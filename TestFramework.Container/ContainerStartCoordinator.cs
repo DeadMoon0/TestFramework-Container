@@ -22,7 +22,12 @@ namespace TestFramework.Container;
 /// The failure behaviour matters more than the speed. A serial loop that throws halfway already leaked
 /// every container it had started, because the component never returned state for the framework to tear
 /// down. Racing the starts would multiply that leak, so a failure here cancels the remaining starts and
-/// force-removes whatever did come up before rethrowing the original error.
+/// force-removes every container whose start finished before rethrowing the original error.
+/// </para>
+/// <para>
+/// A start that fails partway is the other half, and the one this type cannot see: the failed start never
+/// returned its container. So each start owns its own container until it returns, by bringing it up
+/// through <see cref="ContainerStartup.BringUpAsync{TResult}"/>, which removes it if the start throws.
 /// </para>
 /// <para>
 /// The results come back in the order the items were passed in, whatever order the starts finished in,

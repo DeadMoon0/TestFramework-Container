@@ -260,12 +260,15 @@ internal sealed class SiteEnvComponent : WebEnvComponentBase
         string identifier = planned.Definition.Identifier;
         IContainer container = BuildContainer(planned, network, NetworkAlias(identifier));
 
-        await StartAsync(container, identifier, ServingImage(planned), logger, cancellationToken).ConfigureAwait(false);
+        return await ContainerStartup.BringUpAsync(container, async () =>
+        {
+            await StartAsync(container, identifier, ServingImage(planned), logger, cancellationToken).ConfigureAwait(false);
 
-        Uri baseUrl = ContainerEndpoints.HostEndpoint(container, planned.Spec.InternalPort);
-        await WaitForReadinessAsync(container, identifier, planned.Spec, baseUrl, logger, cancellationToken).ConfigureAwait(false);
+            Uri baseUrl = ContainerEndpoints.HostEndpoint(container, planned.Spec.InternalPort);
+            await WaitForReadinessAsync(container, identifier, planned.Spec, baseUrl, logger, cancellationToken).ConfigureAwait(false);
 
-        return new StartedSite(planned, container, baseUrl);
+            return new StartedSite(planned, container, baseUrl);
+        }).ConfigureAwait(false);
     }
 
     private static string ServingImage(PlannedSite planned)

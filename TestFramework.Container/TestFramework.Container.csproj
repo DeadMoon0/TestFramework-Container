@@ -5,7 +5,7 @@
 		<GenerateDocumentationFile>true</GenerateDocumentationFile>
 		<IsTestProject>false</IsTestProject>
 		<Title>TestFramework.Container</Title>
-		<Version>0.4.0</Version>
+		<Version>0.5.0</Version>
 		<Authors>DeadMoon0</Authors>
 		<Product>TestFramework</Product>
 		<Description>Shared Docker building blocks for TestFramework container environments: declaring where an application comes from and building it, network creation, host and network endpoint addressing, readiness waits and container log capture.</Description>
@@ -17,7 +17,7 @@
 		<PackageTags>Test;UnitTest;IntegrationTest;Framework;Timeline;Docker</PackageTags>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<Copyright>Copyright (c) DeadMoon0 2026</Copyright>
-		<PackageReleaseNotes>Host publishes and SDK image builds of one project are now serialized across processes, not only within one: a machine-wide lock backs the per-project gate, closing the WorkerExtensions build race a multi-targeted test suite hits when its frameworks run as parallel processes. Builds also run without the shared Roslyn compiler server, whose lingering reference handles could block the next publish of the same Function App.</PackageReleaseNotes>
+		<PackageReleaseNotes>Adds ContainerStartup.BringUpAsync, which removes a container that started but failed before its component could hand it over. The container packages bring every container up through it, so a failed readiness wait no longer leaves one running until the test host exits.</PackageReleaseNotes>
 	</PropertyGroup>
 
 	<ItemGroup>

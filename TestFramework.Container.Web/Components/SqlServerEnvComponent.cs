@@ -62,34 +62,37 @@ internal sealed class SqlServerEnvComponent : WebEnvComponentBase
                 [DockerWebDefaults.MsSqlNetworkAlias]),
             network);
 
-        await container.StartAsync(context.Deadline.Token).ConfigureAwait(false);
-
-        // A started container is not a usable server, and publishing an address before the server
-        // answers turns a startup race into a confusing failure much later.
-        string serverConnectionString = container.GetConnectionString();
-        await ContainerReadiness.WaitForSqlAsync(serverConnectionString, DockerWebDefaults.MsSqlReadinessTimeout, "the SQL Server container", context.Deadline.Token).ConfigureAwait(false);
-
-        Dictionary<string, SqlDatabaseEndpoint> databases = [];
-        foreach (DockerSqlDefinition definition in definitions)
+        return await ContainerStartup.BringUpAsync(container, async () =>
         {
-            DockerSqlSpec spec = definition.Build();
-            await SqlDatabaseProvisioner.EnsureDatabaseAsync(serverConnectionString, spec, context.Logger, context.Deadline.Token).ConfigureAwait(false);
+            await container.StartAsync(context.Deadline.Token).ConfigureAwait(false);
 
-            SqlDatabaseEndpoint endpoint = new(
-                ContainerEndpoints.HostSqlConnectionString(container, spec.DatabaseName, MsSqlContainerOptions.UserName, webEnvironment.SqlPassword),
-                ContainerEndpoints.NetworkSqlConnectionString(DockerWebDefaults.MsSqlNetworkAlias, spec.DatabaseName, MsSqlContainerOptions.UserName, webEnvironment.SqlPassword));
+            // A started container is not a usable server, and publishing an address before the server
+            // answers turns a startup race into a confusing failure much later.
+            string serverConnectionString = container.GetConnectionString();
+            await ContainerReadiness.WaitForSqlAsync(serverConnectionString, DockerWebDefaults.MsSqlReadinessTimeout, "the SQL Server container", context.Deadline.Token).ConfigureAwait(false);
 
-            await SqlDatabaseProvisioner.ApplySchemaAsync(endpoint.HostConnectionString, spec, registry, context.Logger, context.Deadline.Token).ConfigureAwait(false);
+            Dictionary<string, SqlDatabaseEndpoint> databases = [];
+            foreach (DockerSqlDefinition definition in definitions)
+            {
+                DockerSqlSpec spec = definition.Build();
+                await SqlDatabaseProvisioner.EnsureDatabaseAsync(serverConnectionString, spec, context.Logger, context.Deadline.Token).ConfigureAwait(false);
 
-            Publish(context, definition.Identifier, spec.DatabaseName, endpoint);
-            databases[definition.Identifier] = endpoint;
+                SqlDatabaseEndpoint endpoint = new(
+                    ContainerEndpoints.HostSqlConnectionString(container, spec.DatabaseName, MsSqlContainerOptions.UserName, webEnvironment.SqlPassword),
+                    ContainerEndpoints.NetworkSqlConnectionString(DockerWebDefaults.MsSqlNetworkAlias, spec.DatabaseName, MsSqlContainerOptions.UserName, webEnvironment.SqlPassword));
 
-            context.Logger.LogInformation("SQL identifier '{0}' is served by the database '{1}'.", definition.Identifier.ToString(), spec.DatabaseName);
-        }
+                await SqlDatabaseProvisioner.ApplySchemaAsync(endpoint.HostConnectionString, spec, registry, context.Logger, context.Deadline.Token).ConfigureAwait(false);
 
-        SqlServerComponentState state = new(container, databases);
-        webEnvironment.SetRuntimeState(Id, state);
-        return state;
+                Publish(context, definition.Identifier, spec.DatabaseName, endpoint);
+                databases[definition.Identifier] = endpoint;
+
+                context.Logger.LogInformation("SQL identifier '{0}' is served by the database '{1}'.", definition.Identifier.ToString(), spec.DatabaseName);
+            }
+
+            SqlServerComponentState state = new(container, databases);
+            webEnvironment.SetRuntimeState(Id, state);
+            return state;
+        }).ConfigureAwait(false);
     }
 
     public override async Task DeconstructAsync(object? state, IEnvironmentProvider environment, RunContext context)

@@ -248,14 +248,17 @@ internal sealed class FunctionAppEnvComponent(DockerAzureEnvironment owner) : Do
         IContainer container = builder.Build();
         logger.LogInformation("Function App '{0}' starting image '{1}' with mount '{2}' -> '{3}'.", plan.Identifier, plan.Image, plan.PayloadDirectory, FunctionAppRoot);
 
-        await container.StartAsync(cancellationToken).ConfigureAwait(false);
-        logger.LogInformation("Function App '{0}' container '{1}' started. Waiting for host readiness.", plan.Identifier, container.Id);
+        return await ContainerStartup.BringUpAsync(container, async () =>
+        {
+            await container.StartAsync(cancellationToken).ConfigureAwait(false);
+            logger.LogInformation("Function App '{0}' container '{1}' started. Waiting for host readiness.", plan.Identifier, container.Id);
 
-        string baseUrl = endpointMap.GetFunctionAppBaseUrl(container);
-        await ContainerReadiness.WaitForHttpAsync(new Uri(baseUrl), "admin/host/status", FunctionAppReadyTimeout, $"Function App '{plan.Identifier}'", logger, cancellationToken).ConfigureAwait(false);
-        logger.LogInformation("Function App '{0}' is reachable at '{1}'.", plan.Identifier, baseUrl);
+            string baseUrl = endpointMap.GetFunctionAppBaseUrl(container);
+            await ContainerReadiness.WaitForHttpAsync(new Uri(baseUrl), "admin/host/status", FunctionAppReadyTimeout, $"Function App '{plan.Identifier}'", logger, cancellationToken).ConfigureAwait(false);
+            logger.LogInformation("Function App '{0}' is reachable at '{1}'.", plan.Identifier, baseUrl);
 
-        return new StartedFunctionApp(plan.Identifier, container, baseUrl, plan.PayloadDirectory, plan.Plan);
+            return new StartedFunctionApp(plan.Identifier, container, baseUrl, plan.PayloadDirectory, plan.Plan);
+        }).ConfigureAwait(false);
     }
 
     private sealed record PlannedFunctionApp(string Identifier, string Image, string PayloadDirectory, IReadOnlyDictionary<string, string> AppSettings, ContainerSourcePlan Plan);

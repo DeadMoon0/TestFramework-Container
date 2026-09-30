@@ -62,55 +62,58 @@ internal sealed class CosmosDbEnvComponent : DockerAzureEnvComponent
 
         IContainer container = builder.Build();
 
-        await container.StartAsync(context.Deadline.Token).ConfigureAwait(false);
-
-        string connectionString = dockerEnvironment.GetEndpointMap().CreateCosmosConnectionString(container);
-        ConnectionStringGuards.EnsureCosmos(connectionString);
-
-        using CosmosClient client = new(connectionString, new CosmosClientOptions
+        return await ContainerStartup.BringUpAsync(container, async () =>
         {
-            ConnectionMode = ConnectionMode.Gateway,
-            // The emulator advertises its own endpoint, and on a user-defined Docker network that
-            // is its network alias -- a name only other containers can resolve. Left to discover
-            // endpoints, the SDK switches to that one and every data-plane call then retries until
-            // it gives up: measured at six minutes on one run and thirty-seven on another, always
-            // ending in a failure, because the wait is retry backoff rather than work. Pinning the
-            // client to the endpoint it was handed takes the same call to under a second.
-            //
-            // ConfigureDockerAzureCosmosEmulator already does this for the client steps use, which
-            // is why a liveness probe answers instantly while this one did not.
-            LimitToEndpoint = true,
-            HttpClientFactory = () => new HttpClient(new HttpClientHandler
+            await container.StartAsync(context.Deadline.Token).ConfigureAwait(false);
+
+            string connectionString = dockerEnvironment.GetEndpointMap().CreateCosmosConnectionString(container);
+            ConnectionStringGuards.EnsureCosmos(connectionString);
+
+            using CosmosClient client = new(connectionString, new CosmosClientOptions
             {
-                ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator,
-            }),
-        });
-        await WaitForGatewayAsync(client, DescribeCosmosEndpoint(connectionString), context.Logger, context.Deadline.Token).ConfigureAwait(false);
+                ConnectionMode = ConnectionMode.Gateway,
+                // The emulator advertises its own endpoint, and on a user-defined Docker network that
+                // is its network alias -- a name only other containers can resolve. Left to discover
+                // endpoints, the SDK switches to that one and every data-plane call then retries until
+                // it gives up: measured at six minutes on one run and thirty-seven on another, always
+                // ending in a failure, because the wait is retry backoff rather than work. Pinning the
+                // client to the endpoint it was handed takes the same call to under a second.
+                //
+                // ConfigureDockerAzureCosmosEmulator already does this for the client steps use, which
+                // is why a liveness probe answers instantly while this one did not.
+                LimitToEndpoint = true,
+                HttpClientFactory = () => new HttpClient(new HttpClientHandler
+                {
+                    ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator,
+                }),
+            });
+            await WaitForGatewayAsync(client, DescribeCosmosEndpoint(connectionString), context.Logger, context.Deadline.Token).ConfigureAwait(false);
 
-        // Published rather than written back into the Azure package's configuration store. That store holds
-        // what a person declared, and a mapped port is not something a person can declare - it is chosen when
-        // the container starts. Where a resource ended up belongs to the run.
-        foreach (string identifier in dockerEnvironment.UsedCosmosIdentifiers)
-        {
-            PublishOn(context).Produce(
-                AzureEnvironmentResourceKinds.CosmosKind,
-                identifier,
-                ValueNames.ConnectionString,
-                ResourceVantage.Host,
-                connectionString);
+            // Published rather than written back into the Azure package's configuration store. That store holds
+            // what a person declared, and a mapped port is not something a person can declare - it is chosen when
+            // the container starts. Where a resource ended up belongs to the run.
+            foreach (string identifier in dockerEnvironment.UsedCosmosIdentifiers)
+            {
+                PublishOn(context).Produce(
+                    AzureEnvironmentResourceKinds.CosmosKind,
+                    identifier,
+                    ValueNames.ConnectionString,
+                    ResourceVantage.Host,
+                    connectionString);
 
-            if (!dockerEnvironment.CosmosPartitionKeyPaths.TryGetValue(identifier, out string? partitionKeyPath))
-                continue;
+                if (!dockerEnvironment.CosmosPartitionKeyPaths.TryGetValue(identifier, out string? partitionKeyPath))
+                    continue;
 
-            // Read back from the run, which is where the address above has just gone. The declared entry
-            // names the database and the container; this one also carries the endpoint the emulator ended
-            // up on, so nothing has to staple the two together by hand.
-            CosmosContainerDbConfig target = context.Configured<CosmosContainerDbConfig>(identifier);
-            await DeploySchemaAsync(identifier, target, partitionKeyPath, context.Logger, context.Deadline.Token).ConfigureAwait(false);
-        }
+                // Read back from the run, which is where the address above has just gone. The declared entry
+                // names the database and the container; this one also carries the endpoint the emulator ended
+                // up on, so nothing has to staple the two together by hand.
+                CosmosContainerDbConfig target = context.Configured<CosmosContainerDbConfig>(identifier);
+                await DeploySchemaAsync(identifier, target, partitionKeyPath, context.Logger, context.Deadline.Token).ConfigureAwait(false);
+            }
 
-        dockerEnvironment.SetRuntimeState(Id, container);
-        return container;
+            dockerEnvironment.SetRuntimeState(Id, container);
+            return container;
+        }).ConfigureAwait(false);
     }
 
     public override async Task DeconstructAsync(object? state, IEnvironmentProvider environment, RunContext context)

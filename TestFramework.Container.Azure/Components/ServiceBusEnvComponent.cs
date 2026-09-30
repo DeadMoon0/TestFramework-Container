@@ -55,30 +55,33 @@ internal sealed class ServiceBusEnvComponent : DockerAzureEnvComponent
             .WithCreateParameterModifier(ContainerPortBinding.Apply)
             .Build();
 
-        await container.StartAsync(context.Deadline.Token).ConfigureAwait(false);
-
-        string connectionString = container.GetConnectionString();
-        ConnectionStringGuards.EnsureServiceBus(connectionString);
-
-        ServiceBusAdministrationClient administrationClient = new(container.GetHttpConnectionString());
-        await administrationClient.GetNamespacePropertiesAsync(context.Deadline.Token).ConfigureAwait(false);
-
-        // Published rather than written back into the Azure package's configuration store. That store holds
-        // what a person declared, and a mapped port is not something a person can declare - it is chosen when
-        // the container starts. Where a resource ended up belongs to the run.
-        foreach (string identifier in dockerEnvironment.UsedServiceBusIdentifiers)
+        return await ContainerStartup.BringUpAsync(container, async () =>
         {
-            PublishOn(context).Produce(
-                AzureEnvironmentResourceKinds.ServiceBusKind,
-                identifier,
-                ValueNames.ConnectionString,
-                ResourceVantage.Host,
-                connectionString);
-        }
+            await container.StartAsync(context.Deadline.Token).ConfigureAwait(false);
 
-        ServiceBusRuntimeState runtimeState = new(container, materializedTopology.IsTemporary ? materializedTopology.ConfigPath : null);
-        dockerEnvironment.SetRuntimeState(Id, runtimeState);
-        return runtimeState;
+            string connectionString = container.GetConnectionString();
+            ConnectionStringGuards.EnsureServiceBus(connectionString);
+
+            ServiceBusAdministrationClient administrationClient = new(container.GetHttpConnectionString());
+            await administrationClient.GetNamespacePropertiesAsync(context.Deadline.Token).ConfigureAwait(false);
+
+            // Published rather than written back into the Azure package's configuration store. That store holds
+            // what a person declared, and a mapped port is not something a person can declare - it is chosen when
+            // the container starts. Where a resource ended up belongs to the run.
+            foreach (string identifier in dockerEnvironment.UsedServiceBusIdentifiers)
+            {
+                PublishOn(context).Produce(
+                    AzureEnvironmentResourceKinds.ServiceBusKind,
+                    identifier,
+                    ValueNames.ConnectionString,
+                    ResourceVantage.Host,
+                    connectionString);
+            }
+
+            ServiceBusRuntimeState runtimeState = new(container, materializedTopology.IsTemporary ? materializedTopology.ConfigPath : null);
+            dockerEnvironment.SetRuntimeState(Id, runtimeState);
+            return runtimeState;
+        }).ConfigureAwait(false);
     }
 
     public override async Task DeconstructAsync(object? state, IEnvironmentProvider environment, RunContext context)

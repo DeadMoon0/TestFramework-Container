@@ -51,26 +51,29 @@ internal sealed class AzuriteEnvComponent : DockerAzureEnvComponent
             .WithCommand("azurite", "--blobHost", "0.0.0.0", "--queueHost", "0.0.0.0", "--tableHost", "0.0.0.0", "--skipApiVersionCheck")
             .Build();
 
-        await container.StartAsync(context.Deadline.Token).ConfigureAwait(false);
-
-        string connectionString = dockerEnvironment.GetEndpointMap().CreateAzuriteConnectionString(container);
-        ConnectionStringGuards.EnsureAzurite(connectionString);
-
-        // Published rather than written back into the Azure package's configuration store. That store holds
-        // what a person declared, and a mapped port is not something a person can declare - it is chosen when
-        // the container starts. Where a resource ended up belongs to the run.
-        foreach (string identifier in dockerEnvironment.UsedStorageIdentifiers)
+        return await ContainerStartup.BringUpAsync(container, async () =>
         {
-            PublishOn(context).Produce(
-                AzureEnvironmentResourceKinds.StorageKind,
-                identifier,
-                ValueNames.ConnectionString,
-                ResourceVantage.Host,
-                connectionString);
-        }
+            await container.StartAsync(context.Deadline.Token).ConfigureAwait(false);
 
-        dockerEnvironment.SetRuntimeState(Id, container);
-        return container;
+            string connectionString = dockerEnvironment.GetEndpointMap().CreateAzuriteConnectionString(container);
+            ConnectionStringGuards.EnsureAzurite(connectionString);
+
+            // Published rather than written back into the Azure package's configuration store. That store holds
+            // what a person declared, and a mapped port is not something a person can declare - it is chosen when
+            // the container starts. Where a resource ended up belongs to the run.
+            foreach (string identifier in dockerEnvironment.UsedStorageIdentifiers)
+            {
+                PublishOn(context).Produce(
+                    AzureEnvironmentResourceKinds.StorageKind,
+                    identifier,
+                    ValueNames.ConnectionString,
+                    ResourceVantage.Host,
+                    connectionString);
+            }
+
+            dockerEnvironment.SetRuntimeState(Id, container);
+            return container;
+        }).ConfigureAwait(false);
     }
 
     public override async Task DeconstructAsync(object? state, IEnvironmentProvider environment, RunContext context)

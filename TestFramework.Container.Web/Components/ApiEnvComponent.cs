@@ -148,13 +148,16 @@ internal sealed class ApiEnvComponent : WebEnvComponentBase
     {
         string alias = NetworkAlias(planned.Definition.Identifier);
         IContainer container = BuildContainer(planned, network, alias);
-        await StartAsync(container, planned.Definition, planned.Image, logger, cancellationToken).ConfigureAwait(false);
+        return await ContainerStartup.BringUpAsync(container, async () =>
+        {
+            await StartAsync(container, planned.Definition, planned.Image, logger, cancellationToken).ConfigureAwait(false);
 
-        Uri baseUrl = ContainerEndpoints.HostEndpoint(container, planned.Spec.InternalPort);
-        Uri networkBaseUrl = ContainerEndpoints.NetworkEndpoint(alias, planned.Spec.InternalPort);
-        await WaitForReadinessAsync(container, planned.Definition, planned.Spec, baseUrl, logger, cancellationToken).ConfigureAwait(false);
+            Uri baseUrl = ContainerEndpoints.HostEndpoint(container, planned.Spec.InternalPort);
+            Uri networkBaseUrl = ContainerEndpoints.NetworkEndpoint(alias, planned.Spec.InternalPort);
+            await WaitForReadinessAsync(container, planned.Definition, planned.Spec, baseUrl, logger, cancellationToken).ConfigureAwait(false);
 
-        return new StartedApi(planned, container, baseUrl, networkBaseUrl);
+            return new StartedApi(planned, container, baseUrl, networkBaseUrl);
+        }).ConfigureAwait(false);
     }
 
     private sealed record PlannedApi(DockerApiDefinition Definition, DockerApiSpec Spec, ContainerSourcePlan Plan, string Image, string SettingsFileName, string SettingsJson);

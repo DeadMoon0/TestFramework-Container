@@ -116,14 +116,17 @@ internal sealed class StubEnvComponent : WebEnvComponentBase
 
         logger.LogInformation("Stub '{0}' starts with {1} mapping(s) on image '{2}'.", definition.Identifier, mappings.Count, webEnvironment.StubImage);
 
-        await StartAsync(container, definition.Identifier, webEnvironment.StubImage, logger, cancellationToken).ConfigureAwait(false);
+        return await ContainerStartup.BringUpAsync(container, async () =>
+        {
+            await StartAsync(container, definition.Identifier, webEnvironment.StubImage, logger, cancellationToken).ConfigureAwait(false);
 
-        Uri hostBaseUrl = ContainerEndpoints.HostEndpoint(container, DockerWebDefaults.StubInternalPort);
-        Uri networkBaseUrl = ContainerEndpoints.NetworkEndpoint(alias, DockerWebDefaults.StubInternalPort);
+            Uri hostBaseUrl = ContainerEndpoints.HostEndpoint(container, DockerWebDefaults.StubInternalPort);
+            Uri networkBaseUrl = ContainerEndpoints.NetworkEndpoint(alias, DockerWebDefaults.StubInternalPort);
 
-        await WaitForReadinessAsync(container, definition.Identifier, hostBaseUrl, logger, cancellationToken).ConfigureAwait(false);
+            await WaitForReadinessAsync(container, definition.Identifier, hostBaseUrl, logger, cancellationToken).ConfigureAwait(false);
 
-        return new StartedStub(definition.Identifier, container, hostBaseUrl, networkBaseUrl, mappings.Count);
+            return new StartedStub(definition.Identifier, container, hostBaseUrl, networkBaseUrl, mappings.Count);
+        }).ConfigureAwait(false);
     }
 
     private sealed record StartedStub(string Identifier, IContainer Container, Uri HostBaseUrl, Uri NetworkBaseUrl, int DeclaredMappings);
