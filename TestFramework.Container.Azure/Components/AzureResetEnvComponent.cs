@@ -235,12 +235,13 @@ internal sealed class AzureResetEnvComponent(DockerAzureEnvironment owner) : Doc
                 // that sits beside it in the connection string must not reach a run log.
                 throw new FrameworkStateException(
                     $"The Cosmos purge for identifier '{identifier}' failed against {DescribeCosmosEndpoint(config.ConnectionString)}.",
-                    [
+                    exception)
+                {
+                    RecoverySteps = [
                         "Recreating a container is heavy on the Linux Cosmos emulator; a machine short of memory can lose the emulator during it.",
                         $"Call {nameof(DockerAzureEnvironment.UseResetMode)}({nameof(AzureResetMode)}.{nameof(AzureResetMode.None)}) to skip the purge and keep the previous run's data.",
                     ],
-                    null,
-                    exception);
+                };
             }
 
             logger.LogInformation($"Recreated the Cosmos container for '{identifier}': {config.DatabaseName}/{config.ContainerName}.");

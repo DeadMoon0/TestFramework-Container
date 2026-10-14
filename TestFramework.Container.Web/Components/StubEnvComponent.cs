@@ -175,9 +175,10 @@ internal sealed class StubEnvComponent : WebEnvComponentBase
             await ContainerLogCapture.CaptureAsync(container, $"Stub '{identifier}'", logger, cancellationToken).ConfigureAwait(false);
             throw new FrameworkStateException(
                 $"The container for stub '{identifier}' did not start on image '{image}'.",
-                ["Read the captured container log in the run output."],
-                null,
-                exception);
+                exception)
+            {
+                RecoverySteps = ["Read the captured container log in the run output."],
+            };
         }
     }
 
@@ -217,11 +218,13 @@ internal sealed class StubEnvComponent : WebEnvComponentBase
         await ContainerLogCapture.CaptureAsync(container, $"Stub '{identifier}'", logger, cancellationToken).ConfigureAwait(false);
 
         throw new FrameworkStateException(
-            $"Stub '{identifier}' declared {declared.ToString(CultureInfo.InvariantCulture)} mapping(s) but the server loaded {loaded.ToString(CultureInfo.InvariantCulture)}.",
-            [
+            $"Stub '{identifier}' declared {declared.ToString(CultureInfo.InvariantCulture)} mapping(s) but the server loaded {loaded.ToString(CultureInfo.InvariantCulture)}.")
+        {
+            RecoverySteps = [
                 "Read the captured container log; the server names the mapping file it rejected.",
                 "A mapping the server does not accept never answers, so every call to it would return 404.",
-            ]);
+            ],
+        };
     }
 
     /// <summary>

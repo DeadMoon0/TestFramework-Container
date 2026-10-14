@@ -30,8 +30,10 @@ internal static class ServiceBusConfigLocator
             }
 
             throw new FrameworkConfigurationException(
-                $"The Service Bus emulator topology file '{configuredPath}' does not exist.",
-                ["An absolute path is used as given; nothing is searched for it."]);
+                $"The Service Bus emulator topology file '{configuredPath}' does not exist.")
+            {
+                RecoverySteps = ["An absolute path is used as given; nothing is searched for it."],
+            };
         }
 
         List<string> probed = [];
@@ -48,12 +50,14 @@ internal static class ServiceBusConfigLocator
         }
 
         throw new FrameworkConfigurationException(
-            $"The Service Bus emulator topology file '{configuredPath}' was not found.",
-            [
+            $"The Service Bus emulator topology file '{configuredPath}' was not found.")
+        {
+            RecoverySteps = [
                 "The search starts at the build output and climbs to the repository boundary; it does not go above it.",
                 "Copy the file to the output directory, or point at it with an absolute path.",
             ],
-            [$"Checked: {string.Join(", ", probed)}"]);
+            AvailableOptions = [$"Checked: {string.Join(", ", probed)}"],
+        };
     }
 
     private static IEnumerable<string> GetCandidates(string configuredPath)

@@ -80,7 +80,7 @@ public class DockerAzureHostedCollectionFixture<TState>
         // Awaited rather than constructed: bootstrapping starts the container stack, and doing that
         // in a constructor blocked the test collection's thread for the whole setup timeout.
         _persistentContext = await PersistentEnvironmentContext<DockerAzurePersistentSetup>
-            .CreateAsync(setup, persistentServiceProvider, disposePersistentServiceProvider: true)
+            .CreateAsync(setup, persistentServiceProvider, System.Threading.CancellationToken.None)
             .ConfigureAwait(false);
     }
 

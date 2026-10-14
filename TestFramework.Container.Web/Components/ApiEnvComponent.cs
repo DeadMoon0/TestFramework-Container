@@ -222,8 +222,10 @@ internal sealed class ApiEnvComponent : WebEnvComponentBase
             if (declaredOnApi is not null && !string.Equals(declaredOnApi, producedImage, StringComparison.Ordinal))
             {
                 throw new FrameworkConfigurationException(
-                    $"'{definition.GetType().Name}' declares the image '{declaredOnApi}', but its source already produces the image that runs ('{producedImage}'), so one of the two would be ignored.",
-                    ["Remove WithImage(...), or declare the image as the source with ContainerSource.Image(...)."]);
+                    $"'{definition.GetType().Name}' declares the image '{declaredOnApi}', but its source already produces the image that runs ('{producedImage}'), so one of the two would be ignored.")
+                {
+                    RecoverySteps = ["Remove WithImage(...), or declare the image as the source with ContainerSource.Image(...)."],
+                };
             }
 
             return producedImage;
@@ -232,8 +234,10 @@ internal sealed class ApiEnvComponent : WebEnvComponentBase
         if (plan.AssemblyFileName is null)
         {
             throw new FrameworkConfigurationException(
-                $"The source of API '{definition.Identifier}' ('{plan.OutputDirectory}') holds no runnable application, so there is nothing to start.",
-                ["Ship a directory holding a published application, or declare the project with ContainerSource.Project(...)."]);
+                $"The source of API '{definition.Identifier}' ('{plan.OutputDirectory}') holds no runnable application, so there is nothing to start.")
+            {
+                RecoverySteps = ["Ship a directory holding a published application, or declare the project with ContainerSource.Project(...)."],
+            };
         }
 
         if (declaredOnApi is not null)
@@ -242,8 +246,10 @@ internal sealed class ApiEnvComponent : WebEnvComponentBase
                 && !string.Equals(declaredOnApi, declaredOnSource, StringComparison.Ordinal))
             {
                 throw new FrameworkConfigurationException(
-                    $"'{definition.GetType().Name}' declares the image '{declaredOnApi}' and its source declares '{declaredOnSource}', so the one that would win is not obvious.",
-                    ["Remove one of the two declarations."]);
+                    $"'{definition.GetType().Name}' declares the image '{declaredOnApi}' and its source declares '{declaredOnSource}', so the one that would win is not obvious.")
+                {
+                    RecoverySteps = ["Remove one of the two declarations."],
+                };
             }
 
             return declaredOnApi;
@@ -251,8 +257,10 @@ internal sealed class ApiEnvComponent : WebEnvComponentBase
 
         return plan.RuntimeImage
             ?? spec.ResolveImage(plan.TargetFramework ?? throw new FrameworkConfigurationException(
-                $"The source of API '{definition.Identifier}' names no image and no target framework to derive one from.",
-                ["Call WithImage(\"...\") on the definition to name the runtime image."]));
+                $"The source of API '{definition.Identifier}' names no image and no target framework to derive one from.")
+            {
+                RecoverySteps = ["Call WithImage(\"...\") on the definition to name the runtime image."],
+            });
     }
 
     private static IContainer BuildContainer(PlannedApi planned, INetwork network, string networkAlias)
@@ -306,12 +314,13 @@ internal sealed class ApiEnvComponent : WebEnvComponentBase
             await ContainerLogCapture.CaptureAsync(container, $"API '{definition.Identifier}'", logger, cancellationToken).ConfigureAwait(false);
             throw new FrameworkStateException(
                 $"The container for API '{definition.Identifier}' did not start on image '{image}'.",
-                [
+                exception)
+            {
+                RecoverySteps = [
                     "Read the captured container log in the run output; it holds the application's own startup error.",
                     "Verify the application was built for a framework the runtime image can run.",
                 ],
-                null,
-                exception);
+            };
         }
     }
 

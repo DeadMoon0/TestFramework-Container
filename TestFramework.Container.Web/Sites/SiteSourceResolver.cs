@@ -64,8 +64,10 @@ public static class SiteSourceResolver
         if (!File.Exists(Path.Combine(source.ProjectDirectory, "package.json")))
         {
             throw new FrameworkConfigurationException(
-                $"The npm project directory '{source.ProjectDirectory}' has no package.json.",
-                ["Point SiteSource.NpmProject(...) at the directory that holds package.json."]);
+                $"The npm project directory '{source.ProjectDirectory}' has no package.json.")
+            {
+                RecoverySteps = ["Point SiteSource.NpmProject(...) at the directory that holds package.json."],
+            };
         }
 
         List<string> derivations = [];
@@ -96,15 +98,19 @@ public static class SiteSourceResolver
         if (!Directory.Exists(source.ProjectDirectory))
         {
             throw new FrameworkConfigurationException(
-                $"The project directory '{source.ProjectDirectory}' does not exist.",
-                ["Point SiteSource.ContainerBuild(...) at the directory that holds the sources."]);
+                $"The project directory '{source.ProjectDirectory}' does not exist.")
+            {
+                RecoverySteps = ["Point SiteSource.ContainerBuild(...) at the directory that holds the sources."],
+            };
         }
 
         if (source.DistPath is not { } distPath)
         {
             throw new FrameworkConfigurationException(
-                $"The container build of '{source.ProjectDirectory}' declares no output directory, and an arbitrary toolchain has no conventions to probe.",
-                ["Call WithDistPath(\"...\") with the output directory the build writes, relative to the project."]);
+                $"The container build of '{source.ProjectDirectory}' declares no output directory, and an arbitrary toolchain has no conventions to probe.")
+            {
+                RecoverySteps = ["Call WithDistPath(\"...\") with the output directory the build writes, relative to the project."],
+            };
         }
 
         return new SiteSourcePlan
@@ -140,16 +146,20 @@ public static class SiteSourceResolver
         if (candidates.Count > 1)
         {
             throw new FrameworkConfigurationException(
-                $"The npm project '{projectDirectory}' has more than one plausible output directory: {string.Join(", ", candidates.Select(candidate => $"'{candidate}'"))}.",
-                ["Call WithDistPath(\"...\") to declare which one is the site."]);
+                $"The npm project '{projectDirectory}' has more than one plausible output directory: {string.Join(", ", candidates.Select(candidate => $"'{candidate}'"))}.")
+            {
+                RecoverySteps = ["Call WithDistPath(\"...\") to declare which one is the site."],
+            };
         }
 
         throw new FrameworkConfigurationException(
-            $"No output directory with an index.html was found under '{projectDirectory}' (probed: {string.Join(", ", DistProbePatterns)}).",
-            [
+            $"No output directory with an index.html was found under '{projectDirectory}' (probed: {string.Join(", ", DistProbePatterns)}).")
+        {
+            RecoverySteps = [
                 "Call WithDistPath(\"...\") to declare the output directory the build writes.",
                 "The directory may simply not exist yet; declaring it lets the build create it.",
-            ]);
+            ],
+        };
     }
 
     private static IEnumerable<string> ResolvePattern(string projectDirectory, string pattern)
@@ -170,9 +180,9 @@ public static class SiteSourceResolver
     internal static void EnsurePayloadDirectory(string distDirectory, string recovery)
     {
         if (!Directory.Exists(distDirectory))
-            throw new FrameworkConfigurationException($"The site directory '{distDirectory}' does not exist.", [recovery]);
+            throw new FrameworkConfigurationException($"The site directory '{distDirectory}' does not exist.") { RecoverySteps = [recovery] };
 
         if (!File.Exists(Path.Combine(distDirectory, "index.html")))
-            throw new FrameworkConfigurationException($"The site directory '{distDirectory}' has no index.html at its root, so a web server would answer with errors.", [recovery]);
+            throw new FrameworkConfigurationException($"The site directory '{distDirectory}' has no index.html at its root, so a web server would answer with errors.") { RecoverySteps = [recovery] };
     }
 }

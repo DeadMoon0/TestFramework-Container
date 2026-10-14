@@ -157,8 +157,10 @@ public static class NpmCli
         }
 
         throw new TestFramework.Core.Exceptions.FrameworkConfigurationException(
-            "No 'npm.cmd' was found on the PATH, so the site cannot be built on this host.",
-            ["Install node and npm, or let the source build inside a container with BuiltInContainer()."]);
+            "No 'npm.cmd' was found on the PATH, so the site cannot be built on this host.")
+        {
+            RecoverySteps = ["Install node and npm, or let the source build inside a container with BuiltInContainer()."],
+        };
     }
 
     private static void KillProcessTree(Process process)

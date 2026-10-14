@@ -171,11 +171,13 @@ internal sealed class SiteEnvComponent : WebEnvComponentBase
             return;
 
         throw new FrameworkConfigurationException(
-            $"'{definition.GetType().Name}' declares an image source together with server behaviour (proxy routes, directives, fallback or a serving image). An image runs as-is; its server configuration is baked in.",
-            [
+            $"'{definition.GetType().Name}' declares an image source together with server behaviour (proxy routes, directives, fallback or a serving image). An image runs as-is; its server configuration is baked in.")
+        {
+            RecoverySteps = [
                 "Bake the routing into the image, or ship the payload as a directory and let the environment serve it.",
                 "Generated configuration files stay available for an image source.",
-            ]);
+            ],
+        };
     }
 
     private static NginxProxyLocation ToNginxLocation(DockerSiteProxyRoute route, SiteTargetResolver targets)
@@ -321,9 +323,10 @@ internal sealed class SiteEnvComponent : WebEnvComponentBase
             await ContainerLogCapture.CaptureAsync(container, $"Site '{identifier}'", logger, cancellationToken).ConfigureAwait(false);
             throw new FrameworkStateException(
                 $"The container for site '{identifier}' did not start on image '{image}'.",
-                ["Read the captured container log in the run output; the server names the configuration it refused."],
-                null,
-                exception);
+                exception)
+            {
+                RecoverySteps = ["Read the captured container log in the run output; the server names the configuration it refused."],
+            };
         }
     }
 
@@ -473,8 +476,9 @@ internal sealed class SiteEnvComponent : WebEnvComponentBase
         }
 
         private static FrameworkConfigurationException TargetUnresolvable(string kind, string identifier, string recovery)
-            => new(
-                $"A site binds to the {kind} identifier '{identifier}', which no included definition declares and no configuration entry names.",
-                [recovery]);
+            => new($"A site binds to the {kind} identifier '{identifier}', which no included definition declares and no configuration entry names.")
+            {
+                RecoverySteps = [recovery],
+            };
     }
 }

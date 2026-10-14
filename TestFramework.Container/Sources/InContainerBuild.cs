@@ -158,13 +158,15 @@ public static class InContainerBuild
             return;
 
         throw new FrameworkConfigurationException(
-            $"The container build for '{identifier}' failed.",
-            [
+            $"The container build for '{identifier}' failed.")
+        {
+            RecoverySteps = [
                 "The build output follows this message; the generated Dockerfile is in the run log above it.",
                 $"The build context was kept at '{contextRoot}' so it can be inspected.",
                 "A restore failure here means a package the host resolved was not copied into the feed.",
             ],
-            [result.StandardError.Trim(), result.StandardOutput.Trim()]);
+            AvailableOptions = [result.StandardError.Trim(), result.StandardOutput.Trim()],
+        };
     }
 
     private static void DeleteContext(string contextRoot, ScopedLogger logger)

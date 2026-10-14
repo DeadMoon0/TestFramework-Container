@@ -80,12 +80,14 @@ public static class ProjectQuery
         if (!result.Succeeded)
         {
             throw new FrameworkConfigurationException(
-                $"MSBuild could not evaluate '{fullPath}'.",
-                [
+                $"MSBuild could not evaluate '{fullPath}'.")
+            {
+                RecoverySteps = [
                     "Check that the project restores and builds on its own.",
                     "The full command output follows the message in the run log.",
                 ],
-                [result.Describe()]);
+                AvailableOptions = [result.Describe()],
+            };
         }
 
         JObject payload = Parse(result, fullPath);
@@ -154,9 +156,11 @@ public static class ProjectQuery
         {
             throw new FrameworkConfigurationException(
                 $"MSBuild returned something other than JSON while evaluating '{projectPath}'.",
-                ["Check that the installed SDK supports '-getProperty', which needs .NET 8 or newer."],
-                [result.Describe()],
-                exception);
+                exception)
+            {
+                RecoverySteps = ["Check that the installed SDK supports '-getProperty', which needs .NET 8 or newer."],
+                AvailableOptions = [result.Describe()],
+            };
         }
     }
 

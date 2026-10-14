@@ -1,4 +1,4 @@
-﻿using Azure.Messaging.ServiceBus;
+using Azure.Messaging.ServiceBus;
 using Microsoft.Extensions.DependencyInjection;
 using Newtonsoft.Json;
 using System.Reflection;
@@ -51,7 +51,7 @@ public class DockerAzureEnvironmentTests
             CreateArtifactInstance<CosmosDbItemArtifactDescriber<TestCosmosItem>, CosmosDbItemArtifactData<TestCosmosItem>, CosmosDbItemArtifactReference<TestCosmosItem>>(
                 new CosmosDbItemArtifactDescriber<TestCosmosItem>(),
                 "cosmos",
-                new CosmosDbItemArtifactReference<TestCosmosItem>("cosmos", Var.Const(new Microsoft.Azure.Cosmos.PartitionKey("tenant-1")), Var.Const("id")),
+                AzureExt.Artifact.DB.CosmosRef<TestCosmosItem>("cosmos", Var.Const("id"), Var.Const(new Microsoft.Azure.Cosmos.PartitionKey("tenant-1"))),
                 new CosmosDbItemArtifactData<TestCosmosItem>(new TestCosmosItem("id", "tenant-1"))),
             CreateArtifactInstance<SqlRowArtifactDescriber<TestRow>, SqlRowArtifactData<TestRow>, SqlRowArtifactReference<TestRow>>(
                 new SqlRowArtifactDescriber<TestRow>(),
@@ -470,12 +470,12 @@ public class DockerAzureEnvironmentTests
             CreateArtifactInstance<CosmosDbItemArtifactDescriber<TestCosmosItem>, CosmosDbItemArtifactData<TestCosmosItem>, CosmosDbItemArtifactReference<TestCosmosItem>>(
                 new CosmosDbItemArtifactDescriber<TestCosmosItem>(),
                 "first",
-                new CosmosDbItemArtifactReference<TestCosmosItem>("cosmos", Var.Const(new Microsoft.Azure.Cosmos.PartitionKey("tenant-1")), Var.Const("id-1")),
+                AzureExt.Artifact.DB.CosmosRef<TestCosmosItem>("cosmos", Var.Const("id-1"), Var.Const(new Microsoft.Azure.Cosmos.PartitionKey("tenant-1"))),
                 new CosmosDbItemArtifactData<TestCosmosItem>(new TestCosmosItem("id-1", "tenant-1"))),
             CreateArtifactInstance<CosmosDbItemArtifactDescriber<TestCosmosItemAlternatePartition>, CosmosDbItemArtifactData<TestCosmosItemAlternatePartition>, CosmosDbItemArtifactReference<TestCosmosItemAlternatePartition>>(
                 new CosmosDbItemArtifactDescriber<TestCosmosItemAlternatePartition>(),
                 "second",
-                new CosmosDbItemArtifactReference<TestCosmosItemAlternatePartition>("cosmos", Var.Const(new Microsoft.Azure.Cosmos.PartitionKey("tenant-2")), Var.Const("id-2")),
+                AzureExt.Artifact.DB.CosmosRef<TestCosmosItemAlternatePartition>("cosmos", Var.Const("id-2"), Var.Const(new Microsoft.Azure.Cosmos.PartitionKey("tenant-2"))),
                 new CosmosDbItemArtifactData<TestCosmosItemAlternatePartition>(new TestCosmosItemAlternatePartition("id-2", "tenant-2")))
         ];
 
@@ -880,9 +880,9 @@ public class DockerAzureEnvironmentTests
             }
         }
 
-        public Task SignalInitTimelineRunAsync(string sessionId, string name, string projectPath, TimelineRunStructure runStructure, TestIdentity? identity = null) => Task.CompletedTask;
-        public Task SignalEntityTransitionAsync(string sessionId, DebugEntityKind entityKind, string? stage, int? stepId, DebugLifecycleState state, DebugLifecycleState? previousState = null, DebugLifecycleState? outcomeState = null, DebugFailureDetail? failure = null) => Task.CompletedTask;
-        public Task SignalValueUpdateAsync(string sessionId, string name, DebugValueKind valueKind, string? stage, int? stepId, DebugValueEnvelope value) => Task.CompletedTask;
+        public Task SignalInitTimelineRunAsync(string sessionId, DebugRunStart start) => Task.CompletedTask;
+        public Task SignalEntityTransitionAsync(string sessionId, DebugEntityTransition transition) => Task.CompletedTask;
+        public Task SignalValueUpdateAsync(string sessionId, DebugValueUpdate update) => Task.CompletedTask;
         public Task SignalLogEntryAsync(string sessionId, DebugLogEntry entry)
         {
             // Written from the session's drain thread, read from the test thread.

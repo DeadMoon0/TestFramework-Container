@@ -34,14 +34,16 @@ internal static class ConnectionStringGuards
         // The address alone is echoed, never the string: a SQL connection string carries a password.
         if (!IsLocalEndpoint(dataSource))
             throw new FrameworkConfigurationException(
-                $"The SQL connection string must target a local Docker emulator endpoint, but it points at '{dataSource}'.",
-                [RemoteDaemonHint]);
+                $"The SQL connection string must target a local Docker emulator endpoint, but it points at '{dataSource}'.")
+            {
+                RecoverySteps = [RemoteDaemonHint],
+            };
     }
 
     private static void EnsureContainsLocalHost(string connectionString, string name)
     {
         if (!IsLocalEndpoint(connectionString))
-            throw new FrameworkConfigurationException($"The {name} connection string must target a local Docker emulator endpoint.", [RemoteDaemonHint]);
+            throw new FrameworkConfigurationException($"The {name} connection string must target a local Docker emulator endpoint.") { RecoverySteps = [RemoteDaemonHint] };
     }
 
     /// <summary>

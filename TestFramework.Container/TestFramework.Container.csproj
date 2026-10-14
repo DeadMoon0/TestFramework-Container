@@ -33,7 +33,7 @@
 		<PackageReference Include="SSH.NET" Version="2026.0.0" />
 		<PackageReference Include="Testcontainers" Version="4.11.0" />
 		<PackageReference Include="Testcontainers.MsSql" Version="4.11.0" />
-		<PackageReference Include="TestFramework.Core" Version="0.4.0" />
+		<PackageReference Include="TestFramework.Core" Version="0.7.0" />
 	</ItemGroup>
 
 	<ItemGroup>

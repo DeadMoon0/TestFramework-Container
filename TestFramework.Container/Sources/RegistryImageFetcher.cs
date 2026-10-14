@@ -103,8 +103,10 @@ internal static class RegistryImageFetcher
                 if (mediaType.Contains("zstd", StringComparison.OrdinalIgnoreCase))
                 {
                     throw new FrameworkConfigurationException(
-                        $"'{repository}:{reference}' ships zstd-compressed layers, which this fallback cannot unpack.",
-                        [$"Pull it once on a working network: docker pull {repoTag}."]);
+                        $"'{repository}:{reference}' ships zstd-compressed layers, which this fallback cannot unpack.")
+                    {
+                        RecoverySteps = [$"Pull it once on a working network: docker pull {repoTag}."],
+                    };
                 }
 
                 string layerDirectory = Path.Combine(workingDirectory, index.ToString(CultureInfo.InvariantCulture));
@@ -178,8 +180,10 @@ internal static class RegistryImageFetcher
         }
 
         throw new FrameworkConfigurationException(
-            $"'{repository}:{reference}' publishes no linux/{architecture} image.",
-            ["Name an image that does, or run the daemon on a matching platform."]);
+            $"'{repository}:{reference}' publishes no linux/{architecture} image.")
+        {
+            RecoverySteps = ["Name an image that does, or run the daemon on a matching platform."],
+        };
     }
 
     private static HttpClient CreateIPv4Client()

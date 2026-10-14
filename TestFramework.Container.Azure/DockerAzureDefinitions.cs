@@ -282,8 +282,10 @@ public abstract class DockerFunctionAppDefinition : DockerAzureDefinition
     /// on the host: <c>ContainerSource.Project("../App/App.csproj").BuiltOnHost()</c>.
     /// </remarks>
     public virtual ContainerSource Source => throw new FrameworkConfigurationException(
-        $"Function App '{Identifier}' declares no container source, so there is no payload to mount.",
-        ["Override Source with ContainerSource.Project(\"...\").BuiltOnHost() or ContainerSource.Directory(\"...\")."]);
+        $"Function App '{Identifier}' declares no container source, so there is no payload to mount.")
+    {
+        RecoverySteps = ["Override Source with ContainerSource.Project(\"...\").BuiltOnHost() or ContainerSource.Directory(\"...\")."],
+    };
 
     protected virtual FunctionAppConfig? CreateDefaultConfig() => new()
     {
@@ -340,7 +342,7 @@ public sealed class DockerAzureDependencyBuilder
         where TDefinition : DockerAzureDefinition, new()
     {
         Type definitionType = typeof(TDefinition);
-        ComponentDependency dependency = new(definitionType, ownership);
+        ComponentDependency dependency = new() { ComponentType = definitionType, Ownership = ownership };
 
         if (_dependencies.TryGetValue(definitionType, out ComponentDependency? existing) && existing is not null && existing.Ownership != ownership)
             throw new FrameworkConfigurationException($"Dependency '{definitionType.FullName}' was configured with conflicting ownership values.");
@@ -454,7 +456,7 @@ public sealed class DockerFunctionAppBuilder
 
     private void AddDependency(Type dependencyType, DependencyOwnership ownership)
     {
-        ComponentDependency dependency = new(dependencyType, ownership);
+        ComponentDependency dependency = new() { ComponentType = dependencyType, Ownership = ownership };
 
         if (_dependencies.TryGetValue(dependencyType, out ComponentDependency? existing) && existing is not null && existing.Ownership != ownership)
             throw new FrameworkConfigurationException($"Dependency '{dependencyType.FullName}' was configured with conflicting ownership values.");
@@ -897,17 +899,21 @@ internal sealed class DockerAzureDefinitionState
     private ComponentGraphNode CreateGraphNode(DockerAzureDefinitionMetadata metadata)
     {
         ComponentGraphDependency[] dependencies = [.. metadata.Dependencies.Select(dependency =>
-            new ComponentGraphDependency(
-                dependency.ComponentType,
-                _definitionMetadata[dependency.ComponentType].RealizedIdentity,
-                dependency.Ownership))];
+            new ComponentGraphDependency
+            {
+                ComponentType = dependency.ComponentType,
+                RealizedComponentIdentity = _definitionMetadata[dependency.ComponentType].RealizedIdentity,
+                Ownership = dependency.Ownership,
+            })];
 
-        return new ComponentGraphNode(
-            metadata.DefinitionType,
-            metadata.RealizedIdentity,
-            dependencies,
-            metadata.Provides,
-            metadata.Requires);
+        return new ComponentGraphNode
+        {
+            ComponentType = metadata.DefinitionType,
+            RealizedComponentIdentity = metadata.RealizedIdentity,
+            Dependencies = dependencies,
+            Provides = metadata.Provides,
+            Requires = metadata.Requires,
+        };
     }
 
     private void EnqueueKnownIdentity(Queue<string> pending, string identity)

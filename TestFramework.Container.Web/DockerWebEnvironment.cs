@@ -446,6 +446,6 @@ public class DockerWebEnvironment : EnvironmentProviderBase, IResourceNodeSource
         }
 
         private DeclaredResource Declared(ResourceKind kind, string identifier)
-            => new(kind, identifier, new Dictionary<ValueKey, string>(), $"{this.SourceName} '{identifier}'");
+            => new() { Kind = kind, Identifier = identifier, Values = new Dictionary<ValueKey, string>(), DeclaredBy = $"{this.SourceName} '{identifier}'" };
     }
 }

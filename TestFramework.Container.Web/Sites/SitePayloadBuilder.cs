@@ -115,8 +115,10 @@ public static class SitePayloadBuilder
         if (relativeDist.StartsWith("..", StringComparison.Ordinal) || Path.IsPathRooted(relativeDist))
         {
             throw new FrameworkConfigurationException(
-                $"Site '{identifier}' declares the output directory '{plan.DistDirectory}', which lies outside the project '{projectDirectory}'. A container build only sees the copied project.",
-                ["Declare a dist path inside the project directory."]);
+                $"Site '{identifier}' declares the output directory '{plan.DistDirectory}', which lies outside the project '{projectDirectory}'. A container build only sees the copied project.")
+            {
+                RecoverySteps = ["Declare a dist path inside the project directory."],
+            };
         }
 
         // The sources are copied rather than mounted: the host's node_modules must not travel (its
@@ -156,11 +158,13 @@ public static class SitePayloadBuilder
         {
             // The context is kept on failure: it holds the exact sources the build saw.
             throw new FrameworkConfigurationException(
-                $"The build of site '{identifier}' failed inside '{buildImage}'. {Trimmed(result.StandardError)}",
-                [
+                $"The build of site '{identifier}' failed inside '{buildImage}'. {Trimmed(result.StandardError)}")
+            {
+                RecoverySteps = [
                     $"The copied sources were kept at '{contextRoot}' for diagnosis.",
                     "The build container needs registry access to install packages; a .npmrc in the project travels with the sources.",
-                ]);
+                ],
+            };
         }
 
         logger.LogInformation("Site '{0}' built in {1:0.0}s.", identifier, stopwatch.Elapsed.TotalSeconds);
@@ -194,18 +198,22 @@ public static class SitePayloadBuilder
         if (!Directory.Exists(distDirectory) || !File.Exists(Path.Combine(distDirectory, "index.html")))
         {
             throw new FrameworkConfigurationException(
-                $"The build of site '{identifier}' reported success, but '{distDirectory}' holds no index.html.",
-                ["Declare the directory the build actually writes with WithDistPath(\"...\")."]);
+                $"The build of site '{identifier}' reported success, but '{distDirectory}' holds no index.html.")
+            {
+                RecoverySteps = ["Declare the directory the build actually writes with WithDistPath(\"...\")."],
+            };
         }
     }
 
     private static FrameworkConfigurationException BuildFailed(string identifier, string projectDirectory, string details)
-        => new(
-            $"The build of site '{identifier}' failed. {details}",
+        => new($"The build of site '{identifier}' failed. {details}")
+        {
+            RecoverySteps =
             [
                 $"Run 'npm ci && npm run build' in '{projectDirectory}' to see the full output.",
                 "node and npm must be on the PATH of the test host, or the source can build inside a container with BuiltInContainer().",
-            ]);
+            ],
+        };
 
     private static string QuoteForShell(string argument)
         => argument.Contains(' ', StringComparison.Ordinal) || argument.Contains('"', StringComparison.Ordinal)

@@ -169,12 +169,14 @@ internal sealed class FunctionAppEnvComponent(DockerAzureEnvironment owner) : Do
             && registration.Image.StartsWith(DockerAzureDefaults.FunctionAppImageRepository, StringComparison.OrdinalIgnoreCase))
         {
             throw new FrameworkConfigurationException(
-                $"Function App '{identifier}' is built for '{targetFramework}', and the host image '{registration.Image}' carries a different .NET runtime.",
-                [
+                $"Function App '{identifier}' is built for '{targetFramework}', and the host image '{registration.Image}' carries a different .NET runtime.")
+            {
+                RecoverySteps = [
                     $"Use '{matching}', which carries the runtime this payload needs.",
                     "Or build the Function App for the framework the declared image carries.",
                     "A Functions host image bundles one runtime: a mismatch starts the container, fails the worker with exit code 150, and then answers nothing until the readiness timeout expires.",
-                ]);
+                ],
+            };
         }
 
         return registration.Image;
@@ -194,18 +196,22 @@ internal sealed class FunctionAppEnvComponent(DockerAzureEnvironment owner) : Do
         if (plan.Kind == ContainerSourceKind.Image)
         {
             throw new FrameworkConfigurationException(
-                $"Function App '{identifier}' declares an image source, and a Function App payload is mounted into the Functions host image rather than run as one.",
-                [
+                $"Function App '{identifier}' declares an image source, and a Function App payload is mounted into the Functions host image rather than run as one.")
+            {
+                RecoverySteps = [
                     "Declare the payload with ContainerSource.Project(\"...\").BuiltOnHost() or ContainerSource.Directory(\"...\").",
                     "To change the Functions host image itself, override Image on the definition.",
-                ]);
+                ],
+            };
         }
 
         if (plan.Kind == ContainerSourceKind.Project && plan.Strategy != ContainerBuildStrategy.HostPublish)
         {
             throw new FrameworkConfigurationException(
-                $"Function App '{identifier}' builds its project with '{plan.Strategy}', which produces an image, and a Function App payload has to be a directory to mount into the Functions host.",
-                ["Call BuiltOnHost() on the source, which publishes to a directory."]);
+                $"Function App '{identifier}' builds its project with '{plan.Strategy}', which produces an image, and a Function App payload has to be a directory to mount into the Functions host.")
+            {
+                RecoverySteps = ["Call BuiltOnHost() on the source, which publishes to a directory."],
+            };
         }
     }
 
@@ -222,11 +228,13 @@ internal sealed class FunctionAppEnvComponent(DockerAzureEnvironment owner) : Do
             return;
 
         throw new FrameworkConfigurationException(
-            $"The payload for Function App '{identifier}' at '{payloadDirectory}' has no host.json, so the Functions host would start with no functions.",
-            [
+            $"The payload for Function App '{identifier}' at '{payloadDirectory}' has no host.json, so the Functions host would start with no functions.")
+        {
+            RecoverySteps = [
                 "Check that the project is an Azure Functions project and that host.json is copied to the output.",
                 "Build or publish the project before starting the container environment.",
-            ]);
+            ],
+        };
     }
 
     private static async Task<StartedFunctionApp> StartFunctionAppAsync(

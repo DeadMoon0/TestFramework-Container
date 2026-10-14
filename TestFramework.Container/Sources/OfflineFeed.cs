@@ -71,9 +71,11 @@ public static class OfflineFeed
         if (!restore.Succeeded)
         {
             throw new FrameworkConfigurationException(
-                $"'{facts.ProjectPath}' could not be restored on this machine, so no offline feed can be built from it.",
-                ["The container build resolves only what the host resolved, so the host restore has to succeed first."],
-                [restore.Describe()]);
+                $"'{facts.ProjectPath}' could not be restored on this machine, so no offline feed can be built from it.")
+            {
+                RecoverySteps = ["The container build resolves only what the host resolved, so the host restore has to succeed first."],
+                AvailableOptions = [restore.Describe()],
+            };
         }
 
         IReadOnlyList<string> assetsFiles = FindAssetsFiles(facts);
@@ -111,12 +113,14 @@ public static class OfflineFeed
         if (missing.Count > 0)
         {
             throw new FrameworkConfigurationException(
-                $"{missing.Count} package(s) resolved by the restore are not in the local cache, so an offline build would fail.",
-                [
+                $"{missing.Count} package(s) resolved by the restore are not in the local cache, so an offline build would fail.")
+            {
+                RecoverySteps = [
                     "Run a full restore on this machine before the test, so every package is cached.",
                     "A package restored from a fallback folder rather than a feed can be absent from the cache.",
                 ],
-                [.. missing.Select(package => package.ToString())]);
+                AvailableOptions = [.. missing.Select(package => package.ToString())],
+            };
         }
 
         return new OfflineFeedResult(destination, copied, missing);
@@ -146,7 +150,7 @@ public static class OfflineFeed
         }
         catch (JsonException exception)
         {
-            throw new FrameworkConfigurationException($"The restore output '{assetsFile}' could not be read.", null, null, exception);
+            throw new FrameworkConfigurationException($"The restore output '{assetsFile}' could not be read.", exception);
         }
 
         if (root is not JObject assets)

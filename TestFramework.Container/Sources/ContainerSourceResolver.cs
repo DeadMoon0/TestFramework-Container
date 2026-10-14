@@ -119,12 +119,14 @@ public static class ContainerSourceResolver
             return;
 
         throw new FrameworkConfigurationException(
-            $"Building '{targetFramework}' inside a container needs a .NET {frameworkGeneration} SDK, and this machine restores with {hostSdk}.",
-            [
+            $"Building '{targetFramework}' inside a container needs a .NET {frameworkGeneration} SDK, and this machine restores with {hostSdk}.")
+        {
+            RecoverySteps = [
                 $"Target net{sdkGeneration}.0, so the container builds with the same SDK generation that resolved the packages.",
                 "Or use BuiltAsImage(), which builds on the host and has no such constraint.",
                 "Or name a matching SDK image with WithSdkImage(\"...\"), and make sure the host restores with that generation too.",
-            ]);
+            ],
+        };
     }
 
     private static string ResolveTargetFramework(ProjectContainerSource source, ProjectFacts facts, List<string> derivations)
@@ -134,8 +136,10 @@ public static class ContainerSourceResolver
             if (facts.TargetFrameworks.Count > 0 && !facts.TargetFrameworks.Contains(declared, StringComparer.OrdinalIgnoreCase))
             {
                 throw new FrameworkConfigurationException(
-                    $"'{facts.ProjectPath}' does not target '{declared}'.",
-                    [$"Choose one of: {string.Join(", ", facts.TargetFrameworks)}."]);
+                    $"'{facts.ProjectPath}' does not target '{declared}'.")
+                {
+                    RecoverySteps = [$"Choose one of: {string.Join(", ", facts.TargetFrameworks)}."],
+                };
             }
 
             return declared;
@@ -149,8 +153,10 @@ public static class ContainerSourceResolver
             // Picking silently would mean a project that adds a framework quietly changes what the
             // test runs.
             throw new FrameworkConfigurationException(
-                $"'{facts.ProjectPath}' targets {string.Join(", ", facts.TargetFrameworks)}, so which one to run is ambiguous.",
-                [$"Call WithTargetFramework(\"{facts.TargetFrameworks[0]}\") on the source."]);
+                $"'{facts.ProjectPath}' targets {string.Join(", ", facts.TargetFrameworks)}, so which one to run is ambiguous.")
+            {
+                RecoverySteps = [$"Call WithTargetFramework(\"{facts.TargetFrameworks[0]}\") on the source."],
+            };
         }
 
         derivations.Add($"framework from the project's single target, '{facts.TargetFrameworks[0]}'");
@@ -208,8 +214,10 @@ public static class ContainerSourceResolver
             || !targetFramework[3..].Contains('.', StringComparison.Ordinal))
         {
             throw new FrameworkConfigurationException(
-                $"No image tag can be derived from the target framework '{targetFramework}' of '{projectPath}'.",
-                ["Name the image explicitly with WithRuntimeImage(\"...\")."]);
+                $"No image tag can be derived from the target framework '{targetFramework}' of '{projectPath}'.")
+            {
+                RecoverySteps = ["Name the image explicitly with WithRuntimeImage(\"...\")."],
+            };
         }
 
         return targetFramework[3..];
@@ -230,11 +238,13 @@ public static class ContainerSourceResolver
         if (candidates.Count > 1)
         {
             throw new FrameworkConfigurationException(
-                $"'{outputDirectory}' holds {candidates.Count} runnable applications ({string.Join(", ", candidates)}), so which one to run is ambiguous.",
-                [
+                $"'{outputDirectory}' holds {candidates.Count} runnable applications ({string.Join(", ", candidates)}), so which one to run is ambiguous.")
+            {
+                RecoverySteps = [
                     "Ship a directory that holds one application.",
                     "Or declare the project with ContainerSource.Project(...), which knows its own entry point.",
-                ]);
+                ],
+            };
         }
 
         return candidates.Count == 1 ? $"{candidates[0]}.dll" : null;

@@ -271,8 +271,10 @@ public sealed class ProjectContainerSource : ContainerSource
         if (string.IsNullOrWhiteSpace(declaringFile))
         {
             throw new FrameworkConfigurationException(
-                $"The project path '{projectPath}' is relative and the declaring source file is unknown, so there is nothing to resolve it against.",
-                ["Pass an absolute path to ContainerSource.Project(...)."]);
+                $"The project path '{projectPath}' is relative and the declaring source file is unknown, so there is nothing to resolve it against.")
+            {
+                RecoverySteps = ["Pass an absolute path to ContainerSource.Project(...)."],
+            };
         }
 
         string declaringDirectory = Path.GetDirectoryName(declaringFile)

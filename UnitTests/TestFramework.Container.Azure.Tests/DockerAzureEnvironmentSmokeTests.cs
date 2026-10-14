@@ -302,7 +302,7 @@ public class DockerAzureEnvironmentSmokeTests
         Timeline timeline = Timeline.Create()
             .Trigger(AzureExt.Trigger.IsLive.FunctionApp("func-sb", AlivenessLevel.Reachable)).WithTimeOut(TimeSpan.FromMinutes(1)).Name("func-sb-reachable")
             .Trigger(AzureExt.Trigger.ServiceBus.Send("func-trigger-bus", Var.Const(new ServiceBusMessage(correlationId) { CorrelationId = correlationId })))
-            .WaitForEvent(AzureExt.Event.ServiceBus.MessageReceived("func-reply-bus", correlationId: Var.Const(correlationId), completeMessage: Var.Const(true))).WithTimeOut(TimeSpan.FromMinutes(1)).Name("reply-received")
+            .WaitForEvent(AzureExt.Event.ServiceBus.MessageReceived("func-reply-bus").WithCorrelationId(Var.Const(correlationId)).CompleteMessage(Var.Const(true))).WithTimeOut(TimeSpan.FromMinutes(1)).Name("reply-received")
             .Build();
 
         TimelineRun run = await timeline.SetupRun().SetEnv(_fixture.GetEnv()).RunAsync();

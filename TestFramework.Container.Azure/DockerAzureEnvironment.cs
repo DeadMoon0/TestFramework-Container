@@ -499,7 +499,7 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
                     // a second opinion about which values an entry holds, and the two would only differ in
                     // the cases nobody thought to check.
                     IConfigShape shape = AzureConfigShapes.For(configType);
-                    yield return new DeclaredResource(shape.Kind, identifier, shape.Values(config), this.SourceName);
+                    yield return new DeclaredResource { Kind = shape.Kind, Identifier = identifier, Values = shape.Values(config), DeclaredBy = this.SourceName };
                 }
             }
         }

@@ -47,7 +47,7 @@ public sealed class DockerAzureHostedEnvironment : IAsyncDisposable
         // synchronization context. This also makes the cancellation token mean something.
         PersistentEnvironmentContext<DockerAzurePersistentSetup> persistentContext =
             await PersistentEnvironmentContext<DockerAzurePersistentSetup>
-                .CreateAsync(setup, bootstrapServiceProvider, disposePersistentServiceProvider: true, cancellationToken)
+                .CreateAsync(setup, bootstrapServiceProvider, cancellationToken)
                 .ConfigureAwait(false);
 
         return new DockerAzureHostedEnvironment(persistentContext, persistentConfig);

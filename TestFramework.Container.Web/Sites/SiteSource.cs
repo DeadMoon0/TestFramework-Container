@@ -82,8 +82,10 @@ public abstract class SiteSource
         if (string.IsNullOrWhiteSpace(declaringFile))
         {
             throw new FrameworkConfigurationException(
-                $"The {whatItIs} '{path}' is relative and the declaring source file is unknown, so there is nothing to resolve it against.",
-                ["Pass an absolute path."]);
+                $"The {whatItIs} '{path}' is relative and the declaring source file is unknown, so there is nothing to resolve it against.")
+            {
+                RecoverySteps = ["Pass an absolute path."],
+            };
         }
 
         string declaringDirectory = Path.GetDirectoryName(declaringFile)

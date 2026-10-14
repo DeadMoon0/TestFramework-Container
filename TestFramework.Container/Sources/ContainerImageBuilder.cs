@@ -398,9 +398,11 @@ public static class ContainerImageBuilder
             }
 
             throw new FrameworkConfigurationException(
-                $"The SDK could not build an image for '{identifier}' from '{plan.ProjectPath}'.",
-                [.. RecoveryStepsFor(result, plan)],
-                [result.Describe()]);
+                $"The SDK could not build an image for '{identifier}' from '{plan.ProjectPath}'.")
+            {
+                RecoverySteps = [.. RecoveryStepsFor(result, plan)],
+                AvailableOptions = [result.Describe()],
+            };
         }
 
         string image = $"{repository}:{tag}";
@@ -610,9 +612,11 @@ public static class ContainerImageBuilder
         if (!result.Succeeded)
         {
             throw new FrameworkConfigurationException(
-                $"The project for '{identifier}' could not be published.",
-                ["The full command output follows the message in the run log."],
-                [result.Describe()]);
+                $"The project for '{identifier}' could not be published.")
+            {
+                RecoverySteps = ["The full command output follows the message in the run log."],
+                AvailableOptions = [result.Describe()],
+            };
         }
 
         logger.LogInformation("'{0}' published to '{1}' in {2}.", identifier, output, stopwatch.Elapsed);
@@ -723,20 +727,22 @@ public static class ContainerImageBuilder
         // The base images this framework selects are Linux images. Saying so now beats an image that
         // builds and then cannot start.
         throw new FrameworkConfigurationException(
-            $"The Docker daemon is serving '{osType}' containers, and the .NET base images used here are Linux images.",
-            [
+            $"The Docker daemon is serving '{osType}' containers, and the .NET base images used here are Linux images.")
+        {
+            RecoverySteps = [
                 "Switch Docker Desktop to Linux containers.",
                 "Or name a matching image with WithRuntimeImage(\"...\").",
-            ]);
+            ],
+        };
     }
 
     private static FrameworkConfigurationException DockerCliMissing(Exception? innerException)
-        => new(
-            "No 'docker' executable was found, and the .NET SDK needs one to build a container image.",
+        => new("No 'docker' executable was found, and the .NET SDK needs one to build a container image.", innerException)
+        {
+            RecoverySteps =
             [
                 "Install the Docker CLI, or use BuiltOnHost() which needs no executable.",
                 "On a machine that reaches a remote daemon through DOCKER_HOST, the CLI still has to be installed locally.",
             ],
-            null,
-            innerException);
+        };
 }

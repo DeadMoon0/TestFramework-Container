@@ -51,11 +51,13 @@ internal static class EnvComponentResourceGuard
             }
 
             throw new FrameworkConfigurationException(
-                $"{componentName} needs {kind}/'{identifier}', and nothing in this run supplies it.",
-                [
+                $"{componentName} needs {kind}/'{identifier}', and nothing in this run supplies it.")
+            {
+                RecoverySteps = [
                     $"Add the configuration entry for '{identifier}', or give the definition that provisions it the names it should use.",
                 ],
-                [.. context.Values.IdentifiersOf(kind).Select(known => $"{kind}/'{known}'")]);
+                AvailableOptions = [.. context.Values.IdentifiersOf(kind).Select(known => $"{kind}/'{known}'")],
+            };
         }
     }
 }
