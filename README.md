@@ -97,7 +97,7 @@ dotnet test .\UnitTests\TestFramework.Container.Azure.Tests\TestFramework.Contai
 
 ## Troubleshooting
 
-- If the environment does not start at all, verify Docker availability before inspecting timeline code.
+- If Docker is missing, stopped or serving Windows containers, the run is refused before anything starts, and the refusal says which.
 - If a resource is not created, check whether the timeline or environment requirements actually activate the owning definition.
 - If a definition is included but never used, treat that as "available" rather than "activated".
 - If Service Bus startup fails, inspect topology ownership and SQL dependency first.

@@ -296,8 +296,7 @@ public static class ContainerImageBuilder
         ScopedLogger logger,
         CancellationToken cancellationToken)
     {
-        await EnsureDockerCliAsync(cancellationToken).ConfigureAwait(false);
-        await EnsureLinuxContainersAsync(cancellationToken).ConfigureAwait(false);
+        await ContainerRuntime.EnsureReadyAsync(logger, cancellationToken).ConfigureAwait(false);
 
         string repository = ToRepositoryName(identifier);
         string tag = $"run-{Guid.NewGuid().ToString("N")[..8]}";
@@ -580,7 +579,7 @@ public static class ContainerImageBuilder
         ScopedLogger logger,
         CancellationToken cancellationToken)
     {
-        await EnsureLinuxContainersAsync(cancellationToken).ConfigureAwait(false);
+        await ContainerRuntime.EnsureReadyAsync(logger, cancellationToken).ConfigureAwait(false);
 
         // Read again rather than carried on the plan, so the plan stays a description and this stays
         // the only place that needs the project's own details.
@@ -691,58 +690,5 @@ public static class ContainerImageBuilder
         string cleaned = new string(characters).Trim('-');
         return string.IsNullOrEmpty(cleaned) ? "testframework-app" : $"testframework-{cleaned}";
     }
-
-    private static async Task EnsureDockerCliAsync(CancellationToken cancellationToken)
-    {
-        // The SDK shells out to a docker or podman executable rather than talking to the daemon, so
-        // a machine that can run containers can still be unable to build an image this way.
-        try
-        {
-            ContainerDockerCommands.CommandResult result = await ContainerDockerCommands.RunAsync("--version", cancellationToken).ConfigureAwait(false);
-            if (result.ExitCode == 0)
-                return;
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception exception)
-        {
-            throw DockerCliMissing(exception);
-        }
-
-        throw DockerCliMissing(null);
-    }
-
-    private static async Task EnsureLinuxContainersAsync(CancellationToken cancellationToken)
-    {
-        ContainerDockerCommands.CommandResult result = await ContainerDockerCommands
-            .RunAsync("info --format {{.OSType}}", cancellationToken)
-            .ConfigureAwait(false);
-
-        string osType = result.StandardOutput.Trim();
-        if (result.ExitCode != 0 || osType.Length == 0 || string.Equals(osType, "linux", StringComparison.OrdinalIgnoreCase))
-            return;
-
-        // The base images this framework selects are Linux images. Saying so now beats an image that
-        // builds and then cannot start.
-        throw new FrameworkConfigurationException(
-            $"The Docker daemon is serving '{osType}' containers, and the .NET base images used here are Linux images.")
-        {
-            RecoverySteps = [
-                "Switch Docker Desktop to Linux containers.",
-                "Or name a matching image with WithRuntimeImage(\"...\").",
-            ],
-        };
-    }
-
-    private static FrameworkConfigurationException DockerCliMissing(Exception? innerException)
-        => new("No 'docker' executable was found, and the .NET SDK needs one to build a container image.", innerException)
-        {
-            RecoverySteps =
-            [
-                "Install the Docker CLI, or use BuiltOnHost() which needs no executable.",
-                "On a machine that reaches a remote daemon through DOCKER_HOST, the CLI still has to be installed locally.",
-            ],
-        };
 }
+

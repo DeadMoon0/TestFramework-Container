@@ -6,7 +6,7 @@ using TestFramework.Core.Logging;
 namespace TestFramework.Container;
 
 /// <summary>
-/// Makes the Docker client usable before the first container is asked for.
+/// Makes sure Docker can run this package's containers before the first one is asked for.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -27,28 +27,59 @@ namespace TestFramework.Container;
 public static class ContainerRuntime
 {
     private static readonly object Gate = new();
+    private static readonly SemaphoreSlim ProbeGate = new(1, 1);
     private static bool _initialized;
+    private static bool _ready;
     private static string? _configuredHost;
 
     /// <summary>
-    /// Points the Docker client at the engine this machine runs, once per process.
+    /// Points the Docker client at the engine this machine runs and asks that engine whether it can serve this
+    /// package's containers.
     /// </summary>
-    /// <remarks>
-    /// Idempotent, and safe to call from several component creations at once. It changes nothing when
-    /// <c>DOCKER_HOST</c> is already set or when the platform has no named pipes.
-    /// </remarks>
-    public static void EnsureInitialized()
-        => EnsureInitialized(null);
+    /// <param name="cancellationToken">What stops the probe.</param>
+    /// <exception cref="TestFramework.Core.Exceptions.FrameworkConfigurationException">No Docker CLI, no daemon answering, or a
+    /// daemon serving Windows containers - each refused by name.</exception>
+    public static Task EnsureReadyAsync(CancellationToken cancellationToken)
+        => EnsureReadyAsync(null, cancellationToken);
 
     /// <summary>
-    /// Points the Docker client at the engine this machine runs, once per process.
+    /// Points the Docker client at the engine this machine runs and asks that engine whether it can serve this
+    /// package's containers.
     /// </summary>
-    /// <param name="logger">Optional logger; the chosen pipe is reported through it when one is set.</param>
     /// <remarks>
-    /// Idempotent, and safe to call from several component creations at once. It changes nothing when
-    /// <c>DOCKER_HOST</c> is already set or when the platform has no named pipes.
+    /// Safe to call from several component creations at once. The host is configured once per process; the probe
+    /// runs until it first succeeds, so a run that started Docker after a refusal is not refused again.
     /// </remarks>
-    public static void EnsureInitialized(ScopedLogger? logger)
+    /// <param name="logger">Optional logger; the chosen pipe and the probe's answer are reported through it.</param>
+    /// <param name="cancellationToken">What stops the probe.</param>
+    /// <exception cref="TestFramework.Core.Exceptions.FrameworkConfigurationException">No Docker CLI, no daemon answering, or a
+    /// daemon serving Windows containers - each refused by name.</exception>
+    public static async Task EnsureReadyAsync(ScopedLogger? logger, CancellationToken cancellationToken)
+    {
+        ConfigureHost(logger);
+
+        if (Volatile.Read(ref _ready))
+            return;
+
+        await ProbeGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (_ready)
+                return;
+
+            await DockerProbe.RequireAsync(logger, cancellationToken).ConfigureAwait(false);
+            Volatile.Write(ref _ready, true);
+
+            // Housekeeping needs a daemon, so it waits for the first answer.
+            StartHousekeeping(logger);
+        }
+        finally
+        {
+            ProbeGate.Release();
+        }
+    }
+
+    private static void ConfigureHost(ScopedLogger? logger)
     {
         lock (Gate)
         {
@@ -76,8 +107,6 @@ public static class ContainerRuntime
 
             if (_configuredHost is { } configured)
                 logger?.LogInformation($"DOCKER_HOST was not set, so the Docker client was pointed at '{configured}'.");
-
-            StartHousekeeping(logger);
         }
     }
 
@@ -117,6 +146,7 @@ public static class ContainerRuntime
         lock (Gate)
         {
             _initialized = false;
+            _ready = false;
             _configuredHost = null;
         }
     }

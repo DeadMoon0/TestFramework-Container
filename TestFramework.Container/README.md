@@ -41,11 +41,13 @@ Targets `net8.0` and `net10.0`.
 
 ## Three Things That Happen Without Being Asked
 
-`ContainerRuntime.EnsureInitialized` runs as the first statement of the network component in both the
+`ContainerRuntime.EnsureReadyAsync` runs as the first statement of the network component in both the
 Azure and the Web environment, which is the root every other component depends on. On Windows it points
 `DOCKER_HOST` at whichever Docker Desktop named pipe exists, because the client library does not probe
 for it and the name differs between installations. It changes nothing when `DOCKER_HOST` is already set,
-and it logs the pipe it chose.
+and it logs the pipe it chose. Then it asks the daemon, with a ten-second ceiling, and refuses by name
+when there is no `docker` executable, when no daemon answers where the client looked, or when the daemon
+serves Windows containers.
 
 `ContainerPortBinding` publishes every port on `127.0.0.1` rather than on all interfaces, so a SQL
 Server or a storage emulator a test brought up is not reachable from the rest of the network for the

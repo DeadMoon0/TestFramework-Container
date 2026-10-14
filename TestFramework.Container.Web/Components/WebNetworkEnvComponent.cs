@@ -23,7 +23,7 @@ internal sealed class WebNetworkEnvComponent : WebEnvComponentBase
     {
         // Everything else in this environment depends on the network, so this is the first thing the
         // run does with Docker and the right place to make sure the client can reach it at all.
-        ContainerRuntime.EnsureInitialized(context.Logger);
+        await ContainerRuntime.EnsureReadyAsync(context.Logger, context.Deadline.Token).ConfigureAwait(false);
 
         INetwork network = await ContainerNetworkFactory.CreateAsync(DockerWebDefaults.NetworkNamePrefix, context.Deadline.Token).ConfigureAwait(false);
         return network;

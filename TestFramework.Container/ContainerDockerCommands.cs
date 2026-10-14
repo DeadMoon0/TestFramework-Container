@@ -128,7 +128,7 @@ public static class ContainerDockerCommands
             StartInfo = startInfo,
         };
 
-        process.Start();
+        Start(process);
 
         using CancellationTokenSource expiry = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         if (timeout != Timeout.InfiniteTimeSpan)
@@ -161,6 +161,25 @@ public static class ContainerDockerCommands
             process.ExitCode,
             await ReadOrEmptyAsync(standardOutput).ConfigureAwait(false),
             await ReadOrEmptyAsync(standardError).ConfigureAwait(false));
+    }
+
+    /// <summary>
+    /// Starts the CLI, or refuses by name when there is none.
+    /// </summary>
+    /// <remarks>
+    /// The one place a missing executable is turned into something a reader can act on, for every Docker command
+    /// this package runs. It used to surface as a <c>Win32Exception</c> from whichever command happened to run first.
+    /// </remarks>
+    internal static void Start(Process process)
+    {
+        try
+        {
+            process.Start();
+        }
+        catch (System.ComponentModel.Win32Exception exception)
+        {
+            throw DockerProbe.CliMissing(exception);
+        }
     }
 
     private static TimeSpan ChooseTimeout(string arguments)
