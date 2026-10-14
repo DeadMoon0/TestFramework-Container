@@ -1,5 +1,9 @@
 using System;
 using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+using TestFramework.Container.Web.Sites;
+using TestFramework.Core.Exceptions;
 
 namespace TestFramework.Container.Web.Tests.Shared;
 
@@ -14,11 +18,6 @@ namespace TestFramework.Container.Web.Tests.Shared;
 /// </remarks>
 internal static class SiteTestEnvironmentGate
 {
-    /// <summary>
-    /// The environment variable that opts in to the tests that run npm themselves.
-    /// </summary>
-    public const string NpmOptInVariable = "TESTFRAMEWORK_CONTAINER_SITE_NPM";
-
     /// <summary>
     /// The checked-in static site fixture.
     /// </summary>
@@ -35,9 +34,25 @@ internal static class SiteTestEnvironmentGate
     public static string AngularDistDirectory => Path.Combine(AngularProjectDirectory, "dist", "sample-site", "browser");
 
     /// <summary>
-    /// Whether the tests that run npm themselves are opted in.
+    /// Returns why a site cannot be built with npm on this host, or <see langword="null"/> when it can.
     /// </summary>
-    public static bool NpmOptedIn => string.Equals(Environment.GetEnvironmentVariable(NpmOptInVariable), "1", StringComparison.Ordinal);
+    /// <remarks>
+    /// Asked of npm, through the same resolution the host build uses, rather than of an opt-in variable: a flag
+    /// decided whether the test ran, so a machine with npm skipped it silently and a machine without it was told
+    /// to set a variable that could not help.
+    /// </remarks>
+    public static async Task<string?> HostNpmSkipReasonAsync()
+    {
+        try
+        {
+            NpmCliResult result = await NpmCli.RunAsync(["--version"], Path.GetTempPath(), TimeSpan.FromSeconds(30), CancellationToken.None);
+            return result.Succeeded ? null : $"npm is on the PATH and did not answer: {result.Describe()}";
+        }
+        catch (FrameworkConfigurationException missing)
+        {
+            return missing.Message;
+        }
+    }
 
     /// <summary>
     /// Returns why the Angular-dist tests cannot run, or <see langword="null"/> when they can.

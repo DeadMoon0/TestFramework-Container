@@ -81,6 +81,10 @@ public static class SitePayloadBuilder
         ScopedLogger logger,
         CancellationToken cancellationToken)
     {
+        // The build writes into the project directory, so two runs building the same site - the two framework
+        // processes of one test suite, for one - wait for each other instead of racing over node_modules and dist.
+        using IDisposable building = await MachineWideProjectGate.EnterAsync(source.ProjectDirectory, cancellationToken).ConfigureAwait(false);
+
         if (source.InstallWhenMissing && !Directory.Exists(Path.Combine(source.ProjectDirectory, "node_modules")))
         {
             logger.LogInformation("Site '{0}' installs packages: npm ci in '{1}'.", identifier, source.ProjectDirectory);

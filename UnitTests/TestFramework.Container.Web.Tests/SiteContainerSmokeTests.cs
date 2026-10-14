@@ -218,9 +218,9 @@ public class SiteContainerSmokeTests
     [Fact]
     public async Task NpmProject_BuildsOnTheHost_AndServes()
     {
-        if (!SiteTestEnvironmentGate.NpmOptedIn)
+        if (await SiteTestEnvironmentGate.HostNpmSkipReasonAsync() is { } reason)
         {
-            Console.WriteLine($"Set {SiteTestEnvironmentGate.NpmOptInVariable}=1 to run the tests that invoke npm themselves.");
+            Console.WriteLine($"Skipped: {reason}");
             return;
         }
 
@@ -265,11 +265,7 @@ public class SiteContainerSmokeTests
     [Fact]
     public async Task NpmProject_BuildsInsideAContainer_AndServes()
     {
-        if (!SiteTestEnvironmentGate.NpmOptedIn)
-        {
-            Console.WriteLine($"Set {SiteTestEnvironmentGate.NpmOptInVariable}=1 to run the tests that invoke npm themselves.");
-            return;
-        }
+        // Built by npm inside a node image, so the host needs Docker - which the trait already says - and no npm.
 
         Timeline timeline = Timeline.Create()
             .Trigger(new FetchSiteStep("shop", "/")).Name("index")

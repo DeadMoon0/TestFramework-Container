@@ -11,5 +11,5 @@ npm ci && npm run build
 ```
 
 The output lands in `dist/sample-site/browser`. Tests that need it skip with a reason while it is
-absent; the tests that run npm themselves are additionally gated behind
-`TESTFRAMEWORK_CONTAINER_SITE_NPM=1`.
+absent. The test that builds on the host runs when `npm` answers on the PATH and says why it did
+not otherwise; the test that builds inside a container needs only Docker.

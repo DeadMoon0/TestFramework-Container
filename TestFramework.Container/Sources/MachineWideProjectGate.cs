@@ -26,8 +26,13 @@ namespace TestFramework.Container.Sources;
 /// rather than the path itself, so no lock file ever appears next to anyone's sources; it is left
 /// behind empty afterwards, because existing does not lock.
 /// </para>
+/// <para>
+/// Public because building in place is not only a .NET concern: Container.Web builds a site with npm inside its
+/// project directory, and two runs doing that at once race over <c>node_modules</c> and the output folder the same
+/// way. The lock is also exclusive within one process, so it serializes those too.
+/// </para>
 /// </remarks>
-internal static class MachineWideProjectGate
+public static class MachineWideProjectGate
 {
     /// <summary>
     /// How long a waiter sleeps between attempts. A publish takes seconds, so a quarter of one is
@@ -38,7 +43,7 @@ internal static class MachineWideProjectGate
     /// <summary>
     /// Takes the machine-wide lock for a project, waiting for whichever process holds it.
     /// </summary>
-    /// <param name="projectPath">The project file the lock is for.</param>
+    /// <param name="projectPath">The project file, or the project directory, the lock is for.</param>
     /// <param name="cancellationToken">Cancels the waiting.</param>
     /// <returns>The held lock; disposing it lets the next waiter in.</returns>
     public static async Task<IDisposable> EnterAsync(string projectPath, CancellationToken cancellationToken)
