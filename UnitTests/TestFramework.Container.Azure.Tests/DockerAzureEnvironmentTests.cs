@@ -106,6 +106,29 @@ public class DockerAzureEnvironmentTests
     }
 
     [Fact]
+    public void TwoRunsFromOneEnvironment_EachSeeOnlyWhatTheyThemselvesRequire()
+    {
+        // One run asks for storage, the other for a bus. On a shared instance the second resolution used to
+        // replace the first's - so a run could start or purge emulators for what another run required.
+        DockerAzureEnvironment shared = DockerAzureEnvironment.For<TestStorageDefinition>().UseResetMode(AzureResetMode.None);
+        DockerAzureEnvironment storageRun = (DockerAzureEnvironment)shared.CreateForRun();
+        DockerAzureEnvironment busRun = (DockerAzureEnvironment)shared.CreateForRun();
+
+        storageRun.ResolveComponents([], ((IHasEnvironmentRequirements)new IsLiveTrigger().Blob("storage")).GetEnvironmentRequirements(null!));
+        busRun.ResolveComponents([], ((IHasEnvironmentRequirements)new ServiceBusSendTrigger("bus", Var.Const(new ServiceBusMessage("payload")))).GetEnvironmentRequirements(null!));
+
+        Assert.Equal(["storage"], storageRun.UsedStorageIdentifiers);
+        Assert.Empty(storageRun.UsedServiceBusIdentifiers);
+        Assert.Equal(["bus"], busRun.UsedServiceBusIdentifiers);
+        Assert.Empty(busRun.UsedStorageIdentifiers);
+
+        // The description took part in neither run, and each run kept what was configured on it.
+        Assert.Empty(shared.UsedStorageIdentifiers);
+        Assert.Empty(shared.UsedServiceBusIdentifiers);
+        Assert.Equal(AzureResetMode.None, typeof(DockerAzureEnvironment).GetMethod("GetResetMode", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(busRun, []));
+    }
+
+    [Fact]
     public void ResolveComponents_MapsServiceBusStepRequirementsWithoutArtifacts()
     {
         DockerAzureEnvironment environment = new();
@@ -500,9 +523,6 @@ public class DockerAzureEnvironmentTests
         var blobStep = new IsLiveTrigger().Blob("storage");
 
         environment.ResolveComponents([], ((IHasEnvironmentRequirements)blobStep).GetEnvironmentRequirements(null!));
-        typeof(DockerAzureEnvironment)
-            .GetMethod("SetRuntimeState", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .Invoke(environment, [DockerAzureEnvironment.NetworkComponentId, new StubNetwork()]);
 
         object component = Activator.CreateInstance(typeof(DockerAzureEnvironment).Assembly.GetType("TestFramework.Container.Azure.Components.AzuriteEnvComponent")!, true)!;
         Task createTask = (Task)component.GetType().GetMethod("CreateAsync")!.Invoke(component,
@@ -532,37 +552,9 @@ public class DockerAzureEnvironmentTests
         Assert.Equal("custom/mssql:1", typeof(DockerAzureEnvironment).GetMethod("GetMsSqlImage", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(environment, []));
         Assert.Equal(1024, typeof(DockerAzureEnvironment).GetMethod("GetMsSqlMemoryLimitMb", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(environment, []));
         Assert.Equal("custom/servicebus:1", typeof(DockerAzureEnvironment).GetMethod("GetServiceBusImage", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(environment, []));
-        Assert.Equal("StrongerPassword_123!", typeof(DockerAzureEnvironment).GetMethod("GetMsSqlPassword", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(environment, []));
+        Assert.Equal("StrongerPassword_123!", typeof(DockerAzureEnvironment).GetProperty("PinnedMsSqlPassword", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(environment));
         Assert.Equal(Path.Combine("Infrastructure", "bus-topology.json"), typeof(DockerAzureEnvironment).GetMethod("GetServiceBusTopologyConfigPath", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(environment, []));
     }
-
-    [Fact]
-    public void GetMsSqlPassword_WithoutOverride_IsGeneratedPerEnvironment()
-    {
-        string first = InvokeGetMsSqlPassword(new DockerAzureEnvironment());
-        string second = InvokeGetMsSqlPassword(new DockerAzureEnvironment());
-
-        Assert.NotEqual(first, second);
-        Assert.DoesNotContain("TestFramework_Container1!", first, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void CloneDefinitions_CarriesTheGeneratedPassword()
-    {
-        // The hosted fixture clones for the bootstrap and again per run; a clone that regenerated the
-        // password would authenticate against the persistent server with the wrong secret.
-        DockerAzureEnvironment environment = new();
-        DockerAzureEnvironment clone = (DockerAzureEnvironment)typeof(DockerAzureEnvironment)
-            .GetMethod("CloneDefinitions", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .Invoke(environment, [])!;
-
-        Assert.Equal(InvokeGetMsSqlPassword(environment), InvokeGetMsSqlPassword(clone));
-    }
-
-    private static string InvokeGetMsSqlPassword(DockerAzureEnvironment environment)
-        => (string)typeof(DockerAzureEnvironment)
-            .GetMethod("GetMsSqlPassword", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .Invoke(environment, [])!;
 
     [Fact]
     public void Include_ThrowsWhenInfrastructureOverridesConflict()
@@ -841,15 +833,6 @@ public class DockerAzureEnvironmentTests
         return (ScopedLogger)typeof(ScopedLogger)
             .GetMethod("CreateWithDebuggerSession", BindingFlags.Static | BindingFlags.NonPublic)!
             .Invoke(null, [debuggingSession])!;
-    }
-
-    private sealed class StubNetwork : DotNet.Testcontainers.Networks.INetwork
-    {
-        public string Id => "stub";
-        public string Name => "stub";
-        public Task CreateAsync(CancellationToken ct = default) => Task.CompletedTask;
-        public Task DeleteAsync(CancellationToken ct = default) => Task.CompletedTask;
-        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 
     private sealed class RecordingRunDebugger : IRunDebugger

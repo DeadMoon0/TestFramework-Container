@@ -33,7 +33,7 @@ internal sealed class AzuriteEnvComponent : DockerAzureEnvComponent
         }
 
         EnvComponentResourceGuard.EnsureSupplied(context, AzureEnvironmentResourceKinds.StorageKind, dockerEnvironment.UsedStorageIdentifiers, "Azurite environment setup");
-        INetwork network = dockerEnvironment.GetRequiredRuntimeState<INetwork>(DockerAzureEnvironment.NetworkComponentId);
+        INetwork network = StateOf<INetwork>(context, DockerAzureEnvironment.NetworkComponentId);
         string azuriteImage = dockerEnvironment.GetAzuriteImage();
 
         // Recorded on the run because nobody stated it: the tag lives in this package's defaults, so a run
@@ -71,7 +71,6 @@ internal sealed class AzuriteEnvComponent : DockerAzureEnvComponent
                     connectionString);
             }
 
-            dockerEnvironment.SetRuntimeState(Id, container);
             return container;
         }).ConfigureAwait(false);
     }

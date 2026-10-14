@@ -42,7 +42,7 @@ internal sealed class CosmosDbEnvComponent : DockerAzureEnvComponent
         }
 
         EnvComponentResourceGuard.EnsureSupplied(context, AzureEnvironmentResourceKinds.CosmosKind, dockerEnvironment.UsedCosmosIdentifiers, "Cosmos environment setup");
-        INetwork network = dockerEnvironment.GetRequiredRuntimeState<INetwork>(DockerAzureEnvironment.NetworkComponentId);
+        INetwork network = StateOf<INetwork>(context, DockerAzureEnvironment.NetworkComponentId);
         string cosmosImage = dockerEnvironment.GetCosmosDbImage();
 
         // Recorded on the run because nobody stated it: the tag lives in this package's defaults, so a run
@@ -111,7 +111,6 @@ internal sealed class CosmosDbEnvComponent : DockerAzureEnvComponent
                 await DeploySchemaAsync(identifier, target, partitionKeyPath, context.Logger, context.Deadline.Token).ConfigureAwait(false);
             }
 
-            dockerEnvironment.SetRuntimeState(Id, container);
             return container;
         }).ConfigureAwait(false);
     }

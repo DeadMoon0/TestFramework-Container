@@ -38,17 +38,6 @@ public class ContainerGuardTests
     }
 
     [Fact]
-    public void DockerAzureEnvironment_GetRequiredRuntimeState_ThrowsHelpfulMessageWhenMissing()
-    {
-        DockerAzureEnvironment environment = new();
-
-        FrameworkStateException exception = Assert.Throws<FrameworkStateException>(() =>
-            environment.GetRequiredRuntimeState<object>(DockerAzureEnvironment.AzuriteComponentId));
-
-        Assert.Contains(DockerAzureEnvironment.AzuriteComponentId.ToString(), exception.Message, StringComparison.Ordinal);
-    }
-
-    [Fact]
     public async Task AzuriteEnvComponent_CreateAsync_ThrowsHelpfulMessageForWrongEnvironmentType()
     {
         AzuriteEnvComponent component = new();

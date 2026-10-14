@@ -27,9 +27,6 @@ internal sealed class DockerNetworkEnvComponent : DockerAzureEnvComponent
 
         INetwork network = await ContainerNetworkFactory.CreateAsync("testframework", context.Deadline.Token).ConfigureAwait(false);
 
-        if (environment is DockerAzureEnvironment runtimeEnvironment)
-            runtimeEnvironment.SetRuntimeState(Id, network);
-
         return network;
     }
 

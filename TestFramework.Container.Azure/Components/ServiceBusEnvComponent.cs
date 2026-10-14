@@ -36,8 +36,8 @@ internal sealed class ServiceBusEnvComponent : DockerAzureEnvComponent
         // Called for its effect, not its result: it refuses a used identifier with no configuration entry, and
         // seeds the store the run resolves for the ones that have defaults. Nothing writes to it any more.
         EnvComponentResourceGuard.EnsureSupplied(context, AzureEnvironmentResourceKinds.ServiceBusKind, dockerEnvironment.UsedServiceBusIdentifiers, "Service Bus environment setup");
-        INetwork network = dockerEnvironment.GetRequiredRuntimeState<INetwork>(DockerAzureEnvironment.NetworkComponentId);
-        MsSqlContainer msSqlContainer = dockerEnvironment.GetRequiredRuntimeState<MsSqlContainer>(DockerAzureEnvironment.MsSqlComponentId);
+        INetwork network = StateOf<INetwork>(context, DockerAzureEnvironment.NetworkComponentId);
+        MsSqlRuntimeState sql = StateOf<MsSqlRuntimeState>(context, DockerAzureEnvironment.MsSqlComponentId);
         MaterializedServiceBusTopology materializedTopology = ServiceBusTopologyMaterializer.Materialize(dockerEnvironment.GetServiceBusTopologySource(), context.Logger);
 
         string serviceBusImage = dockerEnvironment.GetServiceBusImage();
@@ -49,7 +49,7 @@ internal sealed class ServiceBusEnvComponent : DockerAzureEnvComponent
 
         ServiceBusContainer container = new ServiceBusBuilder(serviceBusImage)
             .WithAcceptLicenseAgreement(true)
-            .WithMsSqlContainer(network, msSqlContainer, ServiceBusBuilder.DatabaseNetworkAlias, dockerEnvironment.GetMsSqlPassword())
+            .WithMsSqlContainer(network, sql.Container, ServiceBusBuilder.DatabaseNetworkAlias, sql.Password)
             .WithConfig(materializedTopology.ConfigPath)
             .WithNetworkAliases(DockerAzureEnvironment.ServiceBusNetworkAlias)
             .WithCreateParameterModifier(ContainerPortBinding.Apply)
@@ -78,9 +78,7 @@ internal sealed class ServiceBusEnvComponent : DockerAzureEnvComponent
                     connectionString);
             }
 
-            ServiceBusRuntimeState runtimeState = new(container, materializedTopology.IsTemporary ? materializedTopology.ConfigPath : null);
-            dockerEnvironment.SetRuntimeState(Id, runtimeState);
-            return runtimeState;
+            return new ServiceBusRuntimeState(container, materializedTopology.IsTemporary ? materializedTopology.ConfigPath : null);
         }).ConfigureAwait(false);
     }
 

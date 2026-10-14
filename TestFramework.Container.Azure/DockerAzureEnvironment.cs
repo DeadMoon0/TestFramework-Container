@@ -21,7 +21,7 @@ using TestFramework.Core.Logging;
 
 namespace TestFramework.Container.Azure;
 
-public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedServiceProviderFactory, IPersistentEnvironmentStateSink, IResourceNodeSource
+public sealed class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedServiceProviderFactory, IRunScopedEnvironmentFactory, IPersistentEnvironmentStateSink, IResourceNodeSource
 {
     public static readonly EnvComponentIdentifier NetworkComponentId = "docker-network";
     public static readonly EnvComponentIdentifier FunctionAppComponentId = "functionapp";
@@ -39,13 +39,11 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
     public const string ServiceBusNetworkAlias = "servicebus-emulator";
     private static readonly DockerEndpointMap EndpointMapInstance = new();
 
-    private readonly Dictionary<EnvComponentIdentifier, object?> _runtimeStates = [];
-    private readonly object _runtimeStateGate = new();
+    private readonly object _reusedGate = new();
     private readonly DockerAzureDefinitionState _definitionState = new();
     private readonly Dictionary<Type, DockerAzureDefinition> _includedDefinitions = [];
     private DockerAzureResolutionSnapshot _lastResolutionSnapshot = DockerAzureResolutionSnapshot.Empty;
     private bool _resolutionSummaryLogged;
-    private string _generatedMsSqlPassword = MsSqlContainerFactory.CreateMsSqlPassword();
     private AzureResetMode _resetMode = AzureResetMode.PurgeDeclaredResources;
     private readonly HashSet<EnvComponentIdentifier> _reusedPersistentComponents = [];
     private readonly HashSet<string> _usedStorageIdentifiers = [];
@@ -55,12 +53,18 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
     private readonly HashSet<string> _usedFunctionAppIdentifiers = [];
 
     /// <summary>
-    /// The storage identifiers the last resolution decided this run needs.
+    /// The storage identifiers this instance's resolution decided the run needs.
     /// </summary>
     /// <remarks>
+    /// <para>
+    /// A run resolves on an instance of its own (<see cref="CreateForRun"/>), so after a run read this from
+    /// <c>run.Environment</c>; the environment handed to <c>SetEnv</c> takes part in no run and stays empty.
+    /// </para>
+    /// <para>
     /// Read-only, because <see cref="ResolveComponents"/> clears and refills it. Anything a caller added
     /// by hand would disappear on the next resolution, which is not a thing a public collection should
     /// let you attempt.
+    /// </para>
     /// </remarks>
     public IReadOnlyCollection<string> UsedStorageIdentifiers => _usedStorageIdentifiers;
 
@@ -273,35 +277,17 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
             logger.LogInformation(line);
     }
 
-    internal void SetRuntimeState(EnvComponentIdentifier identifier, object? state)
-    {
-        lock (_runtimeStateGate)
-            _runtimeStates[identifier] = state;
-    }
-
     public void SetPersistentState(EnvComponentIdentifier identifier, object? state)
     {
-        // Being handed state is the one signal that this component was created by an earlier run.
-        lock (_runtimeStateGate)
+        // Being handed state is the one signal that this component was created by an earlier run. The state
+        // itself reaches the run's components through the run, which holds what each of them produced.
+        lock (_reusedGate)
             _reusedPersistentComponents.Add(identifier);
-
-        SetRuntimeState(identifier, state);
     }
 
     internal DockerEndpointMap GetEndpointMap()
     {
         return EndpointMapInstance;
-    }
-
-    internal T GetRequiredRuntimeState<T>(EnvComponentIdentifier identifier)
-    {
-        lock (_runtimeStateGate)
-        {
-            if (_runtimeStates.TryGetValue(identifier, out object? state) && state is T typedState)
-                return typedState;
-        }
-
-        throw new FrameworkStateException($"The runtime state for environment component '{identifier}' is not available.");
     }
 
     internal IReadOnlyCollection<DockerFunctionAppRegistration> GetFunctionAppRegistrations()
@@ -420,7 +406,7 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
     {
         get
         {
-            lock (_runtimeStateGate)
+            lock (_reusedGate)
                 return _reusedPersistentComponents.Count > 0;
         }
     }
@@ -472,16 +458,10 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
     }
 
     /// <summary>
-    /// The <c>sa</c> password this environment's SQL Server runs with.
+    /// The <c>sa</c> password a <see cref="DockerAzureInfrastructureDefinition.MsSqlPassword"/> pinned, or
+    /// <see langword="null"/> when each SQL Server container generates its own.
     /// </summary>
-    /// <remarks>
-    /// An explicit <see cref="DockerAzureInfrastructureDefinition.MsSqlPassword"/> wins; otherwise the
-    /// environment uses the one it generated for itself.
-    /// </remarks>
-    internal string GetMsSqlPassword()
-    {
-        return _definitionState.MsSqlPassword ?? _generatedMsSqlPassword;
-    }
+    internal string? PinnedMsSqlPassword => _definitionState.MsSqlPassword;
 
     /// <inheritdoc />
     public string SourceName => "Docker definition";
@@ -666,14 +646,21 @@ public class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedService
         }
     }
 
+    /// <summary>
+    /// Creates the instance one run uses: this environment's definitions and reset mode, and nothing any run decided.
+    /// </summary>
+    /// <remarks>
+    /// The instance records what its run resolved - the identifiers in use, the resolution summary, which emulators
+    /// an earlier run left running - and two runs sharing one instance would read and overwrite each other's. Sealed
+    /// for the same reason: a copy made here would quietly drop whatever a subclass added.
+    /// </remarks>
+    /// <returns>A fresh environment for one run.</returns>
+    public IEnvironmentProvider CreateForRun() => CloneDefinitions();
+
     internal DockerAzureEnvironment CloneDefinitions()
     {
         DockerAzureEnvironment clone = new();
 
-        // The hosted fixture clones once to bootstrap the persistent containers and again for every
-        // run. A clone that generated its own password would authenticate against the SQL Server the
-        // bootstrap started with a secret that server has never heard of.
-        clone._generatedMsSqlPassword = _generatedMsSqlPassword;
         clone._resetMode = _resetMode;
 
         foreach (DockerAzureDefinition definition in _includedDefinitions.Values)

@@ -38,7 +38,7 @@ internal sealed class MsSqlEnvComponent : DockerAzureEnvComponent
         }
 
         EnvironmentResources resources = PublishOn(context);
-        INetwork network = dockerEnvironment.GetRequiredRuntimeState<INetwork>(DockerAzureEnvironment.NetworkComponentId);
+        INetwork network = StateOf<INetwork>(context, DockerAzureEnvironment.NetworkComponentId);
         string msSqlImage = dockerEnvironment.GetMsSqlImage();
 
         // Recorded on the run because nobody stated it: the tag lives in this package's defaults, so a run
@@ -46,11 +46,15 @@ internal sealed class MsSqlEnvComponent : DockerAzureEnvComponent
         // with no diff on their side. §5's third demand, and the reason a finished run is worth handing over.
         context.EffectiveSettings.Record(ImageSource, "mssql:Image", msSqlImage);
 
+        // Generated per server rather than per environment instance: the login belongs to the container this
+        // creation starts, and it travels in this component's state to the Service Bus emulator that shares it.
+        string password = dockerEnvironment.PinnedMsSqlPassword ?? MsSqlContainerFactory.CreateMsSqlPassword();
+
         MsSqlContainer container = MsSqlContainerFactory.Create(
             new MsSqlContainerOptions
             {
                 Image = msSqlImage,
-                Password = dockerEnvironment.GetMsSqlPassword(),
+                Password = password,
                 MemoryLimitMb = dockerEnvironment.GetMsSqlMemoryLimitMb(),
                 NetworkAliases = [ServiceBusBuilder.DatabaseNetworkAlias],
             },
@@ -79,8 +83,7 @@ internal sealed class MsSqlEnvComponent : DockerAzureEnvComponent
                     connectionString);
             }
 
-            dockerEnvironment.SetRuntimeState(Id, container);
-            return container;
+            return new MsSqlRuntimeState(container, password);
         }).ConfigureAwait(false);
     }
 
@@ -88,8 +91,8 @@ internal sealed class MsSqlEnvComponent : DockerAzureEnvComponent
     {
         // The CLI route first, like every other container teardown in the family: disposing through
         // the client can leave a container behind when the daemon is busy.
-        if (state is IContainer container)
-            await ContainerDockerCommands.ForceRemoveContainerAsync(container, context.Deadline.Token).ConfigureAwait(false);
+        if (state is MsSqlRuntimeState sql)
+            await ContainerDockerCommands.ForceRemoveContainerAsync(sql.Container, context.Deadline.Token).ConfigureAwait(false);
         else if (state is IAsyncDisposable asyncDisposable)
             await asyncDisposable.DisposeAsync().ConfigureAwait(false);
     }

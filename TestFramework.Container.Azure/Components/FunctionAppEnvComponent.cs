@@ -52,7 +52,7 @@ internal sealed class FunctionAppEnvComponent(DockerAzureEnvironment owner) : Do
             return new FunctionAppComponentState([]);
 
         EnvComponentResourceGuard.EnsureSupplied(context, AzureEnvironmentResourceKinds.FunctionAppKind, dockerEnvironment.UsedFunctionAppIdentifiers, "Function App environment setup");
-        INetwork network = dockerEnvironment.GetRequiredRuntimeState<INetwork>(DockerAzureEnvironment.NetworkComponentId);
+        INetwork network = StateOf<INetwork>(context, DockerAzureEnvironment.NetworkComponentId);
         DockerEndpointMap endpointMap = dockerEnvironment.GetEndpointMap();
 
         dockerEnvironment.LogPendingResolutionSummary(context.Logger);
