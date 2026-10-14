@@ -109,9 +109,8 @@
 
 <config_model>
     Important configuration ideas:
-    - Users still provide named Azure config entries through ConfigStore<TConfig> or the normal Azure config-loading path.
-    - Those initial config entries act as logical placeholders and identifier registrations.
-    - During pre-setup, the environment replaces the placeholder connection strings with real mapped localhost endpoints from Docker.
+    - Each identifier gets its names (blob container, database, container, entity) from a configuration entry - loaded with LoadDockerAzureConfig() - or from its definition (BlobContainerName, DatabaseName, ContainerName and the like).
+    - The containers publish their addresses while they start, as run resource values that outrank any declared entry.
     - ConnectionStringGuards enforce that the rewritten values point to local Docker endpoints.
     - ServiceBus topology can be supplied fluently through ConfigureServiceBusTopology(...) or via a file path for compatibility.
     - ServiceBusConfigLocator resolves file-backed topology paths either as an absolute path or relative to AppContext.BaseDirectory.
@@ -146,34 +145,33 @@
     Keep Docker and emulator details out of the timeline body whenever the environment can model them.
     Prefer one shared service-provider builder that registers the typed config stores and Cosmos client options for emulator usage.
     Keep assertions focused on run results and environment presence, not on ad-hoc Docker plumbing.
-    For smoke tests, gate expensive end-to-end container runs behind an explicit environment variable rather than making the whole suite require Docker.
+    Docker-backed smoke tests carry [Trait("Category", "DockerSmoke")] and run with the rest of the suite; a machine without Docker leaves them out with --filter "Category!=DockerSmoke". There is no opt-in flag.
     Keep `SetupRun(...).SetEnv(DockerAzureEnvironment.For<...>()).RunAsync()` examples compact unless component-owned placeholder config is the real point of the sample.
 </style_guide>
 
 <sample_patterns>
     Minimal container-backed Azure run pattern:
-    - register ConfigStore<StorageAccountConfig>, ConfigStore<CosmosContainerDbConfig>, ConfigStore<SqlDatabaseConfig>, or ConfigStore<ServiceBusConfig>
-    - configure any required Cosmos client options for emulator TLS/gateway behavior
+    - give each identifier its names, in configuration or on its definition
+    - load configuration with ConfigInstance.Create().LoadDockerAzureConfig(), which also points the Cosmos client at the emulator
     - build the timeline
     - define named DockerAzureDefinition classes for the concrete components you need
     - let one root component declare its dependent component types
-    - call timeline.SetupRun(serviceProvider).SetEnv(DockerAzureEnvironment.For<TRootComponent>()).RunAsync()
+    - call timeline.SetupRun(config).SetEnv(DockerAzureEnvironment.For<TRootComponent>()).RunAsync()
     - assert on run completion, environment components, and relevant artifacts
 
     Service Bus emulator pattern:
-    - register ServiceBusConfig entries as normal named configs
+    - declare ServiceBus entries as normal named configuration
     - prefer ConfigureServiceBusTopology(...) on a DockerServiceBusDefinition or DockerAzureInfrastructureDefinition so the topology lives next to the definition that owns it
-    - let the environment start SQL + Service Bus emulator and rewrite the connection strings
+    - let the environment start SQL + Service Bus emulator and publish their addresses
 
     Smoke-test pattern:
     - keep the smoke test readable and end-to-end
     - assert that the expected environment components were created in EnvironmentContext
 
     Cosmos emulator pattern:
-    - register a Cosmos config store entry with identifier, database, and container
+    - name the database and container, in configuration or on the DockerCosmosDefinition
     - use a typed model whose id and partitionKey can be resolved by the shared resolver
-    - configure CosmosClientOptions for Gateway mode and emulator certificate handling when needed
-    - rely on env pre-setup to rewrite the connection string and deploy schema before the item artifact runs
+    - rely on env pre-setup to publish the emulator's address and deploy the schema before the item artifact runs
 </sample_patterns>
 
 <anti_patterns>

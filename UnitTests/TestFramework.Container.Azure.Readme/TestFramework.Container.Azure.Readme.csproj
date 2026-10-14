@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The C# samples of TestFramework.Container.Azure/README.md, compiled and never run. Each README block is a
+       #region snippet:name here; ReadmeSnippetTests holds the two to the same text. Not a test project, so a
+       sample that names a project or a stack nobody ships is checked for compiling and not started. -->
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit" Version="2.5.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\TestFramework.Container.Azure\TestFramework.Container.Azure.csproj" />
+  </ItemGroup>
+
+</Project>

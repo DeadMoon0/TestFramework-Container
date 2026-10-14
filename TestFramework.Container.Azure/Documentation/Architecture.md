@@ -20,20 +20,23 @@ Concrete definitions own their own identifier and optional dependency and contra
 
 Minimal examples:
 
+<!-- snippet: arch-definitions -->
 ```csharp
 public sealed class MainStorage : DockerStorageDefinition
 {
-	public override StorageAccountIdentifier Identifier => "MainStorage";
+    public override StorageAccountIdentifier Identifier => "MainStorage";
 }
 
 public sealed class MainDb : DockerCosmosDefinition<ProfileDocument>
 {
-	public override CosmosContainerIdentifier Identifier => "MainDb";
+    public override CosmosContainerIdentifier Identifier => "MainDb";
 }
 
 public sealed class MainBus : DockerServiceBusDefinition
 {
-	public override ServiceBusIdentifier Identifier => "ProcessingReply";
+    public override ServiceBusIdentifier Identifier => "ProcessingReply";
+
+    public DockerServiceBusEndpoint Reply => DockerServiceBusEndpoint.TopicSubscription("processing-reply", "Default");
 }
 ```
 
@@ -86,22 +89,23 @@ It no longer owns the main dependency or resource-binding story.
 
 Typical Function App definition:
 
+<!-- snippet: arch-function-app -->
 ```csharp
 public sealed class DefaultFunctionApp : DockerFunctionAppDefinition
 {
-	public override FunctionAppIdentifier Identifier => "Default";
+    public override FunctionAppIdentifier Identifier => "Default";
 
-	public override ContainerSource Source =>
-		ContainerSource.Project("../AnalysisProcessor/AnalysisProcessor.csproj").BuiltOnHost();
+    public override ContainerSource Source =>
+        ContainerSource.Project("../AnalysisProcessor/AnalysisProcessor.csproj").BuiltOnHost();
 
-	protected override void Configure(DockerFunctionAppBuilder builder)
-	{
-		builder
-			.UseStorage<MainStorage>()
-			.UseCosmos<MainDb>()
-			.UseServiceBusReply<MainBus>(bus => bus.Reply)
-			.WithAppSetting("FeatureFlags__VerboseStartup", "true");
-	}
+    protected override void Configure(DockerFunctionAppBuilder builder)
+    {
+        builder
+            .UseStorage<MainStorage>()
+            .UseCosmos<MainDb>()
+            .UseServiceBusReply<MainBus>(bus => bus.Reply)
+            .WithAppSetting("FeatureFlags__VerboseStartup", "true");
+    }
 }
 ```
 
@@ -155,45 +159,46 @@ This prevents two common failures:
 
 Provider and consumer example:
 
+<!-- snippet: arch-contracts -->
 ```csharp
 public sealed class ReplyBus : DockerServiceBusDefinition
 {
-	public override ServiceBusIdentifier Identifier => "bus";
+    public override ServiceBusIdentifier Identifier => "bus";
 
-	protected override void ConfigureContracts(DockerAzureContractBuilder contracts)
-	{
-		contracts.Provide(new ServiceBusEndpointContract
-		{
-			ContractKey = "reply",
-			ServiceBusIdentifier = Identifier,
-			EndpointKind = ServiceBusEndpointKind.Queue,
-			EntityName = "processing-reply",
-		});
-	}
+    protected override void ConfigureContracts(DockerAzureContractBuilder contracts)
+    {
+        contracts.Provide(new ServiceBusEndpointContract
+        {
+            ContractKey = "reply",
+            ServiceBusIdentifier = Identifier,
+            EndpointKind = ServiceBusEndpointKind.Queue,
+            EntityName = "processing-reply",
+        });
+    }
 }
 
 public sealed class ReplyConsumer : DockerFunctionAppDefinition
 {
-	public override FunctionAppIdentifier Identifier => "func";
+    public override FunctionAppIdentifier Identifier => "func";
 
-	public override ContainerSource Source =>
-		ContainerSource.Project("../ReplyFunctions/ReplyFunctions.csproj").BuiltOnHost();
+    public override ContainerSource Source =>
+        ContainerSource.Project("../ReplyFunctions/ReplyFunctions.csproj").BuiltOnHost();
 
-	protected override void ConfigureDependencies(DockerAzureDependencyBuilder dependencies)
-	{
-		dependencies.Include<ReplyBus>();
-	}
+    protected override void ConfigureDependencies(DockerAzureDependencyBuilder dependencies)
+    {
+        dependencies.Include<ReplyBus>();
+    }
 
-	protected override void ConfigureContracts(DockerAzureContractBuilder contracts)
-	{
-		contracts.Require(new ServiceBusEndpointContract
-		{
-			ContractKey = "reply",
-			ServiceBusIdentifier = "bus",
-			EndpointKind = ServiceBusEndpointKind.Queue,
-			EntityName = "processing-reply",
-		});
-	}
+    protected override void ConfigureContracts(DockerAzureContractBuilder contracts)
+    {
+        contracts.Require(new ServiceBusEndpointContract
+        {
+            ContractKey = "reply",
+            ServiceBusIdentifier = "bus",
+            EndpointKind = ServiceBusEndpointKind.Queue,
+            EntityName = "processing-reply",
+        });
+    }
 }
 ```
 
@@ -278,17 +283,18 @@ This keeps the public model predictable and avoids hidden include-time activatio
 
 End-to-end composition example:
 
+<!-- snippet: arch-composition -->
 ```csharp
 DockerAzureEnvironment environment = new DockerAzureEnvironment()
-	.Include<MainStorage>()
-	.Include<MainDb>()
-	.Include<MainBus>()
-	.Include<DefaultFunctionApp>();
+    .Include<MainStorage>()
+    .Include<MainDb>()
+    .Include<MainBus>()
+    .Include<DefaultFunctionApp>();
 
 TimelineRun run = await timeline
-	.SetupRun(serviceProvider)
-	.SetEnv(DockerAzureEnvironment.For<DefaultFunctionApp>())
-	.RunAsync();
+    .SetupRun(config)
+    .SetEnv(environment)
+    .RunAsync();
 ```
 
 The important distinction is that `Include<TDefinition>()` makes definitions available, while `For<DefaultFunctionApp>()` gives the environment a concrete root from which activation can expand.

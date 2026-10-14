@@ -35,8 +35,6 @@ using System.Threading.Tasks;
 using Xunit;
 namespace TestFramework.Container.Azure.Tests;
 
-// README sync note: the README golden sample is backed by the smoke test below.
-// If you update that sample path or assertions, update the corresponding README sample as well.
 [Collection(DockerAzureSmokeCollectionDefinition.CollectionName)]
 public class DockerAzureEnvironmentSmokeTests
 {
@@ -47,11 +45,6 @@ public class DockerAzureEnvironmentSmokeTests
     public DockerAzureEnvironmentSmokeTests(DockerAzureSmokeCollectionFixture fixture)
     {
         _fixture = fixture;
-    }
-
-    internal sealed class ReadmeCosmosDefinition : DockerCosmosDefinition<SmokeTableEntity>
-    {
-        public override CosmosContainerIdentifier Identifier => "cosmos";
     }
 
     internal sealed class SmokeStorageDefinition : DockerStorageDefinition
@@ -143,20 +136,6 @@ public class DockerAzureEnvironmentSmokeTests
             .AddQueue("default-queue")
             .AddTopic("smoke-trigger-topic", topic => topic.AddSubscription("smoke-trigger-subscription"))
             .AddTopic("smoke-reply-topic", topic => topic.AddSubscription("smoke-reply-default")));
-    }
-
-    [Fact]
-    [Trait("Category", "DockerSmoke")]
-    public async Task PackageReadme_GoldenSample_RunsAgainstContainerBackedCosmos_WhenSmokeEnabled()
-    {
-        Timeline timeline = Timeline.Create()
-            .Trigger(AzureExt.Trigger.IsLive.Cosmos("cosmos", AlivenessLevel.Authenticated)).WithTimeOut(TimeSpan.FromMinutes(2))
-            .Build();
-
-        TimelineRun run = await timeline.SetupRun().SetEnv(_fixture.GetEnv()).RunAsync();
-
-        run.EnsureRanToCompletion();
-        Assert.True(run.EnvironmentContext.Contains(DockerAzureEnvironment.CosmosDbComponentId));
     }
 
     [Fact]

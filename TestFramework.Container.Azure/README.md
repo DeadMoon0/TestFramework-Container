@@ -11,7 +11,7 @@ Use it when you want to keep the normal `TestFramework.Azure` timeline shape, bu
 Choose the entry path that matches how much infrastructure shape you already know.
 
 1. Existing Azure timeline, explicit component graph: use `DockerAzureEnvironment.For<TRootDefinition>()`.
-2. One local Function App plus common bindings: use the additive helpers such as `ForFunctionApp<TFunctionApp>(...)`, `ForFunctionAppWithStorage<...>(...)`, `ForFunctionAppWithStorageAndServiceBus<...>(...)`, or `ForFunctionAppWithCommonBindings<...>(...)`.
+2. One local Function App plus common bindings: use the additive helpers `ForFunctionApp(identifier, source)`, `ForFunctionAppWithStorage<TStorage>(...)`, `ForFunctionAppWithStorageAndCosmos<...>(...)`, `ForFunctionAppWithStorageAndServiceBus<...>(...)` or `ForFunctionAppWithCommonBindings<...>(...)`.
 3. Live Azure resources or Logic Apps: stay on the `TestFramework.Azure` path; Docker/bootstrap is intentionally a Container concern.
 
 ## Install
@@ -39,11 +39,9 @@ Logic Apps are not supported in the Docker container package. Keep Logic App tes
 ## Prerequisites
 
 - Docker Desktop or another compatible Docker engine must be running
-- the test project must register the Azure identifiers that the timeline uses
+- every identifier the timeline uses needs its names - which blob container, which database - from a configuration entry or from its definition (`BlobContainerName`, `DatabaseName` and the like); the addresses come from the containers
 - Service Bus scenarios need a valid topology, preferably through `ConfigureServiceBusTopology(...)`
-- Cosmos scenarios often need emulator-specific client options such as certificate bypass
-
-The packaged file `example.local.testsettings.json` shows the expected placeholder shape for `StorageAccount`, `CosmosDb`, `ServiceBus`, and `SqlDatabase` sections. Those values are logical placeholders that `DockerAzureEnvironment` rewrites to mapped Docker endpoints during the run.
+- configuration is loaded with `LoadDockerAzureConfig()`, which also points the Cosmos client at the emulator and accepts its development certificate
 
 ## Migrate An Existing Azure Timeline
 
@@ -51,87 +49,75 @@ If you already have a timeline that runs against real Azure, the migration path 
 
 1. Keep the timeline itself unchanged.
 2. Keep the same Azure identifier names in your config stores.
-3. Register placeholder config values for those identifiers.
-4. Add emulator-specific client options where required, especially Cosmos certificate bypass.
+3. Give each identifier its names, in configuration or on its definition; the containers publish the addresses.
+4. Load configuration with `LoadDockerAzureConfig()` in place of `LoadAzureConfig()`.
 5. Switch the run builder to `SetEnv(DockerAzureEnvironment.For<TRootDefinition>())`.
 
 In the normal case, the only runtime change is the `SetEnv(...)` call plus the definition class that describes the emulator-backed component graph.
 
-Cosmos is the main exception worth calling out explicitly: the emulator uses a development certificate, so tests usually need a `CosmosClientOptions` override with `DangerousAcceptAnyServerCertificateValidator`.
+Cosmos is why step 4 matters: the emulator serves a development certificate, and `LoadDockerAzureConfig()` is what accepts it. A run that loads plain `LoadAzureConfig()` fails at its first Cosmos call.
 
 ## Quick Function App Fast Path
 
 When you do not need a reusable multi-component graph yet, start with the helper that matches the bindings your Function App actually uses.
 
+<!-- snippet: fast-path -->
 ```csharp
 TimelineRun run = await timeline
-	.SetupRun(serviceProvider)
-	.SetEnv(DockerAzureEnvironment.ForFunctionAppWithStorageAndServiceBus<MyFunctionApp, MainStorage, MainBus>("Default"))
-	.RunAsync();
+    .SetupRun(config)
+    .SetEnv(DockerAzureEnvironment.ForFunctionAppWithStorageAndServiceBus<MainStorage, SharedMessaging>(
+        "Default",
+        ContainerSource.Project("../Processor/Processor.csproj").BuiltOnHost(),
+        bus => bus.Incoming,
+        bus => bus.Reply))
+    .RunAsync();
 ```
 
 Use the full definition model when you need shared stacks, explicit contracts, or reusable composition across many tests. Use the helper entrypoints when you just need a working local Function App path first.
 
 ## Golden Sample
 
+<!-- snippet: golden-sample -->
 ```csharp
-using Microsoft.Azure.Cosmos;
-using Microsoft.Extensions.DependencyInjection;
 using TestFramework.Azure;
-using TestFramework.Azure.Configuration;
-using TestFramework.Azure.Configuration.SpecificConfigs;
 using TestFramework.Azure.Extensions;
+using TestFramework.Azure.Identifier;
+using TestFramework.Config;
 using TestFramework.Container.Azure;
 using TestFramework.Core.Timelines;
-using TestFramework.Core.Timelines.Assertions;
 using Xunit;
 
 public class ContainerAzureSample
 {
-	private sealed class SampleCosmos : DockerCosmosDefinition<SampleDocument>
-	{
-		public override CosmosContainerIdentifier Identifier => "cosmos";
-	}
+    private sealed class OrdersStorage : DockerStorageDefinition
+    {
+        public override StorageAccountIdentifier Identifier => "orders";
 
-	private sealed record SampleDocument(string Id, string PartitionKey);
+        // The definition names its blob container, so the run needs no configuration entry for it.
+        protected override string? BlobContainerName => "incoming";
+    }
 
-	private static readonly Timeline _timeline = Timeline.Create()
-		.Trigger(AzureExt.Trigger.IsLive.Cosmos("cosmos", AlivenessLevel.Authenticated)).WithTimeOut(TimeSpan.FromMinutes(2))
-		.Build();
+    [Fact]
+    public async Task Timeline_runs_against_an_emulated_storage_account()
+    {
+        Timeline timeline = Timeline.Create()
+            .Trigger(AzureExt.Trigger.IsLive.Blob("orders", AlivenessLevel.Authenticated))
+            .Build();
 
-	[Fact]
-	public async Task Timeline_runs_against_container_backed_azure_services()
-	{
-		ServiceProvider serviceProvider = new ServiceCollection()
-			.AddSingleton(ConfigStore<CosmosContainerDbConfig>.Create("cosmos", new CosmosContainerDbConfig
-			{
-				ConnectionString = "AccountEndpoint=https://localhost:8081/;AccountKey=C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==;",
-				DatabaseName = "sample-db",
-				ContainerName = "sample-container",
-			}))
-			.ConfigureCosmosClientOptions(_ => new CosmosClientOptions
-			{
-				HttpClientFactory = () => new HttpClient(new HttpClientHandler
-				{
-					ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator,
-				}),
-			})
-			.BuildServiceProvider();
+        TimelineRun run = await timeline
+            .SetupRun(ConfigInstance.Create().LoadDockerAzureConfig().Build())
+            .SetEnv(DockerAzureEnvironment.For<OrdersStorage>())
+            .RunAsync();
 
-		TimelineRun run = await _timeline
-			.SetupRun(serviceProvider)
-			.SetEnv(DockerAzureEnvironment.For<SampleCosmos>())
-			.RunAsync();
-
-		run.EnsureRanToCompletion();
-		run.Should().NotHaveLoggedAnyErrors();
-		Assert.True(run.EnvironmentContext.Contains(DockerAzureEnvironment.CosmosDbComponentId));
-	}
+        run.EnsureRanToCompletion();
+        Assert.True(run.EnvironmentContext.Contains(DockerAzureEnvironment.AzuriteComponentId));
+    }
 }
 ```
 
 Why this is the default shape:
 - the timeline stays consumer-first and looks like a normal Azure test
+- the definition names its blob container, so the run needs no configuration entry; Azurite starts in seconds
 - `SetEnv(DockerAzureEnvironment.For<...>())` makes the root component explicit, while dependent components stay with the component type that needs them
 - assertions focus on the run result and the created environment components
 
@@ -148,136 +134,128 @@ The current public model is single-source-of-truth based:
 - Function App definitions own their resource bindings
 - `Include<TDefinition>()` makes a definition available, but does not mark it as used on its own
 
+<!-- snippet: composition -->
 ```csharp
-using FunctionApp;
-using TestFramework.Container.Azure;
-
 public sealed class MainStorage : DockerStorageDefinition
 {
-	public override StorageAccountIdentifier Identifier => "MainStorage";
+    public override StorageAccountIdentifier Identifier => "MainStorage";
+
+    protected override string? BlobContainerName => "uploads";
 }
 
 public sealed class MainDb : DockerCosmosDefinition<SampleDocument>
 {
-	public override CosmosContainerIdentifier Identifier => "MainDb";
+    public override CosmosContainerIdentifier Identifier => "MainDb";
+
+    protected override string? DatabaseName => "AppDb";
+
+    protected override string? ContainerName => "Documents";
 }
 
 public sealed class ProcessingReply : DockerServiceBusDefinition
 {
-	public override ServiceBusIdentifier Identifier => "ProcessingReply";
+    public override ServiceBusIdentifier Identifier => "ProcessingReply";
 
-	public DockerServiceBusEndpoint Reply
-		=> DockerServiceBusEndpoint.TopicSubscription("processing-reply", "Default");
+    public DockerServiceBusEndpoint Reply
+        => DockerServiceBusEndpoint.TopicSubscription("processing-reply", "Default");
 
-	protected override void ConfigureServiceBusTopology(DockerServiceBusTopologyBuilder builder)
-	{
-		builder.AddNamespace("sbemulatorns", ns => ns
-			.AddTopic("processing-reply", topic => topic.AddSubscription("Default")));
-	}
+    protected override void ConfigureServiceBusTopology(DockerServiceBusTopologyBuilder builder)
+    {
+        builder.AddNamespace("sbemulatorns", ns => ns
+            .AddTopic("processing-reply", topic => topic.AddSubscription("Default")));
+    }
 }
 
 public sealed class DefaultFunctionApp : DockerFunctionAppDefinition
 {
-	public override FunctionAppIdentifier Identifier => "Default";
+    public override FunctionAppIdentifier Identifier => "Default";
 
-	// The payload is mounted into the Functions host, so a project source publishes on the host.
-	public override ContainerSource Source =>
-		ContainerSource.Project("../AnalysisProcessor/AnalysisProcessor.csproj").BuiltOnHost();
+    // The payload is mounted into the Functions host, so a project source publishes on the host.
+    public override ContainerSource Source =>
+        ContainerSource.Project("../AnalysisProcessor/AnalysisProcessor.csproj").BuiltOnHost();
 
-	protected override void Configure(DockerFunctionAppBuilder builder)
-	{
-		builder
-			.UseStorage<MainStorage>()
-			.UseCosmos<MainDb>()
-			.UseServiceBusReply<ProcessingReply>(bus => bus.Reply);
-	}
+    protected override void Configure(DockerFunctionAppBuilder builder)
+    {
+        builder
+            .UseStorage<MainStorage>()
+            .UseCosmos<MainDb>()
+            .UseServiceBusReply<ProcessingReply>(bus => bus.Reply);
+    }
 }
 
 TimelineRun run = await timeline
-	.SetupRun(serviceProvider)
-	.SetEnv(DockerAzureEnvironment.For<DefaultFunctionApp>())
-	.RunAsync();
+    .SetupRun(config)
+    .SetEnv(DockerAzureEnvironment.For<DefaultFunctionApp>())
+    .RunAsync();
 ```
 
 In that example, including `DefaultFunctionApp` is enough because its `Configure(...)` method already declares `MainStorage`, `MainDb`, and `ProcessingReply` by component type.
 The component types are the contract: identifier, dependency graph, and, when useful for a shared setup, the default config they own before the environment rewrites runtime endpoints.
 
-`.UseStorage<TStorage>()` now injects `StorageTableName` by default when the storage config defines `TableContainerName`.
-Override `tableNameSettingName` when your Function App uses a different setting name, or pass `null` to suppress table-name injection entirely.
+`.UseStorage<TStorage>()` injects `StorageTableName` by default when the storage config defines `TableContainerName`.
+Pass a `FunctionAppStorageBinding` when your Function App reads a different setting name, or set `TableNameSettingName` to `null` to inject none:
+
+<!-- snippet: storage-binding -->
+```csharp
+builder.UseStorage<OrdersStorage>(new FunctionAppStorageBinding
+{
+    TableNameSettingName = "OrdersTable",
+});
+```
 
 At runtime, the Function App definition is compiled into a descriptor that carries:
 - launch metadata such as image and extra app settings
 - dependency edges for graph validation and activation
 - resource bindings used to derive the actual app settings inside the Function App container
 
-Shared test stacks often keep that default config on the definition itself. A showroom-style helper can look like this:
-
-```csharp
-private abstract class SharedCosmosDefinition<TDocument> : DockerCosmosDefinition<TDocument>
-{
-	protected sealed override CosmosContainerDbConfig? CreateDefaultConfig() => CreateConfig();
-
-	protected abstract CosmosContainerDbConfig CreateConfig();
-}
-
-private sealed class MainDb : SharedCosmosDefinition<SampleDocument>
-{
-	public override CosmosContainerIdentifier Identifier => "MainDb";
-
-	protected override CosmosContainerDbConfig CreateConfig() => new()
-	{
-		ConnectionString = "AccountEndpoint=https://localhost:8081/...",
-		DatabaseName = "BaseDb",
-		ContainerName = "Profiles",
-	};
-}
-```
-
-That keeps the identifier, model shape, and default config together in one type instead of splitting them across unrelated helper fields or manual DI registration.
+A definition names its own resources - `BlobContainerName`, `TableContainerName` and `QueueContainerName` on a
+storage definition, `DatabaseName` and `ContainerName` on a Cosmos one - so a shared stack needs no configuration
+entries for them. A configuration entry for the same identifier still wins: a default is for what nobody wrote down.
 
 ## Contracts And Explicit Reuse
 
 Contracts are the preferred mechanism when a consumer should bind to one compatible provider rather than to "whatever happened to be included".
 
+<!-- snippet: contracts -->
 ```csharp
 public sealed class ReplyBus : DockerServiceBusDefinition
 {
-	public override ServiceBusIdentifier Identifier => "bus";
+    public override ServiceBusIdentifier Identifier => "bus";
 
-	protected override void ConfigureContracts(DockerAzureContractBuilder contracts)
-	{
-		contracts.Provide(new ServiceBusEndpointContract
-		{
-			ContractKey = "reply",
-			ServiceBusIdentifier = Identifier,
-			EndpointKind = ServiceBusEndpointKind.Queue,
-			EntityName = "processing-reply",
-		});
-	}
+    protected override void ConfigureContracts(DockerAzureContractBuilder contracts)
+    {
+        contracts.Provide(new ServiceBusEndpointContract
+        {
+            ContractKey = "reply",
+            ServiceBusIdentifier = Identifier,
+            EndpointKind = ServiceBusEndpointKind.Queue,
+            EntityName = "processing-reply",
+        });
+    }
 }
 
 public sealed class ReplyConsumerFunctionApp : DockerFunctionAppDefinition
 {
-	public override FunctionAppIdentifier Identifier => "func";
+    public override FunctionAppIdentifier Identifier => "func";
 
-	public override ContainerSource Source =>
-		ContainerSource.Project("../ReplyConsumer/ReplyConsumer.csproj").BuiltOnHost();
+    public override ContainerSource Source =>
+        ContainerSource.Project("../ReplyConsumer/ReplyConsumer.csproj").BuiltOnHost();
 
-	protected override void ConfigureDependencies(DockerAzureDependencyBuilder dependencies)
-	{
-		dependencies.Include<ReplyBus>();
-	}
+    protected override void ConfigureDependencies(DockerAzureDependencyBuilder dependencies)
+    {
+        dependencies.Include<ReplyBus>();
+    }
 
-	protected override void ConfigureContracts(DockerAzureContractBuilder contracts)
-	{
-		contracts.Require(new ServiceBusEndpointContract
-		{
-			ContractKey = "reply",
-			ServiceBusIdentifier = "bus",
-			EndpointKind = ServiceBusEndpointKind.Queue,
-			EntityName = "processing-reply",
-		});
-	}
+    protected override void ConfigureContracts(DockerAzureContractBuilder contracts)
+    {
+        contracts.Require(new ServiceBusEndpointContract
+        {
+            ContractKey = "reply",
+            ServiceBusIdentifier = "bus",
+            EndpointKind = ServiceBusEndpointKind.Queue,
+            EntityName = "processing-reply",
+        });
+    }
 }
 ```
 
@@ -287,16 +265,17 @@ Contract binding happens before runtime startup, so ambiguous or missing provide
 
 The preferred pattern is to describe Service Bus emulator topology fluently on the definition that owns it:
 
+<!-- snippet: topology -->
 ```csharp
 public sealed class ProcessingReply : DockerServiceBusDefinition
 {
-	public override ServiceBusIdentifier Identifier => "ProcessingReply";
+    public override ServiceBusIdentifier Identifier => "ProcessingReply";
 
-	protected override void ConfigureServiceBusTopology(DockerServiceBusTopologyBuilder builder)
-	{
-		builder.AddNamespace("sbemulatorns", ns => ns
-			.AddTopic("processing-reply", topic => topic.AddSubscription("Default")));
-	}
+    protected override void ConfigureServiceBusTopology(DockerServiceBusTopologyBuilder builder)
+    {
+        builder.AddNamespace("sbemulatorns", ns => ns
+            .AddTopic("processing-reply", topic => topic.AddSubscription("Default")));
+    }
 }
 ```
 
@@ -304,6 +283,7 @@ Use this when you want the sample to stay self-contained and the topology to liv
 
 Function App bindings now select explicit endpoints from the Service Bus definition, for example:
 
+<!-- snippet: endpoint-selection -->
 ```csharp
 builder.UseServiceBusTrigger<SharedMessaging>(bus => bus.Incoming);
 builder.UseServiceBusReply<SharedMessaging>(bus => bus.Reply);
@@ -317,8 +297,6 @@ External JSON files are still supported for compatibility through `TopologyConfi
 
 - If a definition is included but no container starts for it, verify the timeline requirements or dependent definitions actually activate it.
 - If graph validation fails, debug the definition graph first and the timeline second.
-- If a Function App host cannot be resolved under referenced build output, the current resolution order prefers the owning project directory and then checks the matching `bin/<Configuration>/net8.0` output. Build the owning Function App project before assuming the timeline binding is wrong.
-- If that fallback path is used, the environment now logs an explicit warning that includes the copied assembly output path and the owning-project output path it selected instead.
 - If you are choosing between the local-only, Docker-backed, and live Azure paths, decide once per suite rather than per test, and decide on what the test needs to prove. A test about your own code's logic belongs on the local path, where nothing is started and a run costs milliseconds. A test about how your code behaves against a real storage account, Cosmos container, queue or SQL database belongs here, where the emulators behave like the service without the account. A test about configuration, identity or a service feature no emulator implements belongs on the live path with `TestFramework.Azure` against a real subscription. Mixing the three mental models inside one suite is what makes container tests feel slow and live tests feel flaky.
 
 ### Housekeeping
@@ -340,21 +318,26 @@ README for the exact set of labels and names it touches.
 
 Use one fluent topology when a sample or shared stack needs multiple entities at once:
 
+<!-- snippet: queue-topic-subscription -->
 ```csharp
 public sealed class SharedMessaging : DockerServiceBusDefinition
 {
-	public override ServiceBusIdentifier Identifier => "messaging";
+    public override ServiceBusIdentifier Identifier => "messaging";
 
-	protected override void ConfigureServiceBusTopology(DockerServiceBusTopologyBuilder builder)
-	{
-		builder.AddNamespace("sbemulatorns", ns => ns
-			.AddQueue("audit-trail")
-			.AddTopic("orders", topic => topic
-				.AddSubscription("processor")
-				.AddSubscription("dead-letter-review"))
-			.AddTopic("orders-reply", topic => topic
-				.AddSubscription("default")));
-	}
+    public DockerServiceBusEndpoint Incoming => DockerServiceBusEndpoint.TopicSubscription("orders", "processor");
+
+    public DockerServiceBusEndpoint Reply => DockerServiceBusEndpoint.TopicSubscription("orders-reply", "default");
+
+    protected override void ConfigureServiceBusTopology(DockerServiceBusTopologyBuilder builder)
+    {
+        builder.AddNamespace("sbemulatorns", ns => ns
+            .AddQueue("audit-trail")
+            .AddTopic("orders", topic => topic
+                .AddSubscription("processor")
+                .AddSubscription("dead-letter-review"))
+            .AddTopic("orders-reply", topic => topic
+                .AddSubscription("default")));
+    }
 }
 ```
 
@@ -365,8 +348,8 @@ Practical rule of thumb:
 
 ## Typical Pattern
 
-1. Register the Azure config stores that your timeline identifiers use, either directly in the test project or through shared component-owned registration helpers.
-2. Configure emulator-specific client options where needed.
+1. Give the identifiers your timeline uses their names, in configuration or on their definitions.
+2. Load configuration with `LoadDockerAzureConfig()`.
 3. Build the timeline the same way you would for a normal Azure test.
 4. Add the root definition through `DockerAzureEnvironment.For<TRootDefinition>()` and chain `.Include<TDefinition>()` only when you need extra available definitions such as infrastructure overrides.
 5. Let artifacts, environment requirements, dependency traversal, and contract bindings decide which concrete resources activate for the run.
@@ -379,36 +362,38 @@ When a suite grows and repeated container startup becomes the bottleneck, switch
 
 The package already exposes that path through `DockerAzureHostedCollectionFixture<TState>`:
 
+<!-- snippet: hosted-fixture -->
 ```csharp
 using TestFramework.Azure;
-using TestFramework.Azure.Configuration;
-using TestFramework.Azure.Configuration.SpecificConfigs;
+using TestFramework.Azure.Extensions;
+using TestFramework.Config;
 using TestFramework.Container.Azure;
 using TestFramework.Core.Environment;
+using TestFramework.Core.Timelines;
 using Xunit;
 
 [CollectionDefinition(CollectionName, DisableParallelization = true)]
 public sealed class DockerAzureHostedCollectionDefinition : ICollectionFixture<DockerAzureHostedFixture>
 {
-	public const string CollectionName = "DockerAzureHosted";
+    public const string CollectionName = "DockerAzureHosted";
 }
 
 public sealed class DockerAzureHostedFixtureState : IDockerAzureHostedFixtureState
 {
-	public IReadOnlyList<EnvironmentRequirement> PersistentRequirements =>
-	[
-		new(AzureEnvironmentResourceKinds.Storage, "storage"),
-		new(AzureEnvironmentResourceKinds.Cosmos, "cosmos"),
-		new(AzureEnvironmentResourceKinds.FunctionApp, "func"),
-	];
+    public IReadOnlyList<EnvironmentRequirement> PersistentRequirements =>
+    [
+        new(AzureEnvironmentResourceKinds.Storage, "MainStorage"),
+        new(AzureEnvironmentResourceKinds.Cosmos, "MainDb"),
+        new(AzureEnvironmentResourceKinds.FunctionApp, "Default"),
+    ];
 
-	public DockerAzureEnvironment CreateEnvironment()
-		=> DockerAzureEnvironment
-			.For<DefaultFunctionApp>()
-			.Include<CustomInfrastructure>();
+    public DockerAzureEnvironment CreateEnvironment()
+        => DockerAzureEnvironment
+            .For<DefaultFunctionApp>()
+            .Include<CustomInfrastructure>();
 
-	public ConfigInstance CreatePersistentConfig()
-		=> BuildPersistentConfig();
+    public ConfigInstance CreatePersistentConfig()
+        => ConfigInstance.Create().LoadDockerAzureConfig().Build();
 }
 
 // The base class does not implement IAsyncLifetime; you add it. That keeps xunit out of the package's
@@ -418,16 +403,20 @@ public sealed class DockerAzureHostedFixture : DockerAzureHostedCollectionFixtur
 [Collection(DockerAzureHostedCollectionDefinition.CollectionName)]
 public sealed class HostedSuite(DockerAzureHostedFixture fixture)
 {
-	[Fact]
-	public async Task Uses_a_fresh_run_environment_on_top_of_one_persistent_stack()
-	{
-		TimelineRun run = await timeline
-			.SetupRun()
-			.SetEnv(fixture.GetEnv())
-			.RunAsync();
+    [Fact]
+    public async Task Uses_a_fresh_run_environment_on_top_of_one_persistent_stack()
+    {
+        Timeline timeline = Timeline.Create()
+            .Trigger(AzureExt.Trigger.IsLive.Blob("MainStorage", AlivenessLevel.Authenticated))
+            .Build();
 
-		run.EnsureRanToCompletion();
-	}
+        TimelineRun run = await timeline
+            .SetupRun()
+            .SetEnv(fixture.GetEnv())
+            .RunAsync();
+
+        run.EnsureRanToCompletion();
+    }
 }
 ```
 
@@ -439,11 +428,12 @@ a build error. `InitializeAsync` and `DisposeAsync` are still there with the v2 
 the interface implicitly, and a v3 consumer can now write the adapter that the hard binding used to make
 impossible:
 
+<!-- snippet: xunit-v3-adapter -->
 ```csharp
 public sealed class DockerAzureHostedFixture : DockerAzureHostedCollectionFixture<DockerAzureHostedFixtureState>, IAsyncLifetime
 {
-	ValueTask IAsyncLifetime.InitializeAsync() => new(InitializeAsync());
-	ValueTask IAsyncDisposable.DisposeAsync() => new(DisposeAsync());
+    ValueTask IAsyncLifetime.InitializeAsync() => new(InitializeAsync());
+    ValueTask IAsyncDisposable.DisposeAsync() => new(DisposeAsync());
 }
 ```
 
@@ -487,11 +477,12 @@ to. If you see that, either give Docker more memory or turn the reset off for th
 Turn it off with `UseResetMode` when a suite deliberately builds state across runs, or when the Cosmos
 purge is too heavy for the machine:
 
+<!-- snippet: no-reset -->
 ```csharp
 public DockerAzureEnvironment CreateEnvironment()
-	=> DockerAzureEnvironment
-		.For<DefaultFunctionApp>()
-		.UseResetMode(AzureResetMode.None);
+    => DockerAzureEnvironment
+        .For<DefaultFunctionApp>()
+        .UseResetMode(AzureResetMode.None);
 ```
 
 Keep `DisableParallelization = true` on the collection definition, as the example above has it. Two runs
@@ -509,32 +500,33 @@ own compose templates use `latest` for it. A pull can therefore change either em
 with nothing in the repository to show for it. Pin them here, by tag or by digest, when a run has to be
 reproducible over time.
 
-`MsSqlPassword` is the only one you can safely leave alone: without it the environment generates a
-password per instance, and ports are published on `127.0.0.1` when the daemon is local, so nothing on
+`MsSqlPassword` is the only one you can safely leave alone: without it each SQL Server container generates
+its own password, and ports are published on `127.0.0.1` when the daemon is local, so nothing on
 the network can reach the running server. Override it only when something outside the run has to log
 in with a password you already know.
 
+<!-- snippet: infrastructure -->
 ```csharp
 public sealed class CustomInfrastructure : DockerAzureInfrastructureDefinition
 {
-	public override string? AzuriteImage => "mcr.microsoft.com/azure-storage/azurite:3.35.0";
-	public override string? CosmosDbImage => "mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview";
-	public override string? MsSqlImage => "mcr.microsoft.com/mssql/server:2022-CU14-ubuntu-22.04";
-	public override string? ServiceBusImage => "mcr.microsoft.com/azure-messaging/servicebus-emulator:latest";
-	public override string? MsSqlPassword => "Your_Own_Password1!";
+    public override string? AzuriteImage => "mcr.microsoft.com/azure-storage/azurite:3.35.0";
+    public override string? CosmosDbImage => "mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview";
+    public override string? MsSqlImage => "mcr.microsoft.com/mssql/server:2022-CU14-ubuntu-22.04";
+    public override string? ServiceBusImage => "mcr.microsoft.com/azure-messaging/servicebus-emulator:latest";
+    public override string? MsSqlPassword => "Your_Own_Password1!";
 
-	protected override void ConfigureServiceBusTopology(DockerServiceBusTopologyBuilder builder)
-	{
-		builder.AddNamespace("sbemulatorns", ns => ns
-			.AddQueue("processing-input")
-			.AddTopic("processing-reply", topic => topic.AddSubscription("Default")));
-	}
+    protected override void ConfigureServiceBusTopology(DockerServiceBusTopologyBuilder builder)
+    {
+        builder.AddNamespace("sbemulatorns", ns => ns
+            .AddQueue("processing-input")
+            .AddTopic("processing-reply", topic => topic.AddSubscription("Default")));
+    }
 }
 
 TimelineRun run = await timeline
-	.SetupRun(serviceProvider)
-	.SetEnv(DockerAzureEnvironment.For<DefaultFunctionApp>().Include<CustomInfrastructure>())
-	.RunAsync();
+    .SetupRun(config)
+    .SetEnv(DockerAzureEnvironment.For<DefaultFunctionApp>().Include<CustomInfrastructure>())
+    .RunAsync();
 ```
 
 Typical cases:
@@ -544,17 +536,18 @@ Typical cases:
 
 You can still keep using a JSON file when you want an external emulator config, but all new samples should prefer the fluent builder:
 
+<!-- snippet: orders-bus -->
 ```csharp
 public sealed class OrdersBus : DockerServiceBusDefinition
 {
-	public override ServiceBusIdentifier Identifier => "orders-bus";
+    public override ServiceBusIdentifier Identifier => "orders-bus";
 
-	protected override void ConfigureServiceBusTopology(DockerServiceBusTopologyBuilder builder)
-	{
-		builder.AddNamespace("sbemulatorns", ns => ns
-			.AddTopic("orders", topic => topic.AddSubscription("processor"))
-			.AddTopic("orders-reply", topic => topic.AddSubscription("default")));
-	}
+    protected override void ConfigureServiceBusTopology(DockerServiceBusTopologyBuilder builder)
+    {
+        builder.AddNamespace("sbemulatorns", ns => ns
+            .AddTopic("orders", topic => topic.AddSubscription("processor"))
+            .AddTopic("orders-reply", topic => topic.AddSubscription("default")));
+    }
 }
 ```
 
