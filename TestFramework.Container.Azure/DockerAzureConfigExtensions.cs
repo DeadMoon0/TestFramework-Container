@@ -21,15 +21,7 @@ public static class DockerAzureConfigExtensions
 
     public static IServiceCollection ConfigureDockerAzureCosmosEmulator(this IServiceCollection services)
     {
-        services.ConfigureCosmosClientOptions(_ => new CosmosClientOptions
-        {
-            ConnectionMode = ConnectionMode.Gateway,
-            LimitToEndpoint = true,
-            HttpClientFactory = static () => new HttpClient(new HttpClientHandler
-            {
-                ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator,
-            }),
-        });
+        services.ConfigureCosmosClientOptions(_ => CosmosEmulator.ClientOptions());
 
         return services;
     }

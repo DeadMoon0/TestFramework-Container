@@ -69,25 +69,8 @@ internal sealed class CosmosDbEnvComponent : DockerAzureEnvComponent
             string connectionString = dockerEnvironment.GetEndpointMap().CreateCosmosConnectionString(container);
             ConnectionStringGuards.EnsureCosmos(connectionString);
 
-            using CosmosClient client = new(connectionString, new CosmosClientOptions
-            {
-                ConnectionMode = ConnectionMode.Gateway,
-                // The emulator advertises its own endpoint, and on a user-defined Docker network that
-                // is its network alias -- a name only other containers can resolve. Left to discover
-                // endpoints, the SDK switches to that one and every data-plane call then retries until
-                // it gives up: measured at six minutes on one run and thirty-seven on another, always
-                // ending in a failure, because the wait is retry backoff rather than work. Pinning the
-                // client to the endpoint it was handed takes the same call to under a second.
-                //
-                // ConfigureDockerAzureCosmosEmulator already does this for the client steps use, which
-                // is why a liveness probe answers instantly while this one did not.
-                LimitToEndpoint = true,
-                HttpClientFactory = () => new HttpClient(new HttpClientHandler
-                {
-                    ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator,
-                }),
-            });
-            await WaitForGatewayAsync(client, DescribeCosmosEndpoint(connectionString), context.Logger, context.Deadline.Token).ConfigureAwait(false);
+            using CosmosClient client = new(connectionString, CosmosEmulator.ClientOptions());
+            await WaitForGatewayAsync(client, CosmosEmulator.DescribeEndpoint(connectionString), context.Logger, context.Deadline.Token).ConfigureAwait(false);
 
             // Published rather than written back into the Azure package's configuration store. That store holds
             // what a person declared, and a mapped port is not something a person can declare - it is chosen when
@@ -159,17 +142,4 @@ internal sealed class CosmosDbEnvComponent : DockerAzureEnvComponent
         logger.LogInformation($"Deployed the Cosmos schema for '{identifier}': {config.DatabaseName}/{config.ContainerName} ({partitionKeyPath}) in {stopwatch.Elapsed:g}.");
     }
 
-    /// <summary>
-    /// Reduces a Cosmos connection string to its account endpoint so the emulator key never reaches a run log.
-    /// </summary>
-    private static string DescribeCosmosEndpoint(string connectionString)
-    {
-        foreach (string part in connectionString.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-        {
-            if (part.StartsWith("AccountEndpoint=", StringComparison.OrdinalIgnoreCase))
-                return part["AccountEndpoint=".Length..];
-        }
-
-        return "(unknown endpoint)";
-    }
 }

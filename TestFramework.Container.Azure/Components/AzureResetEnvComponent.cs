@@ -234,7 +234,7 @@ internal sealed class AzureResetEnvComponent(DockerAzureEnvironment owner) : Doc
                 // Which endpoint was tried is the whole question when this fails, and the emulator key
                 // that sits beside it in the connection string must not reach a run log.
                 throw new FrameworkStateException(
-                    $"The Cosmos purge for identifier '{identifier}' failed against {DescribeCosmosEndpoint(config.ConnectionString)}.",
+                    $"The Cosmos purge for identifier '{identifier}' failed against {CosmosEmulator.DescribeEndpoint(config.ConnectionString)}.",
                     exception)
                 {
                     RecoverySteps = [
@@ -250,24 +250,7 @@ internal sealed class AzureResetEnvComponent(DockerAzureEnvironment owner) : Doc
 
     private static async Task DeleteCosmosContainerAsync(CosmosContainerDbConfig config, ScopedLogger logger, CancellationToken cancellationToken)
     {
-        using CosmosClient client = new(config.ConnectionString, new CosmosClientOptions
-        {
-            ConnectionMode = ConnectionMode.Gateway,
-            // The emulator advertises its own endpoint, and on a user-defined Docker network that
-            // is its network alias -- a name only other containers can resolve. Left to discover
-            // endpoints, the SDK switches to that one and every data-plane call then retries until
-            // it gives up: measured at six minutes on one run and thirty-seven on another, always
-            // ending in a failure, because the wait is retry backoff rather than work. Pinning the
-            // client to the endpoint it was handed takes the same call to under a second.
-            //
-            // ConfigureDockerAzureCosmosEmulator already does this for the client steps use, which
-            // is why a liveness probe answers instantly while this one did not.
-            LimitToEndpoint = true,
-            HttpClientFactory = () => new HttpClient(new HttpClientHandler
-            {
-                ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator,
-            }),
-        });
+        using CosmosClient client = new(config.ConnectionString, CosmosEmulator.ClientOptions());
 
         try
         {
@@ -390,20 +373,6 @@ internal sealed class AzureResetEnvComponent(DockerAzureEnvironment owner) : Doc
         }
     }
 
-    /// <summary>
-    /// Reduces a Cosmos connection string to its account endpoint, so a message can name the address
-    /// without carrying the key beside it.
-    /// </summary>
-    private static string DescribeCosmosEndpoint(string connectionString)
-    {
-        foreach (string part in connectionString.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-        {
-            if (part.StartsWith("AccountEndpoint=", StringComparison.OrdinalIgnoreCase))
-                return part["AccountEndpoint=".Length..];
-        }
-
-        return "(unknown endpoint)";
-    }
 
     private static IEnumerable<string> DistinctConnectionStrings(IEnumerable<string> identifiers, Func<string, string> select)
         => identifiers.Select(select).Distinct(StringComparer.Ordinal).OrderBy(x => x, StringComparer.Ordinal);
