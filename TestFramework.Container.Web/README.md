@@ -82,7 +82,10 @@ themselves.
 
 ## Reset Modes
 
-A container can outlive a single run, so what a previous run left behind is a real concern.
+A run started through `SetEnv(DockerWebEnvironment...)` starts its own SQL Server, so it begins from the
+declared schema whatever the mode. The modes matter when the server outlives runs - on a hosted stack (see
+[One Server For A Whole Collection](#one-server-for-a-whole-collection)) every run after the first is handed
+the server as the previous run left it, and applies the mode before anything else touches it.
 
 | Mode | Behaviour |
 |---|---|
@@ -93,6 +96,29 @@ A container can outlive a single run, so what a previous run left behind is a re
 Provisioning order is fixed: the database exists, then the generated tables, then the declared
 scripts, then the reset script. A reset that ran first would fail on the first run, when there is
 nothing yet to clear.
+
+## One Server For A Whole Collection
+
+Starting SQL Server is most of a run's setup time. A collection fixture starts the network and the server
+once and hands every run an environment on top of them; applications, stubs and sites are still started per
+run.
+
+```csharp
+public sealed class OrdersStack : IDockerWebHostedFixtureState
+{
+    public DockerWebEnvironment CreateEnvironment() => DockerWebEnvironment.For<OrdersDatabase>();
+
+    public ConfigInstance CreatePersistentConfig() => ConfigInstance.Create().LoadWebConfig().Build();
+}
+
+public sealed class OrdersFixture : DockerWebHostedCollectionFixture<OrdersStack>, IAsyncLifetime;
+
+// in a test of the collection
+TimelineRun run = await timeline.SetupRun(config).SetEnv(fixture.GetEnv()).RunAsync();
+```
+
+The persistent configuration is what the server is provisioned with, once, before any run - register the
+models a schema is generated from there. Each run's configuration is layered on top of it.
 
 ## Running The Application Too
 

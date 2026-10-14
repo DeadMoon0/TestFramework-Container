@@ -101,7 +101,7 @@ public sealed class DockerAzureHostedEnvironment : IAsyncDisposable
     public IEnvironmentProvider CreateEnvironment(Action<IConfigInstanceBuilder>? configure)
     {
         IServiceProvider configServiceProvider = CreateRunConfig(configure).BuildServiceProvider();
-        return new HostedEnvironmentProvider(_persistentContext.CreateEnvironment(), configServiceProvider);
+        return new HostedRunEnvironment(_persistentContext.CreateEnvironment(), configServiceProvider);
     }
 
     /// <inheritdoc />

@@ -28,6 +28,16 @@ public static class DockerWebDefaults
     public const string NetworkNamePrefix = "testframework-web";
 
     /// <summary>
+    /// How long the one-off bootstrap of a hosted stack's network and SQL Server may take.
+    /// </summary>
+    /// <remarks>
+    /// The SQL Server readiness wait alone may take <see cref="MsSqlReadinessTimeout"/>, and a machine pulling the
+    /// image for the first time spends minutes before that. A timeout that fires mid-start surfaces as a readiness
+    /// failure rather than as the timeout it is, so this errs long.
+    /// </remarks>
+    public static readonly TimeSpan PersistentSetupTimeout = TimeSpan.FromMinutes(5);
+
+    /// <summary>
     /// How long to wait for a started SQL Server to answer.
     /// </summary>
     public static readonly TimeSpan MsSqlReadinessTimeout = TimeSpan.FromSeconds(90);

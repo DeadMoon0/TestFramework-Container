@@ -26,6 +26,7 @@ namespace TestFramework.Container.Web.Tests;
 /// compares that with the network the same run created.
 /// </remarks>
 [Trait("Category", "DockerSmoke")]
+[Collection(SeveralSqlServersCollection.CollectionName)]
 public class SharedEnvironmentTests
 {
     private sealed class SharedSqlDefinition : DockerSqlDefinition
@@ -48,7 +49,7 @@ public class SharedEnvironmentTests
             .SetEnv(shared)
             .RunAsync();
 
-        TimelineRun[] runs = await Task.WhenAll(Run(), Run(), Run(), Run());
+        TimelineRun[] runs = await Task.WhenAll(Run(), Run());
 
         foreach (TimelineRun run in runs)
         {

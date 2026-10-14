@@ -106,6 +106,41 @@ public static class SqlDatabaseProvisioner
     }
 
     /// <summary>
+    /// Brings a database a previous run already provisioned back to the state its reset mode promises.
+    /// </summary>
+    /// <remarks>
+    /// The same steps provisioning takes, minus what the database already has: <c>RecreateDatabase</c> drops it and
+    /// provisions it again from the declaration, <c>RunResetScript</c> runs the reset script against the schema it
+    /// already has, and <c>None</c> keeps whatever it contains.
+    /// </remarks>
+    /// <param name="serverConnectionString">A connection string reaching the server, not the database.</param>
+    /// <param name="databaseConnectionString">A connection string reaching the database itself.</param>
+    /// <param name="spec">The declaration to apply.</param>
+    /// <param name="registry">The model registry the generated tables are derived from.</param>
+    /// <param name="logger">The scoped logger.</param>
+    /// <param name="cancellationToken">The cancellation token for the running setup.</param>
+    internal static async Task ResetAsync(
+        string serverConnectionString,
+        string databaseConnectionString,
+        DockerSqlSpec spec,
+        SqlModelRegistry registry,
+        ScopedLogger logger,
+        CancellationToken cancellationToken)
+    {
+        switch (spec.ResetMode)
+        {
+            case SqlResetMode.RecreateDatabase:
+                await EnsureDatabaseAsync(serverConnectionString, spec, logger, cancellationToken).ConfigureAwait(false);
+                await ApplySchemaAsync(databaseConnectionString, spec, registry, logger, cancellationToken).ConfigureAwait(false);
+                break;
+            case SqlResetMode.RunResetScript when spec.ResetScript is { } resetScript:
+                logger.LogInformation("Resetting '{0}' with '{1}'.", spec.DatabaseName, resetScript.Description);
+                await RunScriptAsync(databaseConnectionString, resetScript, cancellationToken).ConfigureAwait(false);
+                break;
+        }
+    }
+
+    /// <summary>
     /// Runs a script batch by batch.
     /// </summary>
     /// <param name="connectionString">The connection string to run against.</param>

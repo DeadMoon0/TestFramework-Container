@@ -29,7 +29,7 @@ namespace TestFramework.Container.Web;
 ///     .RunAsync();
 /// </code>
 /// </example>
-public class DockerWebEnvironment : EnvironmentProviderBase, IResourceNodeSource
+public sealed class DockerWebEnvironment : EnvironmentProviderBase, IResourceNodeSource, IRunScopedEnvironmentFactory, IPersistentEnvironmentStateSink
 {
     /// <summary>
     /// The component that creates the Docker network the containers share.
@@ -56,9 +56,15 @@ public class DockerWebEnvironment : EnvironmentProviderBase, IResourceNodeSource
     /// </summary>
     public static readonly EnvComponentIdentifier SiteComponentId = "site";
 
+    /// <summary>
+    /// The component that applies each database's reset mode to a SQL Server an earlier run started.
+    /// </summary>
+    public static readonly EnvComponentIdentifier SqlResetComponentId = "sql-reset";
 
     private readonly Dictionary<Type, DockerWebDefinition> _definitions = [];
     private readonly Dictionary<Type, StubDefinition> _stubDefinitions = [];
+    private readonly HashSet<EnvComponentIdentifier> _handedRunning = [];
+    private readonly object _handedRunningGate = new();
 
     /// <summary>
     /// Creates an environment with no resources declared yet.
@@ -67,6 +73,7 @@ public class DockerWebEnvironment : EnvironmentProviderBase, IResourceNodeSource
     {
         AddComponent(new WebNetworkEnvComponent());
         AddComponent(new SqlServerEnvComponent());
+        AddComponent(new SqlResetEnvComponent());
         AddComponent(new StubEnvComponent());
         AddComponent(new ApiEnvComponent());
         AddComponent(new SiteEnvComponent());
@@ -268,7 +275,10 @@ public class DockerWebEnvironment : EnvironmentProviderBase, IResourceNodeSource
         // A declared resource is started whether or not this particular timeline touches it: it was
         // asked for, and one SQL Server container serves every database anyway.
         if (GetSqlDefinitions().Count > 0)
+        {
             resolved.Add(SqlServerComponentId);
+            resolved.Add(SqlResetComponentId);
+        }
 
         if (GetApiDefinitions().Count > 0)
             resolved.Add(ApiComponentId);
@@ -283,6 +293,63 @@ public class DockerWebEnvironment : EnvironmentProviderBase, IResourceNodeSource
         EnsureDeclaredSiteBindings();
 
         return [.. resolved];
+    }
+
+    /// <summary>
+    /// Creates the instance one run uses: this environment's definitions and settings, and nothing any run was handed.
+    /// </summary>
+    /// <remarks>
+    /// The instance records which components an earlier run left running, and two runs sharing one instance would
+    /// each read the other's. Sealed for the same reason: a copy made here would quietly drop whatever a subclass added.
+    /// </remarks>
+    /// <returns>A fresh environment for one run.</returns>
+    public IEnvironmentProvider CreateForRun() => CloneDefinitions();
+
+    /// <summary>
+    /// Records that this run is handed a component an earlier run created.
+    /// </summary>
+    /// <remarks>
+    /// The state itself reaches the run's components through the run. What is kept here is only the fact that
+    /// it came from elsewhere, which is what decides whether a database a previous run used has to be reset.
+    /// </remarks>
+    /// <param name="identifier">The component.</param>
+    /// <param name="state">What it produced when it was created.</param>
+    public void SetPersistentState(EnvComponentIdentifier identifier, object? state)
+    {
+        lock (_handedRunningGate)
+            _handedRunning.Add(identifier);
+    }
+
+    /// <summary>
+    /// Whether this run was handed the component already running, rather than starting it itself.
+    /// </summary>
+    /// <param name="identifier">The component.</param>
+    internal bool WasHandedRunning(EnvComponentIdentifier identifier)
+    {
+        lock (_handedRunningGate)
+            return _handedRunning.Contains(identifier);
+    }
+
+    /// <summary>
+    /// A copy carrying every definition and setting, and nothing a run recorded.
+    /// </summary>
+    internal DockerWebEnvironment CloneDefinitions()
+    {
+        DockerWebEnvironment clone = new()
+        {
+            StubImage = StubImage,
+            SqlImage = SqlImage,
+            PinnedSqlPassword = PinnedSqlPassword,
+            SqlMemoryLimitMb = SqlMemoryLimitMb,
+        };
+
+        foreach ((Type type, DockerWebDefinition definition) in _definitions)
+            clone._definitions[type] = definition;
+
+        foreach ((Type type, StubDefinition definition) in _stubDefinitions)
+            clone._stubDefinitions[type] = definition;
+
+        return clone;
     }
 
 

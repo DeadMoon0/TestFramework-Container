@@ -44,6 +44,7 @@ internal sealed class ApiEnvComponent : WebEnvComponentBase
     [
         DockerWebEnvironment.NetworkComponentId,
         DockerWebEnvironment.SqlServerComponentId,
+        DockerWebEnvironment.SqlResetComponentId,
         DockerWebEnvironment.StubComponentId,
     ];
 
