@@ -237,40 +237,110 @@ public sealed class DockerApiBuilder(Type definitionType)
 /// <summary>
 /// A configuration value that carries the address of a declared database.
 /// </summary>
-/// <param name="SqlIdentifier">The database the value points at.</param>
-/// <param name="SettingPath">The configuration path receiving the connection string.</param>
-public sealed record DockerApiSqlBinding(SqlIdentifier SqlIdentifier, string SettingPath);
+public sealed record DockerApiSqlBinding
+{
+    internal DockerApiSqlBinding(SqlIdentifier sqlIdentifier, string settingPath)
+    {
+        this.SqlIdentifier = sqlIdentifier;
+        this.SettingPath = settingPath;
+    }
+
+    /// <summary>
+    /// The database the value points at.
+    /// </summary>
+    public SqlIdentifier SqlIdentifier { get; }
+
+    /// <summary>
+    /// The configuration path receiving the connection string.
+    /// </summary>
+    public string SettingPath { get; }
+}
 
 /// <summary>
 /// A configuration value that carries the address of a declared stub.
 /// </summary>
-/// <param name="StubIdentifier">The stub the value points at.</param>
-/// <param name="SettingPath">The configuration path receiving the base address.</param>
-public sealed record DockerApiStubBinding(StubIdentifier StubIdentifier, string SettingPath);
+public sealed record DockerApiStubBinding
+{
+    internal DockerApiStubBinding(StubIdentifier stubIdentifier, string settingPath)
+    {
+        this.StubIdentifier = stubIdentifier;
+        this.SettingPath = settingPath;
+    }
+
+    /// <summary>
+    /// The stub the value points at.
+    /// </summary>
+    public StubIdentifier StubIdentifier { get; }
+
+    /// <summary>
+    /// The configuration path receiving the base address.
+    /// </summary>
+    public string SettingPath { get; }
+}
 
 /// <summary>
 /// How one application is run.
 /// </summary>
-/// <param name="Image">An explicit runtime image, or <see langword="null"/> to follow the built framework.</param>
-/// <param name="EnvironmentName">The hosting environment name.</param>
-/// <param name="HealthPath">The readiness path, or <see langword="null"/> to accept any HTTP answer.</param>
-/// <param name="InternalPort">The port the application listens on inside the container.</param>
-/// <param name="ReadinessTimeout">How long to wait for the application to answer.</param>
-/// <param name="Settings">Configuration values written to the generated settings file.</param>
-/// <param name="EnvironmentVariables">Environment variables passed to the container.</param>
-/// <param name="SqlBindings">Configuration values carrying database addresses.</param>
-/// <param name="StubBindings">Configuration values carrying stub addresses.</param>
-public sealed record DockerApiSpec(
-    string? Image,
-    string EnvironmentName,
-    string? HealthPath,
-    int InternalPort,
-    TimeSpan ReadinessTimeout,
-    IReadOnlyDictionary<string, string> Settings,
-    IReadOnlyDictionary<string, string> EnvironmentVariables,
-    IReadOnlyList<DockerApiSqlBinding> SqlBindings,
-    IReadOnlyList<DockerApiStubBinding> StubBindings)
+public sealed record DockerApiSpec
 {
+    internal DockerApiSpec(string? image, string environmentName, string? healthPath, int internalPort, TimeSpan readinessTimeout, IReadOnlyDictionary<string, string> settings, IReadOnlyDictionary<string, string> environmentVariables, IReadOnlyList<DockerApiSqlBinding> sqlBindings, IReadOnlyList<DockerApiStubBinding> stubBindings)
+    {
+        this.Image = image;
+        this.EnvironmentName = environmentName;
+        this.HealthPath = healthPath;
+        this.InternalPort = internalPort;
+        this.ReadinessTimeout = readinessTimeout;
+        this.Settings = settings;
+        this.EnvironmentVariables = environmentVariables;
+        this.SqlBindings = sqlBindings;
+        this.StubBindings = stubBindings;
+    }
+
+    /// <summary>
+    /// An explicit runtime image, or <see langword="null"/> to follow the built framework.
+    /// </summary>
+    public string? Image { get; }
+
+    /// <summary>
+    /// The hosting environment name.
+    /// </summary>
+    public string EnvironmentName { get; }
+
+    /// <summary>
+    /// The readiness path, or <see langword="null"/> to accept any HTTP answer.
+    /// </summary>
+    public string? HealthPath { get; }
+
+    /// <summary>
+    /// The port the application listens on inside the container.
+    /// </summary>
+    public int InternalPort { get; }
+
+    /// <summary>
+    /// How long to wait for the application to answer.
+    /// </summary>
+    public TimeSpan ReadinessTimeout { get; }
+
+    /// <summary>
+    /// Configuration values written to the generated settings file.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> Settings { get; }
+
+    /// <summary>
+    /// Environment variables passed to the container.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> EnvironmentVariables { get; }
+
+    /// <summary>
+    /// Configuration values carrying database addresses.
+    /// </summary>
+    public IReadOnlyList<DockerApiSqlBinding> SqlBindings { get; }
+
+    /// <summary>
+    /// Configuration values carrying stub addresses.
+    /// </summary>
+    public IReadOnlyList<DockerApiStubBinding> StubBindings { get; }
+
     /// <summary>
     /// Returns the runtime image for a target framework moniker.
     /// </summary>

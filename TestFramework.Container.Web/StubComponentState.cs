@@ -9,17 +9,42 @@ namespace TestFramework.Container.Web;
 /// <summary>
 /// One running stub server.
 /// </summary>
-/// <param name="Identifier">The stub identifier it serves.</param>
-/// <param name="Container">The running container.</param>
-/// <param name="HostBaseUrl">The address the test process reaches it at.</param>
-/// <param name="NetworkBaseUrl">The address another container reaches it at.</param>
-/// <param name="MappingCount">How many mappings the server actually loaded.</param>
-public sealed record RunningStub(
-    string Identifier,
-    IContainer Container,
-    Uri HostBaseUrl,
-    Uri NetworkBaseUrl,
-    int MappingCount);
+public sealed record RunningStub
+{
+    internal RunningStub(string identifier, IContainer container, Uri hostBaseUrl, Uri networkBaseUrl, int mappingCount)
+    {
+        this.Identifier = identifier;
+        this.Container = container;
+        this.HostBaseUrl = hostBaseUrl;
+        this.NetworkBaseUrl = networkBaseUrl;
+        this.MappingCount = mappingCount;
+    }
+
+    /// <summary>
+    /// The stub identifier it serves.
+    /// </summary>
+    public string Identifier { get; }
+
+    /// <summary>
+    /// The running container.
+    /// </summary>
+    public IContainer Container { get; }
+
+    /// <summary>
+    /// The address the test process reaches it at.
+    /// </summary>
+    public Uri HostBaseUrl { get; }
+
+    /// <summary>
+    /// The address another container reaches it at.
+    /// </summary>
+    public Uri NetworkBaseUrl { get; }
+
+    /// <summary>
+    /// How many mappings the server actually loaded.
+    /// </summary>
+    public int MappingCount { get; }
+}
 
 /// <summary>
 /// The stub servers a run started.

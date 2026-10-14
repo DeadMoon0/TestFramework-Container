@@ -55,11 +55,13 @@ internal sealed class SqlServerEnvComponent : WebEnvComponentBase
         context.EffectiveSettings.Record(ImageSource, "sql:Image", webEnvironment.SqlImage);
 
         MsSqlContainer container = MsSqlContainerFactory.Create(
-            new MsSqlContainerOptions(
-                webEnvironment.SqlImage,
-                webEnvironment.SqlPassword,
-                webEnvironment.SqlMemoryLimitMb,
-                [DockerWebDefaults.MsSqlNetworkAlias]),
+            new MsSqlContainerOptions
+            {
+                Image = webEnvironment.SqlImage,
+                Password = webEnvironment.SqlPassword,
+                MemoryLimitMb = webEnvironment.SqlMemoryLimitMb,
+                NetworkAliases = [DockerWebDefaults.MsSqlNetworkAlias],
+            },
             network);
 
         return await ContainerStartup.BringUpAsync(container, async () =>

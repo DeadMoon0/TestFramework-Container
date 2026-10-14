@@ -47,7 +47,7 @@ public class NginxConfigFileTests
         string config = NginxConfigFile.Compose(
             80,
             spaFallback: true,
-            [new NginxProxyLocation("/api", new Uri("http://api-orders:8080"), StripPrefix: false, "API 'orders'")],
+            [new NginxProxyLocation("/api", new Uri("http://api-orders:8080"), stripPrefix: false, "API 'orders'")],
             []);
 
         Assert.Contains("# generated proxy route for API 'orders'\n", config, StringComparison.Ordinal);
@@ -65,7 +65,7 @@ public class NginxConfigFileTests
         string config = NginxConfigFile.Compose(
             80,
             spaFallback: true,
-            [new NginxProxyLocation("/pricing/", new Uri("http://stub-pricing:80"), StripPrefix: true, "stub 'pricing'")],
+            [new NginxProxyLocation("/pricing/", new Uri("http://stub-pricing:80"), stripPrefix: true, "stub 'pricing'")],
             []);
 
         // The URI part '/' makes nginx replace /pricing/ with /, so /pricing/quotes becomes /quotes.

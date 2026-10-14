@@ -47,11 +47,13 @@ internal sealed class MsSqlEnvComponent : DockerAzureEnvComponent
         context.EffectiveSettings.Record(ImageSource, "mssql:Image", msSqlImage);
 
         MsSqlContainer container = MsSqlContainerFactory.Create(
-            new MsSqlContainerOptions(
-                msSqlImage,
-                dockerEnvironment.GetMsSqlPassword(),
-                dockerEnvironment.GetMsSqlMemoryLimitMb(),
-                [ServiceBusBuilder.DatabaseNetworkAlias]),
+            new MsSqlContainerOptions
+            {
+                Image = msSqlImage,
+                Password = dockerEnvironment.GetMsSqlPassword(),
+                MemoryLimitMb = dockerEnvironment.GetMsSqlMemoryLimitMb(),
+                NetworkAliases = [ServiceBusBuilder.DatabaseNetworkAlias],
+            },
             network);
 
         return await ContainerStartup.BringUpAsync(container, async () =>

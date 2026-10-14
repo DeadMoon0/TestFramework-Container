@@ -8,7 +8,7 @@ namespace TestFramework.Container.Azure;
 /// <summary>
 /// One Function App the environment runs, and where its payload comes from.
 /// </summary>
-public sealed class DockerFunctionAppRegistration
+internal sealed class DockerFunctionAppRegistration
 {
     private DockerFunctionAppRegistration(string identifier, ContainerSource source)
     {

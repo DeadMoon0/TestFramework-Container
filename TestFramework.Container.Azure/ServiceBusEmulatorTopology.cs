@@ -14,7 +14,10 @@ public sealed class DockerServiceBusTopologyBuilder
 {
     private readonly List<ServiceBusEmulatorNamespaceDefinition> _namespaces = [];
 
-    public DockerServiceBusTopologyBuilder AddNamespace(string name, Action<DockerServiceBusNamespaceBuilder>? configure = null)
+    public DockerServiceBusTopologyBuilder AddNamespace(string name)
+        => this.AddNamespace(name, null);
+
+    public DockerServiceBusTopologyBuilder AddNamespace(string name, Action<DockerServiceBusNamespaceBuilder>? configure)
     {
         DockerServiceBusNamespaceBuilder builder = new(name);
         configure?.Invoke(builder);
@@ -52,7 +55,10 @@ public sealed class DockerServiceBusNamespaceBuilder
         return this;
     }
 
-    public DockerServiceBusNamespaceBuilder AddTopic(string name, Action<DockerServiceBusTopicBuilder>? configure = null)
+    public DockerServiceBusNamespaceBuilder AddTopic(string name)
+        => this.AddTopic(name, null);
+
+    public DockerServiceBusNamespaceBuilder AddTopic(string name, Action<DockerServiceBusTopicBuilder>? configure)
     {
         DockerServiceBusTopicBuilder builder = new(name);
         configure?.Invoke(builder);

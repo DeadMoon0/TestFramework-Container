@@ -56,30 +56,36 @@ public class DockerAzureDefinitionContractsTests
     [Fact]
     public void DockerAzureContractMatcher_UsesIdentityAndOptionalNarrowingFields()
     {
-        BlobContainerContract requiredBlob = new(
-            ContractKey: "uploads",
-            StorageIdentifier: new StorageAccountIdentifier("storage"),
-            ContainerName: "uploads",
-            BindingName: null,
-            AccessMode: BlobAccessMode.Read);
-        BlobContainerContract providedBlob = new(
-            ContractKey: "uploads",
-            StorageIdentifier: new StorageAccountIdentifier("storage"),
-            ContainerName: "uploads",
-            BindingName: "AzureWebJobsStorage",
-            AccessMode: BlobAccessMode.ReadWrite);
+        BlobContainerContract requiredBlob = new()
+        {
+            ContractKey = "uploads",
+            StorageIdentifier = new StorageAccountIdentifier("storage"),
+            ContainerName = "uploads",
+            BindingName = null,
+            AccessMode = BlobAccessMode.Read,
+        };
+        BlobContainerContract providedBlob = new()
+        {
+            ContractKey = "uploads",
+            StorageIdentifier = new StorageAccountIdentifier("storage"),
+            ContainerName = "uploads",
+            BindingName = "AzureWebJobsStorage",
+            AccessMode = BlobAccessMode.ReadWrite,
+        };
         BlobContainerContract wrongStorageBlob = providedBlob with { StorageIdentifier = new StorageAccountIdentifier("other") };
 
         Assert.True(DockerAzureContractMatcher.IsMatch(requiredBlob, providedBlob));
         Assert.False(DockerAzureContractMatcher.IsMatch(requiredBlob, wrongStorageBlob));
 
-        ServiceBusEndpointContract requiredSubscription = new(
-            ContractKey: "trigger",
-            ServiceBusIdentifier: new ServiceBusIdentifier("bus"),
-            EndpointKind: ServiceBusEndpointKind.TopicSubscription,
-            EntityName: "orders",
-            SubscriptionName: "processor",
-            BindingName: null);
+        ServiceBusEndpointContract requiredSubscription = new()
+        {
+            ContractKey = "trigger",
+            ServiceBusIdentifier = new ServiceBusIdentifier("bus"),
+            EndpointKind = ServiceBusEndpointKind.TopicSubscription,
+            EntityName = "orders",
+            SubscriptionName = "processor",
+            BindingName = null,
+        };
         ServiceBusEndpointContract providedSubscription = requiredSubscription with { BindingName = "AzureWebJobsServiceBus" };
         ServiceBusEndpointContract wrongSubscription = providedSubscription with { SubscriptionName = "other" };
 
@@ -102,17 +108,21 @@ public class DockerAzureDefinitionContractsTests
     {
         protected override void ConfigureContracts(DockerAzureContractBuilder contracts)
         {
-            contracts.Provide(new BlobContainerContract(
-                ContractKey: "uploads",
-                StorageIdentifier: new StorageAccountIdentifier("storage"),
-                ContainerName: "uploads",
-                BindingName: "AzureWebJobsStorage"));
+            contracts.Provide(new BlobContainerContract
+            {
+            ContractKey = "uploads",
+            StorageIdentifier = new StorageAccountIdentifier("storage"),
+            ContainerName = "uploads",
+            BindingName = "AzureWebJobsStorage",
+            });
 
-            contracts.Require(new ServiceBusEndpointContract(
-                ContractKey: "trigger",
-                ServiceBusIdentifier: new ServiceBusIdentifier("bus"),
-                EndpointKind: ServiceBusEndpointKind.Queue,
-                EntityName: "sample-submission"));
+            contracts.Require(new ServiceBusEndpointContract
+            {
+            ContractKey = "trigger",
+            ServiceBusIdentifier = new ServiceBusIdentifier("bus"),
+            EndpointKind = ServiceBusEndpointKind.Queue,
+            EntityName = "sample-submission",
+            });
         }
 
         public IReadOnlyCollection<IEnvironmentResourceContract> GetProvidedContractsForTest() => GetProvidedContracts();

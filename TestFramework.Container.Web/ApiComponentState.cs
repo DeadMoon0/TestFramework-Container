@@ -10,25 +10,58 @@ namespace TestFramework.Container.Web;
 /// <summary>
 /// One running application container.
 /// </summary>
-/// <param name="Identifier">The API identifier it serves.</param>
-/// <param name="Container">The running container.</param>
-/// <param name="BaseUrl">The address the test process reaches it at.</param>
-/// <param name="NetworkBaseUrl">The address another container on the environment's network reaches it at.</param>
-/// <param name="Plan">What was done to get the application into the container.</param>
-/// <param name="SettingsFileName">The name of the generated settings file.</param>
-/// <param name="SettingsJson">The exact configuration the application was given.</param>
 /// <remarks>
 /// The plan and the settings content are kept so a test can state what actually ran, rather than
 /// having to infer it from a container that may already be gone.
 /// </remarks>
-public sealed record RunningApi(
-    string Identifier,
-    IContainer Container,
-    Uri BaseUrl,
-    Uri NetworkBaseUrl,
-    ContainerSourcePlan Plan,
-    string SettingsFileName,
-    string SettingsJson);
+public sealed record RunningApi
+{
+    internal RunningApi(string identifier, IContainer container, Uri baseUrl, Uri networkBaseUrl, ContainerSourcePlan plan, string settingsFileName, string settingsJson)
+    {
+        this.Identifier = identifier;
+        this.Container = container;
+        this.BaseUrl = baseUrl;
+        this.NetworkBaseUrl = networkBaseUrl;
+        this.Plan = plan;
+        this.SettingsFileName = settingsFileName;
+        this.SettingsJson = settingsJson;
+    }
+
+    /// <summary>
+    /// The API identifier it serves.
+    /// </summary>
+    public string Identifier { get; }
+
+    /// <summary>
+    /// The running container.
+    /// </summary>
+    public IContainer Container { get; }
+
+    /// <summary>
+    /// The address the test process reaches it at.
+    /// </summary>
+    public Uri BaseUrl { get; }
+
+    /// <summary>
+    /// The address another container on the environment's network reaches it at.
+    /// </summary>
+    public Uri NetworkBaseUrl { get; }
+
+    /// <summary>
+    /// What was done to get the application into the container.
+    /// </summary>
+    public ContainerSourcePlan Plan { get; }
+
+    /// <summary>
+    /// The name of the generated settings file.
+    /// </summary>
+    public string SettingsFileName { get; }
+
+    /// <summary>
+    /// The exact configuration the application was given.
+    /// </summary>
+    public string SettingsJson { get; }
+}
 
 /// <summary>
 /// The application containers a run started.

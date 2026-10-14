@@ -59,4 +59,14 @@ public class ConventionTests(ITestOutputHelper output)
 
         output.WriteLine(report.ToString());
     }
+
+    [Fact]
+    public void ThisPackagesPublicSurfaceCanGrow()
+    {
+        // Each package is compiled on its own. A knob added as one more optional parameter, or one more member
+        // on a positional record, compiles everywhere and then throws MissingMethodException in every package
+        // built against the old signature.
+        ConventionReport report = StepConventions.AssertPublicSurfaceCanGrow(typeof(OfflineFeed).Assembly);
+        output.WriteLine(report.ToString());
+    }
 }

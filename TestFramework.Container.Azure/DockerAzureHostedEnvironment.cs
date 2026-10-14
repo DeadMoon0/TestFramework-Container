@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -26,12 +26,21 @@ public sealed class DockerAzureHostedEnvironment : IAsyncDisposable
     /// <summary>
     /// Starts a hosted Docker Azure environment that can be reused across multiple runs.
     /// </summary>
-    public static async Task<DockerAzureHostedEnvironment> StartAsync(
-        DockerAzureEnvironment environment,
-        ConfigInstance persistentConfig,
-        IReadOnlyCollection<EnvironmentRequirement> persistentRequirements,
-        TimeSpan? persistentSetupTimeout = null,
-        CancellationToken cancellationToken = default)
+    /// <remarks>Uses <c>null</c> for <c>persistentSetupTimeout</c>, <c>default</c> for <c>cancellationToken</c>; a longer overload states it.</remarks>
+    public static Task<DockerAzureHostedEnvironment> StartAsync(DockerAzureEnvironment environment, ConfigInstance persistentConfig, IReadOnlyCollection<EnvironmentRequirement> persistentRequirements)
+        => StartAsync(environment, persistentConfig, persistentRequirements, null, default);
+
+    /// <summary>
+    /// Starts a hosted Docker Azure environment that can be reused across multiple runs.
+    /// </summary>
+    /// <remarks>Uses <c>default</c> for <c>cancellationToken</c>; a longer overload states it.</remarks>
+    public static Task<DockerAzureHostedEnvironment> StartAsync(DockerAzureEnvironment environment, ConfigInstance persistentConfig, IReadOnlyCollection<EnvironmentRequirement> persistentRequirements, TimeSpan? persistentSetupTimeout)
+        => StartAsync(environment, persistentConfig, persistentRequirements, persistentSetupTimeout, default);
+
+    /// <summary>
+    /// Starts a hosted Docker Azure environment that can be reused across multiple runs.
+    /// </summary>
+    public static async Task<DockerAzureHostedEnvironment> StartAsync(DockerAzureEnvironment environment, ConfigInstance persistentConfig, IReadOnlyCollection<EnvironmentRequirement> persistentRequirements, TimeSpan? persistentSetupTimeout, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(environment);
         ArgumentNullException.ThrowIfNull(persistentConfig);
@@ -61,7 +70,18 @@ public sealed class DockerAzureHostedEnvironment : IAsyncDisposable
     /// are already this run's. Nothing is copied across: a declaration is a fact, and a run reads it from the
     /// graph rather than from a container-held object that a previous run could have edited.
     /// </remarks>
-    public ConfigInstance CreateRunConfig(Action<IConfigInstanceBuilder>? configure = null)
+    public ConfigInstance CreateRunConfig()
+        => this.CreateRunConfig(null);
+
+    /// <summary>
+    /// Creates a run configuration layered on top of the persistent Docker Azure configuration snapshot.
+    /// </summary>
+    /// <remarks>
+    /// A sub-instance replays the persistent instance's registrations, so the resources that instance declared
+    /// are already this run's. Nothing is copied across: a declaration is a fact, and a run reads it from the
+    /// graph rather than from a container-held object that a previous run could have edited.
+    /// </remarks>
+    public ConfigInstance CreateRunConfig(Action<IConfigInstanceBuilder>? configure)
     {
         IConfigInstanceBuilder builder = _persistentConfig.SetupSubInstance();
         configure?.Invoke(builder);
@@ -71,7 +91,14 @@ public sealed class DockerAzureHostedEnvironment : IAsyncDisposable
     /// <summary>
     /// Creates a fresh environment provider for a single timeline run while reusing the hosted Docker runtime state.
     /// </summary>
-    public IEnvironmentProvider CreateEnvironment(Action<IConfigInstanceBuilder>? configure = null)
+    /// <remarks>Uses <c>null</c> for <c>configure</c>; a longer overload states it.</remarks>
+    public IEnvironmentProvider CreateEnvironment()
+        => this.CreateEnvironment(null);
+
+    /// <summary>
+    /// Creates a fresh environment provider for a single timeline run while reusing the hosted Docker runtime state.
+    /// </summary>
+    public IEnvironmentProvider CreateEnvironment(Action<IConfigInstanceBuilder>? configure)
     {
         IServiceProvider configServiceProvider = CreateRunConfig(configure).BuildServiceProvider();
         return new HostedEnvironmentProvider(_persistentContext.CreateEnvironment(), configServiceProvider);

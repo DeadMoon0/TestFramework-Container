@@ -14,10 +14,24 @@ namespace TestFramework.Container.Sources;
 /// <summary>
 /// A package a restore resolved.
 /// </summary>
-/// <param name="Id">The package identifier.</param>
-/// <param name="Version">The resolved version.</param>
-public sealed record ResolvedPackage(string Id, string Version)
+public sealed record ResolvedPackage
 {
+    internal ResolvedPackage(string id, string version)
+    {
+        this.Id = id;
+        this.Version = version;
+    }
+
+    /// <summary>
+    /// The package identifier.
+    /// </summary>
+    public string Id { get; }
+
+    /// <summary>
+    /// The resolved version.
+    /// </summary>
+    public string Version { get; }
+
     /// <summary>
     /// Returns a readable description of the package.
     /// </summary>
@@ -27,10 +41,30 @@ public sealed record ResolvedPackage(string Id, string Version)
 /// <summary>
 /// The outcome of handing packages over.
 /// </summary>
-/// <param name="Directory">The directory holding the copied packages.</param>
-/// <param name="Packages">The packages that were copied.</param>
-/// <param name="Missing">Packages the cache did not hold, which the build would fail on.</param>
-public sealed record OfflineFeedResult(string Directory, IReadOnlyList<ResolvedPackage> Packages, IReadOnlyList<ResolvedPackage> Missing);
+public sealed record OfflineFeedResult
+{
+    internal OfflineFeedResult(string directory, IReadOnlyList<ResolvedPackage> packages, IReadOnlyList<ResolvedPackage> missing)
+    {
+        this.Directory = directory;
+        this.Packages = packages;
+        this.Missing = missing;
+    }
+
+    /// <summary>
+    /// The directory holding the copied packages.
+    /// </summary>
+    public string Directory { get; }
+
+    /// <summary>
+    /// The packages that were copied.
+    /// </summary>
+    public IReadOnlyList<ResolvedPackage> Packages { get; }
+
+    /// <summary>
+    /// Packages the cache did not hold, which the build would fail on.
+    /// </summary>
+    public IReadOnlyList<ResolvedPackage> Missing { get; }
+}
 
 /// <summary>
 /// Hands a container the packages the host already restored.

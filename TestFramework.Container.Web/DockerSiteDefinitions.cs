@@ -76,28 +76,98 @@ public enum SiteTargetKind
 /// <summary>
 /// One path prefix the site's server forwards to another resource.
 /// </summary>
-/// <param name="LocationPath">The path prefix on the site's own origin, for example <c>/api</c>.</param>
-/// <param name="TargetKind">What the route points at.</param>
-/// <param name="TargetIdentifier">The identifier of the target resource.</param>
-/// <param name="StripPrefix">Whether the matched prefix is removed before forwarding.</param>
-/// <param name="DeclaredByType">Whether the target was named as a definition type, which is validated against the environment's declarations.</param>
-public sealed record DockerSiteProxyRoute(string LocationPath, SiteTargetKind TargetKind, string TargetIdentifier, bool StripPrefix, bool DeclaredByType);
+public sealed record DockerSiteProxyRoute
+{
+    internal DockerSiteProxyRoute(string locationPath, SiteTargetKind targetKind, string targetIdentifier, bool stripPrefix, bool declaredByType)
+    {
+        this.LocationPath = locationPath;
+        this.TargetKind = targetKind;
+        this.TargetIdentifier = targetIdentifier;
+        this.StripPrefix = stripPrefix;
+        this.DeclaredByType = declaredByType;
+    }
+
+    /// <summary>
+    /// The path prefix on the site's own origin, for example <c>/api</c>.
+    /// </summary>
+    public string LocationPath { get; }
+
+    /// <summary>
+    /// What the route points at.
+    /// </summary>
+    public SiteTargetKind TargetKind { get; }
+
+    /// <summary>
+    /// The identifier of the target resource.
+    /// </summary>
+    public string TargetIdentifier { get; }
+
+    /// <summary>
+    /// Whether the matched prefix is removed before forwarding.
+    /// </summary>
+    public bool StripPrefix { get; }
+
+    /// <summary>
+    /// Whether the target was named as a definition type, which is validated against the environment's declarations.
+    /// </summary>
+    public bool DeclaredByType { get; }
+}
 
 /// <summary>
 /// One value in the generated runtime configuration file that carries a resource's address.
 /// </summary>
-/// <param name="JsonPath">The colon-separated path in the generated file.</param>
-/// <param name="TargetKind">What the value points at.</param>
-/// <param name="TargetIdentifier">The identifier of the target resource.</param>
-/// <param name="DeclaredByType">Whether the target was named as a definition type, which is validated against the environment's declarations.</param>
-public sealed record DockerSiteConfigBinding(string JsonPath, SiteTargetKind TargetKind, string TargetIdentifier, bool DeclaredByType);
+public sealed record DockerSiteConfigBinding
+{
+    internal DockerSiteConfigBinding(string jsonPath, SiteTargetKind targetKind, string targetIdentifier, bool declaredByType)
+    {
+        this.JsonPath = jsonPath;
+        this.TargetKind = targetKind;
+        this.TargetIdentifier = targetIdentifier;
+        this.DeclaredByType = declaredByType;
+    }
+
+    /// <summary>
+    /// The colon-separated path in the generated file.
+    /// </summary>
+    public string JsonPath { get; }
+
+    /// <summary>
+    /// What the value points at.
+    /// </summary>
+    public SiteTargetKind TargetKind { get; }
+
+    /// <summary>
+    /// The identifier of the target resource.
+    /// </summary>
+    public string TargetIdentifier { get; }
+
+    /// <summary>
+    /// Whether the target was named as a definition type, which is validated against the environment's declarations.
+    /// </summary>
+    public bool DeclaredByType { get; }
+}
 
 /// <summary>
 /// One custom configuration file a definition composes for the payload.
 /// </summary>
-/// <param name="RelativePath">The payload-relative path the file is written to.</param>
-/// <param name="Compose">Turns the resolved addresses and the file's current content into the file's content.</param>
-public sealed record DockerSiteConfigFile(string RelativePath, Func<SiteConfigFileContext, string> Compose);
+public sealed record DockerSiteConfigFile
+{
+    internal DockerSiteConfigFile(string relativePath, Func<SiteConfigFileContext, string> compose)
+    {
+        this.RelativePath = relativePath;
+        this.Compose = compose;
+    }
+
+    /// <summary>
+    /// The payload-relative path the file is written to.
+    /// </summary>
+    public string RelativePath { get; }
+
+    /// <summary>
+    /// Turns the resolved addresses and the file's current content into the file's content.
+    /// </summary>
+    public Func<SiteConfigFileContext, string> Compose { get; }
+}
 
 /// <summary>
 /// The resolved, browser-facing addresses handed to a configuration composer.
@@ -263,14 +333,41 @@ public sealed class DockerSiteBuilder(Type definitionType)
     /// </summary>
     /// <typeparam name="TApi">The application definition to forward to.</typeparam>
     /// <param name="locationPath">The path prefix on the site's own origin, for example <c>/api</c>.</param>
+    /// <remarks>
+    /// This is the same-origin road: the browser calls the site's own origin, so no cross-origin
+    /// permission is needed in the application, exactly like a production reverse proxy.
+    /// </remarks>
+    public DockerSiteBuilder ProxyApi<TApi>(string locationPath)
+        where TApi : DockerApiDefinition, new()
+        => this.ProxyApi<TApi>(locationPath, false);
+
+    /// <summary>
+    /// Forwards a path prefix to a declared application, over the environment's network.
+    /// </summary>
+    /// <typeparam name="TApi">The application definition to forward to.</typeparam>
+    /// <param name="locationPath">The path prefix on the site's own origin, for example <c>/api</c>.</param>
     /// <param name="stripPrefix">Whether the matched prefix is removed before forwarding.</param>
     /// <remarks>
     /// This is the same-origin road: the browser calls the site's own origin, so no cross-origin
     /// permission is needed in the application, exactly like a production reverse proxy.
     /// </remarks>
-    public DockerSiteBuilder ProxyApi<TApi>(string locationPath, bool stripPrefix = false)
+    public DockerSiteBuilder ProxyApi<TApi>(string locationPath, bool stripPrefix)
         where TApi : DockerApiDefinition, new()
         => AddProxyRoute(locationPath, SiteTargetKind.Api, new TApi().Identifier, stripPrefix, declaredByType: true);
+
+    /// <summary>
+    /// Forwards a path prefix to an application named by identifier, which may live outside this
+    /// environment.
+    /// </summary>
+    /// <param name="apiIdentifier">The API identifier.</param>
+    /// <param name="locationPath">The path prefix on the site's own origin.</param>
+    /// <remarks>
+    /// Resolved when the environment starts: a container the environment declared wins; otherwise
+    /// the address the API's configuration entry names is used, so the same definition serves a
+    /// containerized and a deployed backend.
+    /// </remarks>
+    public DockerSiteBuilder ProxyApi(string apiIdentifier, string locationPath)
+        => this.ProxyApi(apiIdentifier, locationPath, false);
 
     /// <summary>
     /// Forwards a path prefix to an application named by identifier, which may live outside this
@@ -284,7 +381,7 @@ public sealed class DockerSiteBuilder(Type definitionType)
     /// the address the API's configuration entry names is used, so the same definition serves a
     /// containerized and a deployed backend.
     /// </remarks>
-    public DockerSiteBuilder ProxyApi(string apiIdentifier, string locationPath, bool stripPrefix = false)
+    public DockerSiteBuilder ProxyApi(string apiIdentifier, string locationPath, bool stripPrefix)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(apiIdentifier);
         return AddProxyRoute(locationPath, SiteTargetKind.Api, apiIdentifier, stripPrefix, declaredByType: false);
@@ -293,10 +390,20 @@ public sealed class DockerSiteBuilder(Type definitionType)
     /// <summary>
     /// Forwards a path prefix to a declared stub, over the environment's network.
     /// </summary>
+    /// <remarks>Uses <c>false</c> for <c>stripPrefix</c>; a longer overload states it.</remarks>
+    /// <typeparam name="TStub">The stub definition to forward to.</typeparam>
+    /// <param name="locationPath">The path prefix on the site's own origin.</param>
+    public DockerSiteBuilder ProxyStub<TStub>(string locationPath)
+        where TStub : StubDefinition, new()
+        => this.ProxyStub<TStub>(locationPath, false);
+
+    /// <summary>
+    /// Forwards a path prefix to a declared stub, over the environment's network.
+    /// </summary>
     /// <typeparam name="TStub">The stub definition to forward to.</typeparam>
     /// <param name="locationPath">The path prefix on the site's own origin.</param>
     /// <param name="stripPrefix">Whether the matched prefix is removed before forwarding.</param>
-    public DockerSiteBuilder ProxyStub<TStub>(string locationPath, bool stripPrefix = false)
+    public DockerSiteBuilder ProxyStub<TStub>(string locationPath, bool stripPrefix)
         where TStub : StubDefinition, new()
         => AddProxyRoute(locationPath, SiteTargetKind.Stub, new TStub().Identifier, stripPrefix, declaredByType: true);
 
@@ -470,30 +577,78 @@ public sealed class DockerSiteBuilder(Type definitionType)
 /// <summary>
 /// How one site is served.
 /// </summary>
-/// <param name="Image">An explicit serving image, or <see langword="null"/> for the default.</param>
-/// <param name="InternalPort">The port the server listens on inside the container.</param>
-/// <param name="ReadinessPath">The path probed until the site answers.</param>
-/// <param name="ReadinessTimeout">How long to wait for the site to answer.</param>
-/// <param name="SpaFallback">Whether unknown paths fall back to <c>index.html</c>.</param>
-/// <param name="ProxyRoutes">The path prefixes forwarded to other resources.</param>
-/// <param name="ExtraNginxDirectives">Raw directives appended inside the generated server block.</param>
-/// <param name="ConfigJsonPath">Where the generated runtime configuration file is written.</param>
-/// <param name="ConfigJsonBindings">Values in the generated file that carry resource addresses.</param>
-/// <param name="ConfigJsonValues">Fixed values in the generated file.</param>
-/// <param name="ConfigFiles">Custom configuration files composed by the definition.</param>
-public sealed record DockerSiteSpec(
-    string? Image,
-    int InternalPort,
-    string ReadinessPath,
-    TimeSpan ReadinessTimeout,
-    bool SpaFallback,
-    IReadOnlyList<DockerSiteProxyRoute> ProxyRoutes,
-    IReadOnlyList<string> ExtraNginxDirectives,
-    string ConfigJsonPath,
-    IReadOnlyList<DockerSiteConfigBinding> ConfigJsonBindings,
-    IReadOnlyDictionary<string, string> ConfigJsonValues,
-    IReadOnlyList<DockerSiteConfigFile> ConfigFiles)
+public sealed record DockerSiteSpec
 {
+    internal DockerSiteSpec(string? image, int internalPort, string readinessPath, TimeSpan readinessTimeout, bool spaFallback, IReadOnlyList<DockerSiteProxyRoute> proxyRoutes, IReadOnlyList<string> extraNginxDirectives, string configJsonPath, IReadOnlyList<DockerSiteConfigBinding> configJsonBindings, IReadOnlyDictionary<string, string> configJsonValues, IReadOnlyList<DockerSiteConfigFile> configFiles)
+    {
+        this.Image = image;
+        this.InternalPort = internalPort;
+        this.ReadinessPath = readinessPath;
+        this.ReadinessTimeout = readinessTimeout;
+        this.SpaFallback = spaFallback;
+        this.ProxyRoutes = proxyRoutes;
+        this.ExtraNginxDirectives = extraNginxDirectives;
+        this.ConfigJsonPath = configJsonPath;
+        this.ConfigJsonBindings = configJsonBindings;
+        this.ConfigJsonValues = configJsonValues;
+        this.ConfigFiles = configFiles;
+    }
+
+    /// <summary>
+    /// An explicit serving image, or <see langword="null"/> for the default.
+    /// </summary>
+    public string? Image { get; }
+
+    /// <summary>
+    /// The port the server listens on inside the container.
+    /// </summary>
+    public int InternalPort { get; }
+
+    /// <summary>
+    /// The path probed until the site answers.
+    /// </summary>
+    public string ReadinessPath { get; }
+
+    /// <summary>
+    /// How long to wait for the site to answer.
+    /// </summary>
+    public TimeSpan ReadinessTimeout { get; }
+
+    /// <summary>
+    /// Whether unknown paths fall back to <c>index.html</c>.
+    /// </summary>
+    public bool SpaFallback { get; }
+
+    /// <summary>
+    /// The path prefixes forwarded to other resources.
+    /// </summary>
+    public IReadOnlyList<DockerSiteProxyRoute> ProxyRoutes { get; }
+
+    /// <summary>
+    /// Raw directives appended inside the generated server block.
+    /// </summary>
+    public IReadOnlyList<string> ExtraNginxDirectives { get; }
+
+    /// <summary>
+    /// Where the generated runtime configuration file is written.
+    /// </summary>
+    public string ConfigJsonPath { get; }
+
+    /// <summary>
+    /// Values in the generated file that carry resource addresses.
+    /// </summary>
+    public IReadOnlyList<DockerSiteConfigBinding> ConfigJsonBindings { get; }
+
+    /// <summary>
+    /// Fixed values in the generated file.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> ConfigJsonValues { get; }
+
+    /// <summary>
+    /// Custom configuration files composed by the definition.
+    /// </summary>
+    public IReadOnlyList<DockerSiteConfigFile> ConfigFiles { get; }
+
     /// <summary>
     /// Whether the generated runtime configuration file is written at all.
     /// </summary>

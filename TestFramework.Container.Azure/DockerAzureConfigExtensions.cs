@@ -9,7 +9,10 @@ namespace TestFramework.Container.Azure;
 
 public static class DockerAzureConfigExtensions
 {
-    public static IConfigInstanceBuilder LoadDockerAzureConfig(this IConfigInstanceBuilder builder, IConfigProvider? provider = null)
+    public static IConfigInstanceBuilder LoadDockerAzureConfig(this IConfigInstanceBuilder builder)
+        => builder.LoadDockerAzureConfig(null);
+
+    public static IConfigInstanceBuilder LoadDockerAzureConfig(this IConfigInstanceBuilder builder, IConfigProvider? provider)
     {
         return builder
             .LoadAzureConfig(provider)

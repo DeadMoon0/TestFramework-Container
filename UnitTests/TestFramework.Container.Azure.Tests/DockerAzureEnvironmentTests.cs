@@ -728,12 +728,14 @@ public class DockerAzureEnvironmentTests
 
         protected override void ConfigureContracts(DockerAzureContractBuilder contracts)
         {
-            contracts.Require(new ServiceBusEndpointContract(
-                ContractKey: "reply",
-                ServiceBusIdentifier: "bus",
-                EndpointKind: ServiceBusEndpointKind.TopicSubscription,
-                EntityName: "processing-topic",
-                SubscriptionName: "processing-subscription"));
+            contracts.Require(new ServiceBusEndpointContract
+            {
+                ContractKey = "reply",
+                ServiceBusIdentifier = "bus",
+                EndpointKind = ServiceBusEndpointKind.TopicSubscription,
+                EntityName = "processing-topic",
+                SubscriptionName = "processing-subscription",
+            });
         }
     }
 
@@ -743,12 +745,14 @@ public class DockerAzureEnvironmentTests
 
         protected override void ConfigureContracts(DockerAzureContractBuilder contracts)
         {
-            contracts.Provide(new ServiceBusEndpointContract(
-                ContractKey: "reply",
-                ServiceBusIdentifier: Identifier,
-                EndpointKind: ServiceBusEndpointKind.TopicSubscription,
-                EntityName: "processing-topic",
-                SubscriptionName: "processing-subscription"));
+            contracts.Provide(new ServiceBusEndpointContract
+            {
+                ContractKey = "reply",
+                ServiceBusIdentifier = Identifier,
+                EndpointKind = ServiceBusEndpointKind.TopicSubscription,
+                EntityName = "processing-topic",
+                SubscriptionName = "processing-subscription",
+            });
         }
     }
 

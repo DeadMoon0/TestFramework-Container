@@ -9,11 +9,36 @@ namespace TestFramework.Container.Web;
 /// <summary>
 /// One proxied location in a generated site server configuration.
 /// </summary>
-/// <param name="LocationPath">The path prefix the site serves, for example <c>/api</c>.</param>
-/// <param name="Target">The address the traffic is forwarded to.</param>
-/// <param name="StripPrefix">Whether the matched prefix is removed before forwarding.</param>
-/// <param name="Description">What the route points at, named in a generated comment.</param>
-public sealed record NginxProxyLocation(string LocationPath, Uri Target, bool StripPrefix, string Description);
+public sealed record NginxProxyLocation
+{
+    internal NginxProxyLocation(string locationPath, Uri target, bool stripPrefix, string description)
+    {
+        this.LocationPath = locationPath;
+        this.Target = target;
+        this.StripPrefix = stripPrefix;
+        this.Description = description;
+    }
+
+    /// <summary>
+    /// The path prefix the site serves, for example <c>/api</c>.
+    /// </summary>
+    public string LocationPath { get; }
+
+    /// <summary>
+    /// The address the traffic is forwarded to.
+    /// </summary>
+    public Uri Target { get; }
+
+    /// <summary>
+    /// Whether the matched prefix is removed before forwarding.
+    /// </summary>
+    public bool StripPrefix { get; }
+
+    /// <summary>
+    /// What the route points at, named in a generated comment.
+    /// </summary>
+    public string Description { get; }
+}
 
 /// <summary>
 /// Builds the server configuration a site container serves its payload with.

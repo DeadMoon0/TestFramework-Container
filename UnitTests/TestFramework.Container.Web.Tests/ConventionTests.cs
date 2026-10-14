@@ -59,4 +59,25 @@ public class ConventionTests(ITestOutputHelper output)
 
         output.WriteLine(report.ToString());
     }
+
+    [Fact]
+    public void ThisPackagesPublicSurfaceCanGrow()
+    {
+        // Each package is compiled on its own. A knob added as one more optional parameter, or one more member
+        // on a positional record, compiles everywhere and then throws MissingMethodException in every package
+        // built against the old signature.
+        ConventionReport report = StepConventions.AssertPublicSurfaceCanGrow(typeof(ApiSettingsFile).Assembly);
+        output.WriteLine(report.ToString());
+    }
+
+    [Fact]
+    public void OnlyThePackagesOwnKindsDeriveFromTheWebDefinitionBase()
+    {
+        // The environment starts SQL, APIs and sites; a fourth kind was accepted and then silently ignored. The base
+        // is closed, so a fourth kind does not compile.
+        System.Reflection.ConstructorInfo[] constructors = typeof(DockerWebDefinition).GetConstructors(
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
+
+        Assert.All(constructors, constructor => Assert.True(constructor.IsFamilyAndAssembly, $"{constructor} can be called from another assembly."));
+    }
 }

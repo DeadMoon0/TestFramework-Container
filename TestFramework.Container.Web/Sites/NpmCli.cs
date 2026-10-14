@@ -10,12 +10,36 @@ namespace TestFramework.Container.Web.Sites;
 /// <summary>
 /// The outcome of an <c>npm</c> invocation.
 /// </summary>
-/// <param name="Arguments">The arguments the process was started with.</param>
-/// <param name="ExitCode">The process exit code.</param>
-/// <param name="StandardOutput">Captured standard output.</param>
-/// <param name="StandardError">Captured standard error.</param>
-public sealed record NpmCliResult(IReadOnlyList<string> Arguments, int ExitCode, string StandardOutput, string StandardError)
+public sealed record NpmCliResult
 {
+    internal NpmCliResult(IReadOnlyList<string> arguments, int exitCode, string standardOutput, string standardError)
+    {
+        this.Arguments = arguments;
+        this.ExitCode = exitCode;
+        this.StandardOutput = standardOutput;
+        this.StandardError = standardError;
+    }
+
+    /// <summary>
+    /// The arguments the process was started with.
+    /// </summary>
+    public IReadOnlyList<string> Arguments { get; }
+
+    /// <summary>
+    /// The process exit code.
+    /// </summary>
+    public int ExitCode { get; }
+
+    /// <summary>
+    /// Captured standard output.
+    /// </summary>
+    public string StandardOutput { get; }
+
+    /// <summary>
+    /// Captured standard error.
+    /// </summary>
+    public string StandardError { get; }
+
     /// <summary>
     /// Whether the process reported success.
     /// </summary>

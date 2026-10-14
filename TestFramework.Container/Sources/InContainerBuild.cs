@@ -25,7 +25,7 @@ public static class InContainerBuild
     /// </summary>
     /// <remarks>
     /// The one list for both roads a context is assembled on: <see cref="CopySources"/> skips these
-    /// when copying, and <see cref="DockerfileGenerator.WriteDockerIgnore"/> turns the same names into
+    /// when copying, and <c>DockerfileGenerator.WriteDockerIgnore</c> turns the same names into
     /// ignore patterns. Two lists drifted once written twice; an addition here reaches both.
     /// </remarks>
     internal static readonly string[] ExcludedDirectories = ["bin", "obj", ".git", ".vs", "artifacts", "node_modules", "TestResults"];

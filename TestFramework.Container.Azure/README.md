@@ -246,11 +246,13 @@ public sealed class ReplyBus : DockerServiceBusDefinition
 
 	protected override void ConfigureContracts(DockerAzureContractBuilder contracts)
 	{
-		contracts.Provide(new ServiceBusEndpointContract(
-			ContractKey: "reply",
-			ServiceBusIdentifier: Identifier,
-			EndpointKind: ServiceBusEndpointKind.Queue,
-			EntityName: "processing-reply"));
+		contracts.Provide(new ServiceBusEndpointContract
+		{
+			ContractKey = "reply",
+			ServiceBusIdentifier = Identifier,
+			EndpointKind = ServiceBusEndpointKind.Queue,
+			EntityName = "processing-reply",
+		});
 	}
 }
 
@@ -268,11 +270,13 @@ public sealed class ReplyConsumerFunctionApp : DockerFunctionAppDefinition
 
 	protected override void ConfigureContracts(DockerAzureContractBuilder contracts)
 	{
-		contracts.Require(new ServiceBusEndpointContract(
-			ContractKey: "reply",
-			ServiceBusIdentifier: "bus",
-			EndpointKind: ServiceBusEndpointKind.Queue,
-			EntityName: "processing-reply"));
+		contracts.Require(new ServiceBusEndpointContract
+		{
+			ContractKey = "reply",
+			ServiceBusIdentifier = "bus",
+			EndpointKind = ServiceBusEndpointKind.Queue,
+			EntityName = "processing-reply",
+		});
 	}
 }
 ```

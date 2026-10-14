@@ -1,4 +1,4 @@
-﻿using Azure.Data.Tables;
+using Azure.Data.Tables;
 using Azure.Messaging.ServiceBus;
 using Microsoft.Azure.Cosmos;
 using Microsoft.EntityFrameworkCore;
@@ -114,7 +114,7 @@ public class DockerAzureEnvironmentSmokeTests
         protected override void Configure(DockerFunctionAppBuilder builder)
         {
             builder
-                .UseStorage<SmokeStorageDefinition>(tableNameSettingName: "StorageTableName")
+                .UseStorage<SmokeStorageDefinition>(new FunctionAppStorageBinding { TableNameSettingName = "StorageTableName" })
                 .UseCosmos<SmokeCosmosDefinition>()
                 .UseServiceBusReply<SmokeServiceBusDefinition>(d => d.Reply);
         }

@@ -93,7 +93,10 @@ public class DockerAzureHostedCollectionFixture<TState>
             await _persistentContext.DisposeAsync().ConfigureAwait(false);
     }
 
-    public IEnvironmentProvider GetEnv(Action<IConfigInstanceBuilder>? configure = null)
+    public IEnvironmentProvider GetEnv()
+        => this.GetEnv(null);
+
+    public IEnvironmentProvider GetEnv(Action<IConfigInstanceBuilder>? configure)
     {
         PersistentEnvironmentContext<DockerAzurePersistentSetup> persistentContext = _persistentContext ?? throw new FrameworkStateException("The hosted Docker Azure fixture has not finished initialization.");
         IServiceProvider configServiceProvider = CreateRunConfig(configure).BuildServiceProvider();

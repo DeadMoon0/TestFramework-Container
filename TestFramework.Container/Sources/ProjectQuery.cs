@@ -14,18 +14,42 @@ namespace TestFramework.Container.Sources;
 /// <summary>
 /// What a project says about itself.
 /// </summary>
-/// <param name="ProjectPath">The project file that was asked.</param>
-/// <param name="AssemblyName">The assembly the project produces.</param>
-/// <param name="TargetFrameworks">Every framework the project targets, in declaration order.</param>
-/// <param name="IsWebSdk">Whether the project uses the web SDK, which decides the runtime base image.</param>
-/// <param name="ProjectReferences">Absolute paths of the projects it references.</param>
-public sealed record ProjectFacts(
-    string ProjectPath,
-    string AssemblyName,
-    IReadOnlyList<string> TargetFrameworks,
-    bool IsWebSdk,
-    IReadOnlyList<string> ProjectReferences)
+public sealed record ProjectFacts
 {
+    internal ProjectFacts(string projectPath, string assemblyName, IReadOnlyList<string> targetFrameworks, bool isWebSdk, IReadOnlyList<string> projectReferences)
+    {
+        this.ProjectPath = projectPath;
+        this.AssemblyName = assemblyName;
+        this.TargetFrameworks = targetFrameworks;
+        this.IsWebSdk = isWebSdk;
+        this.ProjectReferences = projectReferences;
+    }
+
+    /// <summary>
+    /// The project file that was asked.
+    /// </summary>
+    public string ProjectPath { get; }
+
+    /// <summary>
+    /// The assembly the project produces.
+    /// </summary>
+    public string AssemblyName { get; }
+
+    /// <summary>
+    /// Every framework the project targets, in declaration order.
+    /// </summary>
+    public IReadOnlyList<string> TargetFrameworks { get; }
+
+    /// <summary>
+    /// Whether the project uses the web SDK, which decides the runtime base image.
+    /// </summary>
+    public bool IsWebSdk { get; }
+
+    /// <summary>
+    /// Absolute paths of the projects it references.
+    /// </summary>
+    public IReadOnlyList<string> ProjectReferences { get; }
+
     /// <summary>
     /// The directory holding the project file.
     /// </summary>

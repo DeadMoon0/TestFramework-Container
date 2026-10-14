@@ -217,8 +217,28 @@ public static class ContainerDockerCommands
     /// <summary>
     /// The outcome of a Docker CLI command.
     /// </summary>
-    /// <param name="ExitCode">The process exit code.</param>
-    /// <param name="StandardOutput">Captured standard output.</param>
-    /// <param name="StandardError">Captured standard error.</param>
-    public sealed record CommandResult(int ExitCode, string StandardOutput, string StandardError);
+public sealed record CommandResult
+    {
+        internal CommandResult(int exitCode, string standardOutput, string standardError)
+        {
+            this.ExitCode = exitCode;
+            this.StandardOutput = standardOutput;
+            this.StandardError = standardError;
+        }
+
+        /// <summary>
+        /// The process exit code.
+        /// </summary>
+        public int ExitCode { get; }
+
+        /// <summary>
+        /// Captured standard output.
+        /// </summary>
+        public string StandardOutput { get; }
+
+        /// <summary>
+        /// Captured standard error.
+        /// </summary>
+        public string StandardError { get; }
+    }
 }

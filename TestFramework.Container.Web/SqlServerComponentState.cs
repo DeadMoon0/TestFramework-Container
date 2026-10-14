@@ -8,13 +8,28 @@ namespace TestFramework.Container.Web;
 /// <summary>
 /// The two addresses one provisioned database has.
 /// </summary>
-/// <param name="HostConnectionString">The address the test process uses: the Docker host and the mapped port.</param>
-/// <param name="NetworkConnectionString">The address another container uses: the network alias and the internal port.</param>
 /// <remarks>
 /// Both exist at the same time for the same database. Handing a container the host address, or the
 /// test process the network address, is the most common way a container-backed setup fails.
 /// </remarks>
-public sealed record SqlDatabaseEndpoint(string HostConnectionString, string NetworkConnectionString);
+public sealed record SqlDatabaseEndpoint
+{
+    internal SqlDatabaseEndpoint(string hostConnectionString, string networkConnectionString)
+    {
+        this.HostConnectionString = hostConnectionString;
+        this.NetworkConnectionString = networkConnectionString;
+    }
+
+    /// <summary>
+    /// The address the test process uses: the Docker host and the mapped port.
+    /// </summary>
+    public string HostConnectionString { get; }
+
+    /// <summary>
+    /// The address another container uses: the network alias and the internal port.
+    /// </summary>
+    public string NetworkConnectionString { get; }
+}
 
 /// <summary>
 /// The running SQL Server and the databases it was provisioned with.

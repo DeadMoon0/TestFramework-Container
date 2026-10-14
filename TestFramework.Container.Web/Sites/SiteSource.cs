@@ -232,8 +232,15 @@ public sealed class NpmProjectSiteSource : SiteSource
     /// <summary>
     /// Runs the build inside a node container, so the test host needs only Docker.
     /// </summary>
+    /// <remarks>Uses <c>null</c> for <c>nodeImage</c>; a longer overload states it.</remarks>
+    public NpmProjectSiteSource BuiltInContainer()
+        => this.BuiltInContainer(null);
+
+    /// <summary>
+    /// Runs the build inside a node container, so the test host needs only Docker.
+    /// </summary>
     /// <param name="nodeImage">The node image to build in, or <see langword="null"/> for the default.</param>
-    public NpmProjectSiteSource BuiltInContainer(string? nodeImage = null)
+    public NpmProjectSiteSource BuiltInContainer(string? nodeImage)
     {
         if (nodeImage is not null)
             ArgumentException.ThrowIfNullOrWhiteSpace(nodeImage);

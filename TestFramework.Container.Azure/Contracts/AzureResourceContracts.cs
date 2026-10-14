@@ -48,41 +48,133 @@ public enum ServiceBusEndpointKind
 /// <summary>
 /// Contract for a blob container exposed through a configured storage account.
 /// </summary>
-public sealed record BlobContainerContract(
-    string ContractKey,
-    StorageAccountIdentifier StorageIdentifier,
-    string ContainerName,
-    string? BindingName = null,
-    BlobAccessMode AccessMode = BlobAccessMode.ReadWrite) : IEnvironmentResourceContract;
+public sealed record BlobContainerContract : IEnvironmentResourceContract
+{
+    /// <summary>
+    /// ContractKey
+    /// </summary>
+    public required string ContractKey { get; init; }
+
+    /// <summary>
+    /// StorageIdentifier
+    /// </summary>
+    public required StorageAccountIdentifier StorageIdentifier { get; init; }
+
+    /// <summary>
+    /// ContainerName
+    /// </summary>
+    public required string ContainerName { get; init; }
+
+    /// <summary>
+    /// BindingName
+    /// </summary>
+    public string? BindingName { get; init; }
+
+    /// <summary>
+    /// AccessMode
+    /// </summary>
+    public BlobAccessMode AccessMode { get; init; } = BlobAccessMode.ReadWrite;
+}
 
 /// <summary>
 /// Contract for a Cosmos database/container pair.
 /// </summary>
-public sealed record CosmosContract(
-    string ContractKey,
-    CosmosContainerIdentifier CosmosIdentifier,
-    string DatabaseName,
-    string ContainerName,
-    string? PartitionKeyPath = null,
-    string? BindingName = null) : IEnvironmentResourceContract;
+public sealed record CosmosContract : IEnvironmentResourceContract
+{
+    /// <summary>
+    /// ContractKey
+    /// </summary>
+    public required string ContractKey { get; init; }
+
+    /// <summary>
+    /// CosmosIdentifier
+    /// </summary>
+    public required CosmosContainerIdentifier CosmosIdentifier { get; init; }
+
+    /// <summary>
+    /// DatabaseName
+    /// </summary>
+    public required string DatabaseName { get; init; }
+
+    /// <summary>
+    /// ContainerName
+    /// </summary>
+    public required string ContainerName { get; init; }
+
+    /// <summary>
+    /// PartitionKeyPath
+    /// </summary>
+    public string? PartitionKeyPath { get; init; }
+
+    /// <summary>
+    /// BindingName
+    /// </summary>
+    public string? BindingName { get; init; }
+}
 
 /// <summary>
 /// Contract for a logical SQL database.
 /// </summary>
-public sealed record SqlDatabaseContract(
-    string ContractKey,
-    SqlDatabaseIdentifier SqlIdentifier,
-    string DatabaseName,
-    string? SchemaName = null,
-    string? BindingName = null) : IEnvironmentResourceContract;
+public sealed record SqlDatabaseContract : IEnvironmentResourceContract
+{
+    /// <summary>
+    /// ContractKey
+    /// </summary>
+    public required string ContractKey { get; init; }
+
+    /// <summary>
+    /// SqlIdentifier
+    /// </summary>
+    public required SqlDatabaseIdentifier SqlIdentifier { get; init; }
+
+    /// <summary>
+    /// DatabaseName
+    /// </summary>
+    public required string DatabaseName { get; init; }
+
+    /// <summary>
+    /// SchemaName
+    /// </summary>
+    public string? SchemaName { get; init; }
+
+    /// <summary>
+    /// BindingName
+    /// </summary>
+    public string? BindingName { get; init; }
+}
 
 /// <summary>
 /// Contract for a logical Service Bus endpoint.
 /// </summary>
-public sealed record ServiceBusEndpointContract(
-    string ContractKey,
-    ServiceBusIdentifier ServiceBusIdentifier,
-    ServiceBusEndpointKind EndpointKind,
-    string EntityName,
-    string? SubscriptionName = null,
-    string? BindingName = null) : IEnvironmentResourceContract;
+public sealed record ServiceBusEndpointContract : IEnvironmentResourceContract
+{
+    /// <summary>
+    /// ContractKey
+    /// </summary>
+    public required string ContractKey { get; init; }
+
+    /// <summary>
+    /// ServiceBusIdentifier
+    /// </summary>
+    public required ServiceBusIdentifier ServiceBusIdentifier { get; init; }
+
+    /// <summary>
+    /// EndpointKind
+    /// </summary>
+    public required ServiceBusEndpointKind EndpointKind { get; init; }
+
+    /// <summary>
+    /// EntityName
+    /// </summary>
+    public required string EntityName { get; init; }
+
+    /// <summary>
+    /// SubscriptionName
+    /// </summary>
+    public string? SubscriptionName { get; init; }
+
+    /// <summary>
+    /// BindingName
+    /// </summary>
+    public string? BindingName { get; init; }
+}

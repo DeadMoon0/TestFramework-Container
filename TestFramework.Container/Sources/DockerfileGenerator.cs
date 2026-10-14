@@ -145,8 +145,15 @@ public static class DockerfileGenerator
     /// <summary>
     /// Writes the ignore file that keeps build output out of the context.
     /// </summary>
+    /// <remarks>Uses <c>null</c> for <c>additionalPatterns</c>; a longer overload states it.</remarks>
+    public static string WriteDockerIgnore()
+        => WriteDockerIgnore(null);
+
+    /// <summary>
+    /// Writes the ignore file that keeps build output out of the context.
+    /// </summary>
     /// <param name="additionalPatterns">Extra patterns to exclude.</param>
-    public static string WriteDockerIgnore(IEnumerable<string>? additionalPatterns = null)
+    public static string WriteDockerIgnore(IEnumerable<string>? additionalPatterns)
     {
         IEnumerable<string> patterns =
         [

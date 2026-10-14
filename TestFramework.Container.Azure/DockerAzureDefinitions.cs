@@ -338,7 +338,11 @@ public sealed class DockerAzureDependencyBuilder
 
     internal IReadOnlyCollection<ComponentDependency> Dependencies => _dependencies.Values;
 
-    public DockerAzureDependencyBuilder Include<TDefinition>(DependencyOwnership ownership = DependencyOwnership.Shared)
+    public DockerAzureDependencyBuilder Include<TDefinition>()
+        where TDefinition : DockerAzureDefinition, new()
+        => this.Include<TDefinition>(DependencyOwnership.Shared);
+
+    public DockerAzureDependencyBuilder Include<TDefinition>(DependencyOwnership ownership)
         where TDefinition : DockerAzureDefinition, new()
     {
         Type definitionType = typeof(TDefinition);
@@ -362,87 +366,135 @@ public sealed class DockerFunctionAppBuilder
     internal IReadOnlyCollection<ComponentDependency> Dependencies => _dependencies.Values;
 
     /// <summary>
+    /// Binds a storage definition into the Function App container settings, under the template's setting names.
+    /// </summary>
+    /// <typeparam name="TStorage">The storage definition.</typeparam>
+    /// <returns>This builder.</returns>
+    public DockerFunctionAppBuilder UseStorage<TStorage>()
+        where TStorage : DockerStorageDefinition, new()
+        => UseStorage<TStorage>(FunctionAppStorageBinding.Default);
+
+    /// <summary>
     /// Binds a storage definition into the Function App container settings.
     /// </summary>
-    /// <param name="connectionSettingName">Setting name for the storage connection string consumed by the app.</param>
-    /// <param name="hostStorageSettingName">Setting name for the Functions host storage connection string.</param>
-    /// <param name="tableNameSettingName">Setting name for the table name. Defaults to <c>StorageTableName</c>; set <see langword="null"/> to suppress table-name injection.</param>
-    /// <param name="ownership">Whether the dependency may be shared with other definitions.</param>
-    public DockerFunctionAppBuilder UseStorage<TStorage>(
-        string connectionSettingName = "StorageAccountConnectionString",
-        string hostStorageSettingName = "AzureWebJobsStorage",
-        string? tableNameSettingName = "StorageTableName",
-        DependencyOwnership ownership = DependencyOwnership.Shared)
+    /// <typeparam name="TStorage">The storage definition.</typeparam>
+    /// <param name="binding">Which app settings carry what, and whether the storage is shared.</param>
+    /// <returns>This builder.</returns>
+    public DockerFunctionAppBuilder UseStorage<TStorage>(FunctionAppStorageBinding binding)
         where TStorage : DockerStorageDefinition, new()
     {
+        ArgumentNullException.ThrowIfNull(binding);
+
         TStorage definition = new();
-        AddDependency(typeof(TStorage), ownership);
+        AddDependency(typeof(TStorage), binding.Ownership);
         ReplaceResourceBinding(new FunctionAppResourceBinding(
             FunctionAppResourceBindingKind.Storage,
             definition.Identifier,
-            connectionSettingName,
-            hostStorageSettingName,
-            tableNameSettingName));
+            binding.ConnectionSettingName,
+            binding.HostStorageSettingName,
+            binding.TableNameSettingName));
         return this;
     }
 
-    public DockerFunctionAppBuilder UseCosmos<TCosmos>(
-        string connectionSettingName = "CosmosDbConnectionString",
-        string databaseSettingName = "CosmosDatabaseName",
-        string containerSettingName = "CosmosContainerName",
-        DependencyOwnership ownership = DependencyOwnership.Shared)
+    /// <summary>
+    /// Binds a Cosmos definition into the Function App container settings, under the template's setting names.
+    /// </summary>
+    /// <typeparam name="TCosmos">The Cosmos definition.</typeparam>
+    /// <returns>This builder.</returns>
+    public DockerFunctionAppBuilder UseCosmos<TCosmos>()
+        where TCosmos : DockerCosmosDefinition, new()
+        => UseCosmos<TCosmos>(FunctionAppCosmosBinding.Default);
+
+    /// <summary>
+    /// Binds a Cosmos definition into the Function App container settings.
+    /// </summary>
+    /// <typeparam name="TCosmos">The Cosmos definition.</typeparam>
+    /// <param name="binding">Which app settings carry what, and whether the emulator is shared.</param>
+    /// <returns>This builder.</returns>
+    public DockerFunctionAppBuilder UseCosmos<TCosmos>(FunctionAppCosmosBinding binding)
         where TCosmos : DockerCosmosDefinition, new()
     {
+        ArgumentNullException.ThrowIfNull(binding);
+
         TCosmos definition = new();
-        AddDependency(typeof(TCosmos), ownership);
+        AddDependency(typeof(TCosmos), binding.Ownership);
         ReplaceResourceBinding(new FunctionAppResourceBinding(
             FunctionAppResourceBindingKind.Cosmos,
             definition.Identifier,
-            connectionSettingName,
-            databaseSettingName,
-            containerSettingName));
+            binding.ConnectionSettingName,
+            binding.DatabaseSettingName,
+            binding.ContainerSettingName));
         return this;
     }
 
-    public DockerFunctionAppBuilder UseServiceBusTrigger<TServiceBus>(
-        Func<TServiceBus, DockerServiceBusEndpoint> endpointSelector,
-        string connectionSettingName = "ServiceBusTriggerConnection",
-        string entitySettingName = "ServiceBusTriggerTopicName",
-        string? subscriptionSettingName = "ServiceBusTriggerSubscriptionName",
-        DependencyOwnership ownership = DependencyOwnership.Shared)
+    /// <summary>
+    /// Binds a Service Bus endpoint as the Function App's trigger, under the template's setting names.
+    /// </summary>
+    /// <typeparam name="TServiceBus">The Service Bus definition.</typeparam>
+    /// <param name="endpointSelector">Picks the endpoint from the definition.</param>
+    /// <returns>This builder.</returns>
+    public DockerFunctionAppBuilder UseServiceBusTrigger<TServiceBus>(Func<TServiceBus, DockerServiceBusEndpoint> endpointSelector)
+        where TServiceBus : DockerServiceBusDefinition, new()
+        => UseServiceBusTrigger(endpointSelector, FunctionAppServiceBusTriggerBinding.Default);
+
+    /// <summary>
+    /// Binds a Service Bus endpoint as the Function App's trigger.
+    /// </summary>
+    /// <typeparam name="TServiceBus">The Service Bus definition.</typeparam>
+    /// <param name="endpointSelector">Picks the endpoint from the definition.</param>
+    /// <param name="binding">Which app settings carry what, and whether the emulator is shared.</param>
+    /// <returns>This builder.</returns>
+    public DockerFunctionAppBuilder UseServiceBusTrigger<TServiceBus>(Func<TServiceBus, DockerServiceBusEndpoint> endpointSelector, FunctionAppServiceBusTriggerBinding binding)
         where TServiceBus : DockerServiceBusDefinition, new()
     {
         ArgumentNullException.ThrowIfNull(endpointSelector);
+        ArgumentNullException.ThrowIfNull(binding);
+
         TServiceBus definition = new();
         DockerServiceBusEndpoint endpoint = endpointSelector(definition);
-        AddDependency(typeof(TServiceBus), ownership);
+        AddDependency(typeof(TServiceBus), binding.Ownership);
         ReplaceResourceBinding(new FunctionAppResourceBinding(
             FunctionAppResourceBindingKind.ServiceBusTrigger,
             definition.Identifier,
-            connectionSettingName,
-            entitySettingName,
-            subscriptionSettingName,
+            binding.ConnectionSettingName,
+            binding.EntitySettingName,
+            binding.SubscriptionSettingName,
             endpoint));
         AddServiceBusTopologySource(definition.GetTopologySource());
         return this;
     }
 
-    public DockerFunctionAppBuilder UseServiceBusReply<TServiceBus>(
-        Func<TServiceBus, DockerServiceBusEndpoint> endpointSelector,
-        string connectionSettingName = "ServiceBusReplyConnectionString",
-        string entitySettingName = "ServiceBusReplyTopicName",
-        DependencyOwnership ownership = DependencyOwnership.Shared)
+    /// <summary>
+    /// Binds a Service Bus endpoint as the entity the Function App replies to, under the template's setting names.
+    /// </summary>
+    /// <typeparam name="TServiceBus">The Service Bus definition.</typeparam>
+    /// <param name="endpointSelector">Picks the endpoint from the definition.</param>
+    /// <returns>This builder.</returns>
+    public DockerFunctionAppBuilder UseServiceBusReply<TServiceBus>(Func<TServiceBus, DockerServiceBusEndpoint> endpointSelector)
+        where TServiceBus : DockerServiceBusDefinition, new()
+        => UseServiceBusReply(endpointSelector, FunctionAppServiceBusReplyBinding.Default);
+
+    /// <summary>
+    /// Binds a Service Bus endpoint as the entity the Function App replies to.
+    /// </summary>
+    /// <typeparam name="TServiceBus">The Service Bus definition.</typeparam>
+    /// <param name="endpointSelector">Picks the endpoint from the definition.</param>
+    /// <param name="binding">Which app settings carry what, and whether the emulator is shared.</param>
+    /// <returns>This builder.</returns>
+    public DockerFunctionAppBuilder UseServiceBusReply<TServiceBus>(Func<TServiceBus, DockerServiceBusEndpoint> endpointSelector, FunctionAppServiceBusReplyBinding binding)
         where TServiceBus : DockerServiceBusDefinition, new()
     {
         ArgumentNullException.ThrowIfNull(endpointSelector);
+        ArgumentNullException.ThrowIfNull(binding);
+
         TServiceBus definition = new();
         DockerServiceBusEndpoint endpoint = endpointSelector(definition);
-        AddDependency(typeof(TServiceBus), ownership);
+        AddDependency(typeof(TServiceBus), binding.Ownership);
         ReplaceResourceBinding(new FunctionAppResourceBinding(
             FunctionAppResourceBindingKind.ServiceBusReply,
             definition.Identifier,
-            connectionSettingName,
-            entitySettingName,
+            binding.ConnectionSettingName,
+            binding.EntitySettingName,
             ServiceBusEndpoint: endpoint));
         AddServiceBusTopologySource(definition.GetTopologySource());
         return this;

@@ -13,9 +13,16 @@ namespace TestFramework.Container.Web;
 /// <remarks>
 /// A definition is the test-side description of a resource: what it is called, what it contains and
 /// how it is reset. It holds no runtime state, so the same definition can be reused across runs.
+/// <para>
+/// Derived only here, by the three kinds the environment provides - SQL, API and site. A definition of any other
+/// kind was accepted and then silently ignored, because the environment knows how to start only those three.
+/// </para>
 /// </remarks>
 public abstract class DockerWebDefinition
 {
+    private protected DockerWebDefinition()
+    {
+    }
 }
 
 /// <summary>
@@ -192,18 +199,42 @@ public sealed class DockerSqlBuilder(Type definitionType)
 /// <summary>
 /// What one database is made of.
 /// </summary>
-/// <param name="DatabaseName">The database to create.</param>
-/// <param name="ModelTypes">The models whose tables are generated.</param>
-/// <param name="Scripts">The scripts applied after the generated tables.</param>
-/// <param name="ResetScript">The script <see cref="SqlResetMode.RunResetScript"/> runs.</param>
-/// <param name="ResetMode">What happens to a database that already exists.</param>
-public sealed record DockerSqlSpec(
-    string DatabaseName,
-    IReadOnlyList<Type> ModelTypes,
-    IReadOnlyList<SqlScript> Scripts,
-    SqlScript? ResetScript,
-    SqlResetMode ResetMode)
+public sealed record DockerSqlSpec
 {
+    internal DockerSqlSpec(string databaseName, IReadOnlyList<Type> modelTypes, IReadOnlyList<SqlScript> scripts, SqlScript? resetScript, SqlResetMode resetMode)
+    {
+        this.DatabaseName = databaseName;
+        this.ModelTypes = modelTypes;
+        this.Scripts = scripts;
+        this.ResetScript = resetScript;
+        this.ResetMode = resetMode;
+    }
+
+    /// <summary>
+    /// The database to create.
+    /// </summary>
+    public string DatabaseName { get; }
+
+    /// <summary>
+    /// The models whose tables are generated.
+    /// </summary>
+    public IReadOnlyList<Type> ModelTypes { get; }
+
+    /// <summary>
+    /// The scripts applied after the generated tables.
+    /// </summary>
+    public IReadOnlyList<SqlScript> Scripts { get; }
+
+    /// <summary>
+    /// The script <see cref="SqlResetMode.RunResetScript"/> runs.
+    /// </summary>
+    public SqlScript? ResetScript { get; }
+
+    /// <summary>
+    /// What happens to a database that already exists.
+    /// </summary>
+    public SqlResetMode ResetMode { get; }
+
     /// <summary>
     /// Whether a database name is a plain identifier and therefore safe to place in a statement.
     /// </summary>

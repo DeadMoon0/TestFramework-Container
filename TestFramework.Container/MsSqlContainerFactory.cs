@@ -10,12 +10,28 @@ namespace TestFramework.Container;
 /// <summary>
 /// Settings for a SQL Server container.
 /// </summary>
-/// <param name="Image">The image to run.</param>
-/// <param name="Password">The <c>sa</c> password.</param>
-/// <param name="MemoryLimitMb">The memory limit passed to the engine.</param>
-/// <param name="NetworkAliases">Aliases other containers use to reach it.</param>
-public sealed record MsSqlContainerOptions(string Image, string Password, int? MemoryLimitMb = null, IReadOnlyList<string>? NetworkAliases = null)
+public sealed record MsSqlContainerOptions
 {
+    /// <summary>
+    /// The image to run.
+    /// </summary>
+    public required string Image { get; init; }
+
+    /// <summary>
+    /// The <c>sa</c> password.
+    /// </summary>
+    public required string Password { get; init; }
+
+    /// <summary>
+    /// The memory limit passed to the engine.
+    /// </summary>
+    public int? MemoryLimitMb { get; init; }
+
+    /// <summary>
+    /// Aliases other containers use to reach it.
+    /// </summary>
+    public IReadOnlyList<string>? NetworkAliases { get; init; }
+
     /// <summary>
     /// The login the SQL Server images create.
     /// </summary>
@@ -62,9 +78,17 @@ public static class MsSqlContainerFactory
     /// <summary>
     /// Builds a SQL Server container. The caller starts it.
     /// </summary>
+    /// <remarks>Uses <c>null</c> for <c>network</c>; a longer overload states it.</remarks>
+    /// <param name="options">The container settings.</param>
+    public static MsSqlContainer Create(MsSqlContainerOptions options)
+        => Create(options, null);
+
+    /// <summary>
+    /// Builds a SQL Server container. The caller starts it.
+    /// </summary>
     /// <param name="options">The container settings.</param>
     /// <param name="network">The network to join, when the container must be reachable by other containers.</param>
-    public static MsSqlContainer Create(MsSqlContainerOptions options, INetwork? network = null)
+    public static MsSqlContainer Create(MsSqlContainerOptions options, INetwork? network)
     {
         ArgumentNullException.ThrowIfNull(options);
 

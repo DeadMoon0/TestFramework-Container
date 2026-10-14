@@ -33,12 +33,22 @@ public static class ContainerRuntime
     /// <summary>
     /// Points the Docker client at the engine this machine runs, once per process.
     /// </summary>
+    /// <remarks>
+    /// Idempotent, and safe to call from several component creations at once. It changes nothing when
+    /// <c>DOCKER_HOST</c> is already set or when the platform has no named pipes.
+    /// </remarks>
+    public static void EnsureInitialized()
+        => EnsureInitialized(null);
+
+    /// <summary>
+    /// Points the Docker client at the engine this machine runs, once per process.
+    /// </summary>
     /// <param name="logger">Optional logger; the chosen pipe is reported through it when one is set.</param>
     /// <remarks>
     /// Idempotent, and safe to call from several component creations at once. It changes nothing when
     /// <c>DOCKER_HOST</c> is already set or when the platform has no named pipes.
     /// </remarks>
-    public static void EnsureInitialized(ScopedLogger? logger = null)
+    public static void EnsureInitialized(ScopedLogger? logger)
     {
         lock (Gate)
         {
