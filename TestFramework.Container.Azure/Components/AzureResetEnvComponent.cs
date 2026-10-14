@@ -376,7 +376,7 @@ internal sealed class AzureResetEnvComponent(DockerAzureEnvironment owner) : Doc
             SqlDatabaseConfig config = context.Configured<SqlDatabaseConfig>(identifier);
             string databaseName = config.DatabaseName;
 
-            if (IsProtectedDatabase(databaseName))
+            if (SqlDatabaseLifecycle.IsProtected(databaseName))
             {
                 // The Service Bus emulator keeps its own state in this server. Dropping its database
                 // takes the emulator down with it, in the middle of the suite.
@@ -384,38 +384,10 @@ internal sealed class AzureResetEnvComponent(DockerAzureEnvironment owner) : Doc
                 continue;
             }
 
-            string serverConnectionString = ToServerConnectionString(config.ConnectionString);
-            await ExecuteAsync(
-                serverConnectionString,
-                $"""
-                IF DB_ID(@name) IS NOT NULL
-                BEGIN
-                    ALTER DATABASE {QuoteName(databaseName)} SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
-                    DROP DATABASE {QuoteName(databaseName)};
-                END
-                """,
-                databaseName,
-                cancellationToken).ConfigureAwait(false);
-
-            // CREATE DATABASE refuses to share a batch, hence the wrapper.
-            await ExecuteAsync(
-                serverConnectionString,
-                $"IF DB_ID(@name) IS NULL EXEC(N'CREATE DATABASE {QuoteName(databaseName).Replace("'", "''", StringComparison.Ordinal)};');",
-                databaseName,
-                cancellationToken).ConfigureAwait(false);
+            await SqlDatabaseLifecycle.RecreateAsync(config.ConnectionString, databaseName, cancellationToken).ConfigureAwait(false);
 
             logger.LogInformation($"Recreated the SQL database '{databaseName}' for identifier '{identifier}'.");
         }
-    }
-
-    /// <summary>
-    /// Names the purge refuses to drop whatever a configuration says.
-    /// </summary>
-    private static bool IsProtectedDatabase(string databaseName)
-    {
-        return databaseName is "master" or "model" or "msdb" or "tempdb"
-            || databaseName.StartsWith("SbEmulator", StringComparison.OrdinalIgnoreCase)
-            || databaseName.Contains("ServiceBus", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -432,29 +404,6 @@ internal sealed class AzureResetEnvComponent(DockerAzureEnvironment owner) : Doc
 
         return "(unknown endpoint)";
     }
-
-    private static string ToServerConnectionString(string connectionString)
-    {
-        // Dropping a database from a connection that is inside it does not work.
-        SqlConnectionStringBuilder builder = new(connectionString)
-        {
-            InitialCatalog = "master",
-        };
-
-        return builder.ConnectionString;
-    }
-
-    private static async Task ExecuteAsync(string connectionString, string statement, string databaseName, CancellationToken cancellationToken)
-    {
-        await using SqlConnection connection = new(connectionString);
-        await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-        await using SqlCommand command = new(statement, connection);
-        command.Parameters.AddWithValue("@name", databaseName);
-        await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-    }
-
-    private static string QuoteName(string identifier)
-        => $"[{identifier.Replace("]", "]]", StringComparison.Ordinal)}]";
 
     private static IEnumerable<string> DistinctConnectionStrings(IEnumerable<string> identifiers, Func<string, string> select)
         => identifiers.Select(select).Distinct(StringComparer.Ordinal).OrderBy(x => x, StringComparer.Ordinal);

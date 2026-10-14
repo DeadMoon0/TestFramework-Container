@@ -39,30 +39,14 @@ public static class SqlDatabaseProvisioner
         if (!DockerSqlSpec.IsValidDatabaseName(spec.DatabaseName))
             throw new FrameworkConfigurationException($"The database name '{spec.DatabaseName}' is not a plain identifier, so it cannot be placed in a statement. Use letters, digits and underscores, starting with a letter or underscore.");
 
-        string quoted = SqlModelMap.Quote(spec.DatabaseName);
-
         if (spec.ResetMode == SqlResetMode.RecreateDatabase)
         {
             logger.LogInformation("Recreating the database '{0}'.", spec.DatabaseName);
-
-            // Sessions left open by a previous run would block the drop, so they are rolled back.
-            await ExecuteAsync(
-                serverConnectionString,
-                $"""
-                IF DB_ID(N'{spec.DatabaseName}') IS NOT NULL
-                BEGIN
-                    ALTER DATABASE {quoted} SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
-                    DROP DATABASE {quoted};
-                END
-                """,
-                cancellationToken).ConfigureAwait(false);
+            await SqlDatabaseLifecycle.RecreateAsync(serverConnectionString, spec.DatabaseName, cancellationToken).ConfigureAwait(false);
+            return;
         }
 
-        // CREATE DATABASE cannot share a batch with other statements, so it is wrapped in EXEC.
-        await ExecuteAsync(
-            serverConnectionString,
-            $"IF DB_ID(N'{spec.DatabaseName}') IS NULL EXEC(N'CREATE DATABASE {quoted};');",
-            cancellationToken).ConfigureAwait(false);
+        await SqlDatabaseLifecycle.EnsureExistsAsync(serverConnectionString, spec.DatabaseName, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
