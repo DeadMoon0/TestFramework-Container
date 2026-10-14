@@ -81,7 +81,7 @@ public static class ContainerImagePull
             $"The daemon could not reach '{host}' to pull '{image}'. Fetching it over IPv4 from this process instead and loading it into the daemon. "
             + "A broken IPv6 path is the usual cause; see the package README.");
 
-        string archive = Path.Combine(Path.GetTempPath(), $"tf-image-{Guid.NewGuid().ToString("N")[..12]}.tar");
+        string archive = Path.Combine(Path.GetTempPath(), $"{ContainerLeftovers.ImageArchivePrefix}{Guid.NewGuid().ToString("N")[..12]}.tar");
 
         try
         {

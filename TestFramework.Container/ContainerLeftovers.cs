@@ -67,6 +67,12 @@ public static class ContainerLeftovers
     /// </summary>
     public const string TempPrefix = "tf-";
 
+    /// <summary>
+    /// The prefix of the image archives fetched over IPv4 and loaded into the daemon. Files, not directories, so
+    /// they are swept by name of their own.
+    /// </summary>
+    internal const string ImageArchivePrefix = TempPrefix + "image-";
+
     private const string ExpiryFilter = "24h";
     private static readonly TimeSpan Expiry = TimeSpan.FromHours(24);
 
@@ -88,6 +94,7 @@ public static class ContainerLeftovers
         {
             await PruneImagesAsync(logger, cancellationToken).ConfigureAwait(false);
             SweepTemporaryDirectories(logger);
+            SweepImageArchives(logger);
             SweepTopologyFiles(logger);
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
@@ -154,6 +161,31 @@ public static class ContainerLeftovers
 
         if (removed.Count > 0)
             TryLog(logger, $"Housekeeping removed {removed.Count} leftover build director{(removed.Count == 1 ? "y" : "ies")} older than {ExpiryFilter}.");
+    }
+
+    /// <summary>
+    /// Removes image archives a killed process left in the temp directory - each the size of a whole image.
+    /// </summary>
+    /// <remarks>
+    /// The directory sweep never saw them: it enumerates directories, and these are files. The same rules hold:
+    /// the top level of the temp directory, the framework's own prefix, older than a day.
+    /// </remarks>
+    private static void SweepImageArchives(ScopedLogger? logger)
+    {
+        int removed = 0;
+        DateTime cutoff = DateTime.UtcNow - Expiry;
+
+        foreach (string archive in EnumerateSafely(Path.GetTempPath(), $"{ImageArchivePrefix}*.tar", searchDirectories: false))
+        {
+            if (File.GetLastWriteTimeUtc(archive) > cutoff)
+                continue;
+
+            if (TryDelete(() => File.Delete(archive)))
+                removed++;
+        }
+
+        if (removed > 0)
+            TryLog(logger, $"Housekeeping removed {removed} leftover image archive{(removed == 1 ? string.Empty : "s")} older than {ExpiryFilter}.");
     }
 
     private static void SweepTopologyFiles(ScopedLogger? logger)

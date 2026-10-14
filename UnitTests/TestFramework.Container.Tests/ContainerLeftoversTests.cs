@@ -12,6 +12,35 @@ namespace TestFramework.Container.Tests;
 public class ContainerLeftoversTests
 {
     [Fact]
+    public async Task SweepAsync_RemovesAnImageArchiveAKilledRunLeft_AndNoOneElsesFiles()
+    {
+        // Archives are files; the sweep used to look only at directories, so each one stayed - an image's worth of disk.
+        string expired = Path.Combine(Path.GetTempPath(), $"{ContainerLeftovers.ImageArchivePrefix}{Guid.NewGuid():N}.tar");
+        string recent = Path.Combine(Path.GetTempPath(), $"{ContainerLeftovers.ImageArchivePrefix}{Guid.NewGuid():N}.tar");
+        string foreign = Path.Combine(Path.GetTempPath(), $"someone-elses-{Guid.NewGuid():N}.tar");
+
+        foreach (string file in new[] { expired, recent, foreign })
+            File.WriteAllText(file, "archive");
+
+        File.SetLastWriteTimeUtc(expired, DateTime.UtcNow.AddDays(-3));
+        File.SetLastWriteTimeUtc(foreign, DateTime.UtcNow.AddDays(-3));
+
+        try
+        {
+            await ContainerLeftovers.SweepAsync(null, CancellationToken.None);
+
+            Assert.False(File.Exists(expired), "An image archive older than a day is litter.");
+            Assert.True(File.Exists(recent), "An archive written today may be loading right now.");
+            Assert.True(File.Exists(foreign), "Only the framework's own archives may be swept.");
+        }
+        finally
+        {
+            foreach (string file in new[] { expired, recent, foreign })
+                File.Delete(file);
+        }
+    }
+
+    [Fact]
     public async Task SweepAsync_LeavesRecentAndForeignTemporaryDirectoriesAlone()
     {
         string recent = Path.Combine(Path.GetTempPath(), $"{ContainerLeftovers.TempPrefix}recent-{Guid.NewGuid():N}");
