@@ -61,7 +61,7 @@ public static class ContainerSourceResolver
         List<string> derivations = [];
 
         string targetFramework = ResolveTargetFramework(source, facts, derivations);
-        string runtimeImage = await ResolveRuntimeImageAsync(source, facts, targetFramework, derivations, cancellationToken).ConfigureAwait(false);
+        string runtimeImage = ResolveRuntimeImage(source, facts, targetFramework, derivations);
 
         ContainerSourcePlan plan = new()
         {
@@ -78,7 +78,13 @@ public static class ContainerSourceResolver
         if (source.Strategy != ContainerBuildStrategy.InContainer)
             return plan;
 
-        await EnsureBuildableOfflineAsync(source, targetFramework, cancellationToken).ConfigureAwait(false);
+        // Asked once, and only when nothing declared the SDK image: both the offline check and the image choice
+        // depend on it, and each used to start 'dotnet --version' for itself.
+        string? hostSdk = source.SdkImage is null
+            ? await DotNetCli.ReadSdkMajorMinorAsync(cancellationToken).ConfigureAwait(false)
+            : null;
+
+        EnsureBuildableOffline(source, targetFramework, hostSdk);
 
         string context = source.ContextDirectory ?? ProjectQuery.ResolveCommonRoot(facts);
         if (source.ContextDirectory is null)
@@ -91,23 +97,19 @@ public static class ContainerSourceResolver
         return plan with
         {
             ContextDirectory = context,
-            SdkImage = await ResolveSdkImageAsync(source, targetFramework, derivations, cancellationToken).ConfigureAwait(false),
+            SdkImage = ResolveSdkImage(source, targetFramework, hostSdk, derivations),
             Derivations = derivations,
         };
     }
 
-    private static async Task EnsureBuildableOfflineAsync(ProjectContainerSource source, string targetFramework, CancellationToken cancellationToken)
+    private static void EnsureBuildableOffline(ProjectContainerSource source, string targetFramework, string? hostSdk)
     {
         // An offline build hands the container the packages the host's restore resolved. Which
         // packages that is depends on what the SDK treats as provided by the framework, and an SDK
         // building a framework of a different generation resolves a different set -- one the handed
         // over cache cannot satisfy. Saying so here beats a restore failure inside the container
         // listing packages nobody asked for.
-        if (source.SdkImage is not null)
-            return;
-
-        string? hostSdk = await DotNetCli.ReadSdkMajorMinorAsync(cancellationToken).ConfigureAwait(false);
-        if (hostSdk is null)
+        if (source.SdkImage is not null || hostSdk is null)
             return;
 
         string sdkGeneration = hostSdk.Split('.')[0];
@@ -163,12 +165,11 @@ public static class ContainerSourceResolver
         return facts.TargetFrameworks[0];
     }
 
-    private static async Task<string> ResolveRuntimeImageAsync(
+    private static string ResolveRuntimeImage(
         ProjectContainerSource source,
         ProjectFacts facts,
         string targetFramework,
-        List<string> derivations,
-        CancellationToken cancellationToken)
+        List<string> derivations)
     {
         if (source.RuntimeImage is { } declared)
             return declared;
@@ -179,15 +180,14 @@ public static class ContainerSourceResolver
             ? "runtime image from the project using the web SDK"
             : "runtime image from the project not using the web SDK");
 
-        await Task.CompletedTask.ConfigureAwait(false);
         return $"{repository}:{version}";
     }
 
-    private static async Task<string> ResolveSdkImageAsync(
+    private static string ResolveSdkImage(
         ProjectContainerSource source,
         string targetFramework,
-        List<string> derivations,
-        CancellationToken cancellationToken)
+        string? hostSdk,
+        List<string> derivations)
     {
         if (source.SdkImage is { } declared)
             return declared;
@@ -196,7 +196,6 @@ public static class ContainerSourceResolver
         // restore treats as framework-provided depends on the SDK version, so a container running a
         // different SDK asks for packages the host's restore pruned, and the handed-over cache
         // cannot satisfy it.
-        string? hostSdk = await DotNetCli.ReadSdkMajorMinorAsync(cancellationToken).ConfigureAwait(false);
         if (hostSdk is not null)
         {
             derivations.Add($"SDK image matched to the SDK on this machine, {hostSdk}, so its restore resolves the same set");
