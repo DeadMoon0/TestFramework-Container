@@ -55,6 +55,8 @@ jobs:
           # Required: the packed icon comes from Modules/TestFramework-Common.
           # Without this the pack fails with NuGet's opaque "icon file does not exist".
           submodules: recursive
+          # Every tag, so the release-notes check below can read the previous release.
+          fetch-depth: 0
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -76,6 +78,24 @@ jobs:
           fi
           if [ "$version" != "$tag" ]; then
             echo "::error file=$PROJECT::Version '$version' does not match tag '$tag'"
+            exit 1
+          fi
+
+      - name: Refuse release notes carried over from the previous release
+        run: |
+          set -euo pipefail
+          # The notes describe this release. A copy of the previous one's tells a consumer nothing new - or tells
+          # them again about a break they already took - and twelve releases of this family shipped exactly that.
+          previous="$(git tag -l "${PACKAGE_PREFIX}-v*" --sort=-v:refname | grep -vx "$GITHUB_REF_NAME" | head -n1 || true)"
+          if [ -z "$previous" ]; then
+            echo "No earlier ${PACKAGE_PREFIX} release to compare with."
+            exit 0
+          fi
+          notes() { tr -d '\r' | awk '/<PackageReleaseNotes>/,/<\/PackageReleaseNotes>/'; }
+          before="$(git show "$previous:$PROJECT" 2>/dev/null | notes || true)"
+          now="$(notes < "$PROJECT")"
+          if [ -n "$before" ] && [ "$before" = "$now" ]; then
+            echo "::error file=$PROJECT::PackageReleaseNotes are unchanged since $previous. Say what this release changes, in a few sentences."
             exit 1
           fi
 
