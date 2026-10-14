@@ -128,34 +128,24 @@ internal sealed class CosmosDbEnvComponent : DockerAzureEnvComponent
     {
         logger.LogInformation($"Waiting up to {GatewayReadinessTimeout:g} for the Cosmos gateway at {endpoint}.");
 
-        DateTime deadline = DateTime.UtcNow.Add(GatewayReadinessTimeout);
-        Exception? lastError = null;
-        int attempt = 0;
+        int attempts = 0;
 
-        while (DateTime.UtcNow < deadline)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            attempt++;
-            try
+        // The account read takes no token; the readiness window bounds it all the same.
+        await ContainerReadiness.WaitUntilAsync(
+            async _ =>
             {
+                attempts++;
                 await client.ReadAccountAsync().ConfigureAwait(false);
-                logger.LogInformation($"Cosmos gateway is ready after {attempt} attempt(s).");
-                return;
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch (Exception exception)
-            {
-                lastError = exception;
-                await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken).ConfigureAwait(false);
-            }
-        }
+                return true;
+            },
+            static _ => true,
+            GatewayReadinessTimeout,
+            (made, lastError) => new FrameworkTimeoutException(
+                $"The Cosmos emulator gateway at {endpoint} did not become ready within {GatewayReadinessTimeout:g} ({made} attempts). Last failure: {(lastError is null ? "(none)" : $"{lastError.GetType().Name}: {lastError.Message}")}",
+                lastError),
+            cancellationToken).ConfigureAwait(false);
 
-        throw new FrameworkTimeoutException(
-            $"The Cosmos emulator gateway at {endpoint} did not become ready within {GatewayReadinessTimeout:g} ({attempt} attempts). Last failure: {(lastError is null ? "(none)" : $"{lastError.GetType().Name}: {lastError.Message}")}",
-            lastError);
+        logger.LogInformation($"Cosmos gateway is ready after {attempts} attempt(s).");
     }
 
     private static async Task DeploySchemaAsync(string identifier, CosmosContainerDbConfig config, string partitionKeyPath, ScopedLogger logger, CancellationToken cancellationToken)
