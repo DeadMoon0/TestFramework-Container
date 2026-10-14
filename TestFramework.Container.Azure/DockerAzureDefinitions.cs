@@ -221,7 +221,16 @@ public abstract class DockerServiceBusDefinition : DockerAzureDefinition
 {
     public abstract ServiceBusIdentifier Identifier { get; }
 
-    public virtual string TopologyConfigPath => DockerAzureDefaults.ServiceBusTopologyConfigPath;
+    /// <summary>
+    /// An emulator config file naming the queues and topics, for a definition that does not describe them through
+    /// <see cref="ConfigureServiceBusTopology"/>.
+    /// </summary>
+    /// <remarks>
+    /// No default. There used to be one - a file this package copied to its own build output and never shipped - so
+    /// a definition that described nothing passed resolution and failed only once SQL Server had started, in a
+    /// consumer's output where no such file existed.
+    /// </remarks>
+    public virtual string? TopologyConfigPath => null;
 
     protected virtual bool RequiredSession => false;
 
@@ -254,13 +263,17 @@ public abstract class DockerServiceBusDefinition : DockerAzureDefinition
         return true;
     }
 
-    internal ServiceBusTopologySource GetTopologySource()
+    /// <summary>
+    /// The topology this definition describes, or <see langword="null"/> when it describes none.
+    /// </summary>
+    internal ServiceBusTopologySource? GetTopologySource()
     {
         DockerServiceBusTopologyBuilder builder = new();
         ConfigureServiceBusTopology(builder);
-        return builder.HasNamespaces
-            ? ServiceBusTopologySource.FromTopology(builder.Build())
-            : ServiceBusTopologySource.FromPath(TopologyConfigPath);
+        if (builder.HasNamespaces)
+            return ServiceBusTopologySource.FromTopology(builder.Build());
+
+        return string.IsNullOrWhiteSpace(TopologyConfigPath) ? null : ServiceBusTopologySource.FromPath(TopologyConfigPath);
     }
 }
 
@@ -522,9 +535,9 @@ public sealed class DockerFunctionAppBuilder
         ResourceBindings.Add(binding);
     }
 
-    private void AddServiceBusTopologySource(ServiceBusTopologySource source)
+    private void AddServiceBusTopologySource(ServiceBusTopologySource? source)
     {
-        if (source.IsPath && string.Equals(source.ConfigPath, DockerAzureDefaults.ServiceBusTopologyConfigPath, StringComparison.OrdinalIgnoreCase))
+        if (source is null)
             return;
 
         if (ServiceBusTopologySources.Any(existing => existing.SemanticallyEquals(source)))
@@ -635,7 +648,6 @@ public static class DockerAzureDefaults
     /// digest, when a run has to be reproducible over time.
     /// </remarks>
     public const string ServiceBusImage = "mcr.microsoft.com/azure-messaging/servicebus-emulator:latest";
-    public static readonly string ServiceBusTopologyConfigPath = Path.Combine("Configurations", "ServiceBus", "config.json");
     public static readonly string DefaultAzuriteConnectionString = $"DefaultEndpointsProtocol=http;AccountName={AzuriteAccountName};AccountKey={AzuriteAccountKey};BlobEndpoint=http://127.0.0.1:10000/{AzuriteAccountName};QueueEndpoint=http://127.0.0.1:10001/{AzuriteAccountName};TableEndpoint=http://127.0.0.1:10002/{AzuriteAccountName};";
 }
 
@@ -718,8 +730,7 @@ internal sealed class DockerAzureDefinitionState
             case DockerSqlDefinition:
                 break;
             case DockerServiceBusDefinition serviceBus:
-                ServiceBusTopologySource serviceBusTopologySource = serviceBus.GetTopologySource();
-                if (!serviceBusTopologySource.IsPath || !string.Equals(serviceBusTopologySource.ConfigPath, DockerAzureDefaults.ServiceBusTopologyConfigPath, StringComparison.OrdinalIgnoreCase))
+                if (serviceBus.GetTopologySource() is { } serviceBusTopologySource)
                     SetServiceBusTopologySource(serviceBusTopologySource);
                 break;
             case DockerFunctionAppDefinition functionApp:

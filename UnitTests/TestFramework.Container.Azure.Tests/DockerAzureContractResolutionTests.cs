@@ -53,6 +53,9 @@ public class DockerAzureContractResolutionTests
     {
         public override ServiceBusIdentifier Identifier => "bus";
 
+        protected override void ConfigureServiceBusTopology(DockerServiceBusTopologyBuilder builder)
+            => builder.AddNamespace("sbemulatorns", ns => ns.AddQueue("processing-reply"));
+
         protected override void ConfigureContracts(DockerAzureContractBuilder contracts)
         {
             contracts.Provide(new ServiceBusEndpointContract

@@ -21,7 +21,7 @@
 		<PackageTags>Test;UnitTest;IntegrationTest;Framework;Timeline;Docker;Azure</PackageTags>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<Copyright>Copyright (c) DeadMoon0 2026</Copyright>
-		<PackageReleaseNotes>BREAKING - needs TestFramework.Core 0.7.0, TestFramework.Config 0.4.0 and TestFramework.Azure 0.5.0. UseStorage, UseCosmos, UseServiceBusTrigger and UseServiceBusReply take a binding record (FunctionAppStorageBinding and so on) instead of optional setting names; the four contracts take init properties; other optional parameters became overloads. DockerAzureEnvironment is sealed and hands each run its own instance, so after a run read UsedStorageIdentifiers and the rest from run.Environment; the one passed to SetEnv stays empty.</PackageReleaseNotes>
+		<PackageReleaseNotes>BREAKING - needs TestFramework.Core 0.7.0, TestFramework.Config 0.4.0 and TestFramework.Azure 0.5.0. UseStorage, UseCosmos, UseServiceBusTrigger and UseServiceBusReply take a binding record (FunctionAppStorageBinding and so on) instead of optional setting names; the four contracts take init properties; other optional parameters became overloads. DockerAzureEnvironment is sealed and hands each run its own instance, so after a run read UsedStorageIdentifiers and the rest from run.Environment; the one passed to SetEnv stays empty. A Service Bus topology is no longer defaulted to a file this package never shipped: describe one with ConfigureServiceBusTopology, or the run is refused while it is planned.</PackageReleaseNotes>
 	</PropertyGroup>
 
 	<ItemGroup>
@@ -71,9 +71,6 @@
 		<None Include="README.md">
 			<Pack>True</Pack>
 			<PackagePath>\</PackagePath>
-		</None>
-		<None Update="Configurations\ServiceBus\config.json">
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>
 	</ItemGroup>
 

@@ -110,7 +110,7 @@ public class DockerAzureEnvironmentTests
     {
         // One run asks for storage, the other for a bus. On a shared instance the second resolution used to
         // replace the first's - so a run could start or purge emulators for what another run required.
-        DockerAzureEnvironment shared = DockerAzureEnvironment.For<TestStorageDefinition>().UseResetMode(AzureResetMode.None);
+        DockerAzureEnvironment shared = DockerAzureEnvironment.For<TestStorageDefinition>().Include<FluentServiceBusDefinition>().UseResetMode(AzureResetMode.None);
         DockerAzureEnvironment storageRun = (DockerAzureEnvironment)shared.CreateForRun();
         DockerAzureEnvironment busRun = (DockerAzureEnvironment)shared.CreateForRun();
 
@@ -131,7 +131,7 @@ public class DockerAzureEnvironmentTests
     [Fact]
     public void ResolveComponents_MapsServiceBusStepRequirementsWithoutArtifacts()
     {
-        DockerAzureEnvironment environment = new();
+        DockerAzureEnvironment environment = DockerAzureEnvironment.For<FluentServiceBusDefinition>();
         ServiceBusSendTrigger trigger = new("bus", Var.Const(new ServiceBusMessage("payload")));
 
         IReadOnlyCollection<EnvComponentIdentifier> result = environment.ResolveComponents([], ((IHasEnvironmentRequirements)trigger).GetEnvironmentRequirements(null!));
@@ -425,9 +425,33 @@ public class DockerAzureEnvironmentTests
     [Fact]
     public void ServiceBusConfigLocator_ResolvesOutputRelativeFile()
     {
-        string resolved = InvokeServiceBusConfigLocator(Path.Combine("Configurations", "ServiceBus", "config.json"));
+        string relative = Path.Combine("TestTopology", $"locator-{Guid.NewGuid():N}.json");
+        string written = Path.Combine(AppContext.BaseDirectory, relative);
+        Directory.CreateDirectory(Path.GetDirectoryName(written)!);
+        File.WriteAllText(written, "{}");
 
-        Assert.True(File.Exists(resolved));
+        try
+        {
+            Assert.Equal(Path.GetFullPath(written), Path.GetFullPath(InvokeServiceBusConfigLocator(relative)));
+        }
+        finally
+        {
+            File.Delete(written);
+        }
+    }
+
+    [Fact]
+    public void AServiceBusNothingDescribesATopologyFor_IsRefusedWhileTheRunIsPlanned()
+    {
+        // The default used to be a file this package never shipped, found missing only once SQL Server had started.
+        DockerAzureEnvironment environment = DockerAzureEnvironment.For<TestDefaultServiceBusDefinition>();
+        ServiceBusSendTrigger trigger = new("bus", Var.Const(new ServiceBusMessage("payload")));
+
+        FrameworkConfigurationException refusal = Assert.Throws<FrameworkConfigurationException>(
+            () => environment.ResolveComponents([], ((IHasEnvironmentRequirements)trigger).GetEnvironmentRequirements(null!)));
+
+        Assert.Contains("uses Service Bus ('bus')", refusal.Message, StringComparison.Ordinal);
+        Assert.Contains("ConfigureServiceBusTopology", refusal.ToString(), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -734,6 +758,9 @@ public class DockerAzureEnvironmentTests
     private sealed class ContractLoggingServiceBusDefinition : DockerServiceBusDefinition
     {
         public override ServiceBusIdentifier Identifier => "bus";
+
+        protected override void ConfigureServiceBusTopology(DockerServiceBusTopologyBuilder builder)
+            => builder.AddNamespace("sbemulatorns", ns => ns.AddTopic("processing-topic", topic => topic.AddSubscription("processing-subscription")));
 
         protected override void ConfigureContracts(DockerAzureContractBuilder contracts)
         {

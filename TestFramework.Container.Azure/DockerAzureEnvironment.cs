@@ -262,9 +262,33 @@ public sealed class DockerAzureEnvironment : EnvironmentProviderBase, IRunScoped
             resolved.Add(AzureResetComponentId);
 
         ValidateFunctionAppRegistrations();
+        EnsureServiceBusTopology();
         _lastResolutionSnapshot = CreateResolutionSnapshot(resolved, contractBindings);
 
         return [.. resolved];
+    }
+
+    /// <summary>
+    /// Refuses a run that uses Service Bus when no definition says which queues and topics the emulator creates.
+    /// </summary>
+    /// <remarks>
+    /// Here, while the run is planned, rather than when the emulator starts: by then SQL Server is already up, and the
+    /// failure used to be a file-not-found for a default path that only ever existed in this package's own output.
+    /// </remarks>
+    private void EnsureServiceBusTopology()
+    {
+        if (UsedServiceBusIdentifiers.Count == 0 || _definitionState.ServiceBusTopologySource is not null)
+            return;
+
+        throw new FrameworkConfigurationException(
+            $"The run uses Service Bus ({string.Join(", ", UsedServiceBusIdentifiers.Order(StringComparer.Ordinal).Select(identifier => $"'{identifier}'"))}), and no definition says which queues and topics the emulator should create.")
+        {
+            RecoverySteps =
+            [
+                "Override ConfigureServiceBusTopology on the DockerServiceBusDefinition for it, or on a DockerAzureInfrastructureDefinition.",
+                "Or set TopologyConfigPath to an emulator config file your test project copies to its output.",
+            ],
+        };
     }
 
     internal void LogPendingResolutionSummary(ScopedLogger logger)
@@ -418,7 +442,10 @@ public sealed class DockerAzureEnvironment : EnvironmentProviderBase, IRunScoped
 
     internal ServiceBusTopologySource GetServiceBusTopologySource()
     {
-        return _definitionState.ServiceBusTopologySource ?? ServiceBusTopologySource.FromPath(DockerAzureDefaults.ServiceBusTopologyConfigPath);
+        // Resolution refuses a run that uses Service Bus without a topology, so reaching this without one means a
+        // component was created without resolving first.
+        return _definitionState.ServiceBusTopologySource
+            ?? throw new FrameworkStateException("The Service Bus component was created, and no topology was resolved for it.");
     }
 
     internal string GetServiceBusTopologyConfigPath()

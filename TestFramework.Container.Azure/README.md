@@ -291,7 +291,7 @@ builder.UseServiceBusReply<SharedMessaging>(bus => bus.Reply);
 
 This keeps one definition aligned with one namespace while still binding multiple queue/topic endpoints cleanly.
 
-External JSON files are still supported for compatibility through `TopologyConfigPath` or `ServiceBusTopologyConfigPath`, but they are now the fallback option rather than the recommended sample style.
+External JSON files are still supported through `TopologyConfigPath` or `ServiceBusTopologyConfigPath`, pointing at a file your test project copies to its output, but they are the fallback rather than the recommended style. There is no default: a run that uses Service Bus while no definition describes a topology is refused while it is planned, before any container starts.
 
 ## Troubleshooting Notes
 
