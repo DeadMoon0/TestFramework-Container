@@ -80,4 +80,17 @@ public class ConventionTests(ITestOutputHelper output)
 
         Assert.All(constructors, constructor => Assert.True(constructor.IsFamilyAndAssembly, $"{constructor} can be called from another assembly."));
     }
+
+    [Fact]
+    public void EveryExceptionThisPackageThrowsIsAFrameworkException()
+    {
+        // One base, so a failure carries its recovery steps and reads the same way in a run's failure detail as
+        // every other package's.
+        string[] strays = [.. typeof(ApiSettingsFile).Assembly.GetTypes()
+            .Where(type => type.IsPublic && typeof(System.Exception).IsAssignableFrom(type))
+            .Where(type => !typeof(TestFramework.Core.Exceptions.TimelineFrameworkException).IsAssignableFrom(type))
+            .Select(type => type.FullName!)];
+
+        Assert.Empty(strays);
+    }
 }

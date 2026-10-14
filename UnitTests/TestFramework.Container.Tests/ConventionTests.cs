@@ -69,4 +69,17 @@ public class ConventionTests(ITestOutputHelper output)
         ConventionReport report = StepConventions.AssertPublicSurfaceCanGrow(typeof(OfflineFeed).Assembly);
         output.WriteLine(report.ToString());
     }
+
+    [Fact]
+    public void EveryExceptionThisPackageThrowsIsAFrameworkException()
+    {
+        // One base, so a failure carries its recovery steps and reads the same way in a run's failure detail as
+        // every other package's.
+        string[] strays = [.. typeof(OfflineFeed).Assembly.GetTypes()
+            .Where(type => type.IsPublic && typeof(System.Exception).IsAssignableFrom(type))
+            .Where(type => !typeof(TestFramework.Core.Exceptions.TimelineFrameworkException).IsAssignableFrom(type))
+            .Select(type => type.FullName!)];
+
+        Assert.Empty(strays);
+    }
 }
