@@ -152,7 +152,7 @@ public abstract class DockerCosmosDefinition<TDocument> : DockerCosmosDefinition
     public sealed override Type ModelType => typeof(TDocument);
 }
 
-public abstract class DockerSqlDefinition : DockerAzureDefinition
+public abstract class DockerAzureSqlDefinition : DockerAzureDefinition
 {
     public abstract SqlDatabaseIdentifier Identifier { get; }
 
@@ -727,7 +727,7 @@ internal sealed class DockerAzureDefinitionState
                 break;
             case DockerCosmosDefinition:
                 break;
-            case DockerSqlDefinition:
+            case DockerAzureSqlDefinition:
                 break;
             case DockerServiceBusDefinition serviceBus:
                 if (serviceBus.GetTopologySource() is { } serviceBusTopologySource)
@@ -858,7 +858,7 @@ internal sealed class DockerAzureDefinitionState
                 case DockerCosmosDefinition cosmos when cosmos.TryCreateDefaultConfig(out CosmosContainerDbConfig cosmosConfig):
                     yield return (typeof(CosmosContainerDbConfig), cosmos.Identifier, cosmosConfig);
                     break;
-                case DockerSqlDefinition sql when sql.TryCreateDefaultConfig(out SqlDatabaseConfig sqlConfig):
+                case DockerAzureSqlDefinition sql when sql.TryCreateDefaultConfig(out SqlDatabaseConfig sqlConfig):
                     yield return (typeof(SqlDatabaseConfig), sql.Identifier, sqlConfig);
                     break;
                 case DockerServiceBusDefinition serviceBus when serviceBus.TryCreateDefaultConfig(out ServiceBusConfig serviceBusConfig):
@@ -887,7 +887,7 @@ internal sealed class DockerAzureDefinitionState
             case DockerCosmosDefinition cosmos when configType == typeof(CosmosContainerDbConfig) && cosmos.TryCreateDefaultConfig(out CosmosContainerDbConfig cosmosConfig):
                 config = cosmosConfig;
                 return true;
-            case DockerSqlDefinition sql when configType == typeof(SqlDatabaseConfig) && sql.TryCreateDefaultConfig(out SqlDatabaseConfig sqlConfig):
+            case DockerAzureSqlDefinition sql when configType == typeof(SqlDatabaseConfig) && sql.TryCreateDefaultConfig(out SqlDatabaseConfig sqlConfig):
                 config = sqlConfig;
                 return true;
             case DockerServiceBusDefinition serviceBus when configType == typeof(ServiceBusConfig) && serviceBus.TryCreateDefaultConfig(out ServiceBusConfig serviceBusConfig):
@@ -1024,7 +1024,7 @@ internal sealed class DockerAzureDefinitionState
         {
             DockerStorageDefinition storage => $"storage:{storage.Identifier}",
             DockerCosmosDefinition cosmos => $"cosmos:{cosmos.Identifier}",
-            DockerSqlDefinition sql => $"sql:{sql.Identifier}",
+            DockerAzureSqlDefinition sql => $"sql:{sql.Identifier}",
             DockerServiceBusDefinition serviceBus => $"servicebus:{serviceBus.Identifier}",
             DockerFunctionAppDefinition functionApp => $"functionapp:{functionApp.Identifier}",
             DockerAzureInfrastructureDefinition infrastructure => $"infrastructure:{infrastructure.GetType().FullName}",

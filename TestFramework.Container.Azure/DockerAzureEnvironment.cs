@@ -102,7 +102,7 @@ public sealed class DockerAzureEnvironment : EnvironmentProviderBase, IRunScoped
         MapArtifact<StorageAccountBlobArtifactDescriber>(AzuriteComponentId);
         MapArtifact(typeof(TableStorageEntityArtifactDescriber<>), AzuriteComponentId);
         MapArtifact(typeof(CosmosDbItemArtifactDescriber<>), CosmosDbComponentId);
-        MapArtifact(typeof(SqlRowArtifactDescriber<>), MsSqlComponentId);
+        MapArtifact(typeof(AzureSqlRowArtifactDescriber<>), MsSqlComponentId);
     }
 
     public DockerAzureEnvironment Include<TDefinition>()
@@ -574,9 +574,9 @@ public sealed class DockerAzureEnvironment : EnvironmentProviderBase, IRunScoped
             _usedCosmosIdentifiers.Add(identifier);
             RegisterCosmosSchema(identifier, cosmos.GetGenericArguments()[0]);
         }
-        else if (ClosedOver(reference.GetType(), typeof(SqlRowArtifactReference<>)) is { } sql)
+        else if (ClosedOver(reference.GetType(), typeof(AzureSqlRowArtifactReference<>)) is { } sql)
         {
-            _usedSqlIdentifiers.Add(Read(reference, sql, nameof(SqlRowArtifactReference<object>.DbIdentifier)));
+            _usedSqlIdentifiers.Add(Read(reference, sql, nameof(AzureSqlRowArtifactReference<object>.DbIdentifier)));
         }
     }
 
@@ -639,7 +639,7 @@ public sealed class DockerAzureEnvironment : EnvironmentProviderBase, IRunScoped
                     if (cosmos.ModelType is not null)
                         RegisterCosmosSchema(cosmos.Identifier, cosmos.ModelType);
                     break;
-                case DockerSqlDefinition sql:
+                case DockerAzureSqlDefinition sql:
                     _usedSqlIdentifiers.Add(sql.Identifier);
                     break;
                 case DockerServiceBusDefinition serviceBus:

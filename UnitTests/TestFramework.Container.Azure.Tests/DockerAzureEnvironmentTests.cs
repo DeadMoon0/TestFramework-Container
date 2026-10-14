@@ -53,11 +53,11 @@ public class DockerAzureEnvironmentTests
                 "cosmos",
                 AzureExt.Artifact.DB.CosmosRef<TestCosmosItem>("cosmos", Var.Const("id"), Var.Const(new Microsoft.Azure.Cosmos.PartitionKey("tenant-1"))),
                 new CosmosDbItemArtifactData<TestCosmosItem>(new TestCosmosItem("id", "tenant-1"))),
-            CreateArtifactInstance<SqlRowArtifactDescriber<TestRow>, SqlRowArtifactData<TestRow>, SqlRowArtifactReference<TestRow>>(
-                new SqlRowArtifactDescriber<TestRow>(),
+            CreateArtifactInstance<AzureSqlRowArtifactDescriber<TestRow>, AzureSqlRowArtifactData<TestRow>, AzureSqlRowArtifactReference<TestRow>>(
+                new AzureSqlRowArtifactDescriber<TestRow>(),
                 "sql",
-                new SqlRowArtifactReference<TestRow>("sql", Var.Const("42")),
-                new SqlRowArtifactData<TestRow>(new TestRow()))
+                new AzureSqlRowArtifactReference<TestRow>("sql", Var.Const("42")),
+                new AzureSqlRowArtifactData<TestRow>(new TestRow()))
         ];
 
         IReadOnlyCollection<EnvComponentIdentifier> result = environment.ResolveComponents(artifacts, []);

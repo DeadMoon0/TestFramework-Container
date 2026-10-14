@@ -44,7 +44,7 @@ Examples:
 
 - `DockerStorageDefinition`
 - `DockerCosmosDefinition<TDocument>`
-- `DockerSqlDefinition`
+- `DockerAzureSqlDefinition`
 - `DockerServiceBusDefinition`
 - `DockerFunctionAppDefinition`
 - `DockerAzureInfrastructureDefinition`
