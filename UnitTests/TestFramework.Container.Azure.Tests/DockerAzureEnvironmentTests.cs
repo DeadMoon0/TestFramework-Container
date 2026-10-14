@@ -95,6 +95,10 @@ public class DockerAzureEnvironmentTests
     }
 
     [Fact]
+    public void IncludingNothing_IsRefusedAtTheCallThatDidIt()
+        => Assert.Throws<ArgumentNullException>(() => new DockerAzureEnvironment().Include(null!));
+
+    [Fact]
     public void ResolveComponents_IncludeOnlyDoesNotForceServiceBusComponent()
     {
         DockerAzureEnvironment environment = DockerAzureEnvironment.For<TestServiceBusDefinition>();

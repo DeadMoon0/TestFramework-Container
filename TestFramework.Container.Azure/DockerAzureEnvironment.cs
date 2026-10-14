@@ -115,6 +115,8 @@ public sealed class DockerAzureEnvironment : EnvironmentProviderBase, IRunScoped
 
     public DockerAzureEnvironment Include(DockerAzureDefinition definition)
     {
+        ArgumentNullException.ThrowIfNull(definition);
+
         _includedDefinitions.TryAdd(definition.GetType(), definition);
         _definitionState.AddDefinition(definition);
         return this;
