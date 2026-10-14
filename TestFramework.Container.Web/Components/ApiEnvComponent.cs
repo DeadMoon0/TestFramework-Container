@@ -55,9 +55,9 @@ internal sealed class ApiEnvComponent : WebEnvComponentBase
         DockerWebEnvironment webEnvironment = GetWebEnvironment(environment);
         IReadOnlyList<DockerApiDefinition> definitions = webEnvironment.GetApiDefinitions();
         if (definitions.Count == 0)
-            return null;
+            return new ApiComponentState([]);
 
-        INetwork network = webEnvironment.GetRequiredRuntimeState<INetwork>(DockerWebEnvironment.NetworkComponentId);
+        INetwork network = StateOf<INetwork>(context, DockerWebEnvironment.NetworkComponentId);
 
         // Declaration order in, declaration order out, however the starts interleave.
         IReadOnlyList<DockerApiDefinition> ordered = [.. definitions.OrderBy(definition => definition.Identifier.ToString(), StringComparer.Ordinal)];
@@ -82,7 +82,7 @@ internal sealed class ApiEnvComponent : WebEnvComponentBase
             // passed could not otherwise say which image proved it. §5's third demand.
             context.EffectiveSettings.Record(ImageSource, $"api:{identifier}:Image", image);
 
-            IReadOnlyDictionary<string, string> settings = ComposeSettings(webEnvironment, definition, spec);
+            IReadOnlyDictionary<string, string> settings = ComposeSettings(context, spec);
             string settingsFileName = ApiSettingsFile.FileName(spec.EnvironmentName);
             string settingsJson = new JsonPathDocument(settingsFileName).Compose(settings, existing: null);
 
@@ -110,9 +110,7 @@ internal sealed class ApiEnvComponent : WebEnvComponentBase
             context.Logger.LogInformation("API '{0}' is reachable at '{1}'.", api.Planned.Definition.Identifier, api.BaseUrl);
         }
 
-        ApiComponentState state = new(apis);
-        webEnvironment.SetRuntimeState(Id, state);
-        return state;
+        return new ApiComponentState(apis);
     }
 
     public override async Task DeconstructAsync(object? state, IEnvironmentProvider environment, RunContext context)
@@ -178,7 +176,7 @@ internal sealed class ApiEnvComponent : WebEnvComponentBase
         }
     }
 
-    private static IReadOnlyDictionary<string, string> ComposeSettings(DockerWebEnvironment webEnvironment, DockerApiDefinition definition, DockerApiSpec spec)
+    private IReadOnlyDictionary<string, string> ComposeSettings(RunContext context, DockerApiSpec spec)
     {
         Dictionary<string, string> settings = new(spec.Settings, StringComparer.OrdinalIgnoreCase);
 
@@ -187,14 +185,14 @@ internal sealed class ApiEnvComponent : WebEnvComponentBase
         // container.
         if (spec.SqlBindings.Count > 0)
         {
-            SqlServerComponentState sqlState = webEnvironment.GetRequiredRuntimeState<SqlServerComponentState>(DockerWebEnvironment.SqlServerComponentId);
+            SqlServerComponentState sqlState = StateOf<SqlServerComponentState>(context, DockerWebEnvironment.SqlServerComponentId);
             foreach (DockerApiSqlBinding binding in spec.SqlBindings)
                 settings[binding.SettingPath] = sqlState.GetRequiredDatabase(binding.SqlIdentifier).NetworkConnectionString;
         }
 
         if (spec.StubBindings.Count > 0)
         {
-            StubComponentState stubState = webEnvironment.GetRequiredRuntimeState<StubComponentState>(DockerWebEnvironment.StubComponentId);
+            StubComponentState stubState = StateOf<StubComponentState>(context, DockerWebEnvironment.StubComponentId);
             foreach (DockerApiStubBinding binding in spec.StubBindings)
                 settings[binding.SettingPath] = stubState.GetRequiredStub(binding.StubIdentifier).NetworkBaseUrl.ToString();
         }

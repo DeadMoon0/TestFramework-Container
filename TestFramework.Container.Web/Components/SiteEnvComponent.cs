@@ -58,8 +58,11 @@ internal sealed class SiteEnvComponent : WebEnvComponentBase
         if (definitions.Count == 0)
             return null;
 
-        INetwork network = webEnvironment.GetRequiredRuntimeState<INetwork>(DockerWebEnvironment.NetworkComponentId);
-        SiteTargetResolver targets = new(webEnvironment, context);
+        INetwork network = StateOf<INetwork>(context, DockerWebEnvironment.NetworkComponentId);
+        SiteTargetResolver targets = new(
+            StateOf<ApiComponentState>(context, DockerWebEnvironment.ApiComponentId).Apis,
+            StateOf<StubComponentState>(context, DockerWebEnvironment.StubComponentId).Stubs,
+            context);
 
         // Declaration order in, declaration order out, however the starts interleave.
         IReadOnlyList<DockerSiteDefinition> ordered = [.. definitions.OrderBy(definition => definition.Identifier.ToString(), StringComparer.Ordinal)];
@@ -130,9 +133,7 @@ internal sealed class SiteEnvComponent : WebEnvComponentBase
             context.Logger.LogInformation("Site '{0}' is reachable at '{1}'.", site.Planned.Definition.Identifier, site.BaseUrl);
         }
 
-        SiteComponentState state = new(sites);
-        webEnvironment.SetRuntimeState(Id, state);
-        return state;
+        return new SiteComponentState(sites);
     }
 
     public override async Task DeconstructAsync(object? state, IEnvironmentProvider environment, RunContext context)
@@ -426,7 +427,7 @@ internal sealed class SiteEnvComponent : WebEnvComponentBase
     /// what a site definition promises - the same definition serves a container and a deployed service -
     /// and reaching it through a started nginx would test the parts that already have smoke coverage.
     /// </remarks>
-    internal sealed class SiteTargetResolver(DockerWebEnvironment webEnvironment, RunContext context)
+    internal sealed class SiteTargetResolver(IReadOnlyList<RunningApi> apis, IReadOnlyList<RunningStub> stubs, RunContext context)
     {
         public Uri NetworkUrl(SiteTargetKind kind, string identifier)
             => Resolve(kind, identifier, networkFacing: true);
@@ -441,11 +442,8 @@ internal sealed class SiteEnvComponent : WebEnvComponentBase
         {
             if (kind == SiteTargetKind.Api)
             {
-                if (webEnvironment.GetApiDefinitions().Any(definition => string.Equals(definition.Identifier.Identifier, identifier, StringComparison.Ordinal)))
-                {
-                    RunningApi api = webEnvironment.GetRequiredRuntimeState<ApiComponentState>(DockerWebEnvironment.ApiComponentId).GetRequiredApi(identifier);
+                if (apis.FirstOrDefault(running => string.Equals(running.Identifier, identifier, StringComparison.Ordinal)) is { } api)
                     return networkFacing ? api.NetworkBaseUrl : api.BaseUrl;
-                }
 
                 if (TryGetSuppliedBaseUrl(WebEnvironmentResourceKinds.RestApi, identifier, networkFacing) is { } configured)
                     return configured;
@@ -453,11 +451,8 @@ internal sealed class SiteEnvComponent : WebEnvComponentBase
                 throw TargetUnresolvable("API", identifier, $"Include the {nameof(DockerApiDefinition)} for it, or configure 'Api:{identifier}:BaseUrl'.");
             }
 
-            if (webEnvironment.GetStubDefinitions().Any(definition => string.Equals(definition.Identifier.Identifier, identifier, StringComparison.Ordinal)))
-            {
-                RunningStub stub = webEnvironment.GetRequiredRuntimeState<StubComponentState>(DockerWebEnvironment.StubComponentId).GetRequiredStub(identifier);
+            if (stubs.FirstOrDefault(running => string.Equals(running.Identifier, identifier, StringComparison.Ordinal)) is { } stub)
                 return networkFacing ? stub.NetworkBaseUrl : stub.HostBaseUrl;
-            }
 
             if (TryGetSuppliedBaseUrl(WebEnvironmentResourceKinds.Stub, identifier, networkFacing) is { } configuredStub)
                 return configuredStub;

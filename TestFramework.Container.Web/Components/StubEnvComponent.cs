@@ -49,9 +49,9 @@ internal sealed class StubEnvComponent : WebEnvComponentBase
         DockerWebEnvironment webEnvironment = GetWebEnvironment(environment);
         IReadOnlyList<StubDefinition> definitions = webEnvironment.GetStubDefinitions();
         if (definitions.Count == 0)
-            return null;
+            return new StubComponentState([]);
 
-        INetwork network = webEnvironment.GetRequiredRuntimeState<INetwork>(DockerWebEnvironment.NetworkComponentId);
+        INetwork network = StateOf<INetwork>(context, DockerWebEnvironment.NetworkComponentId);
 
         // Recorded on the run because nobody stated it: the tag lives in this package's defaults, so a
         // run that passed could not otherwise say which image proved it. §5's third demand.
@@ -78,9 +78,7 @@ internal sealed class StubEnvComponent : WebEnvComponentBase
             context.Logger.LogInformation("Stub '{0}' is reachable at '{1}' with {2} mapping(s) loaded.", stub.Identifier, stub.HostBaseUrl, loaded);
         }
 
-        StubComponentState state = new(stubs);
-        webEnvironment.SetRuntimeState(Id, state);
-        return state;
+        return new StubComponentState(stubs);
     }
 
     public override async Task DeconstructAsync(object? state, IEnvironmentProvider environment, RunContext context)

@@ -140,13 +140,9 @@ public class DockerWebEnvironmentTests
             .UseSqlMemoryLimit(2048);
 
         Assert.Equal("mcr.microsoft.com/mssql/server:2019-latest", environment.SqlImage);
-        Assert.Equal("Another_Password1!", environment.SqlPassword);
+        Assert.Equal("Another_Password1!", environment.PinnedSqlPassword);
         Assert.Equal(2048, environment.SqlMemoryLimitMb);
     }
-
-    [Fact]
-    public void GetRequiredRuntimeState_FailsBeforeAComponentHasProducedIt()
-        => Assert.Throws<FrameworkStateException>(() => new DockerWebEnvironment().GetRequiredRuntimeState<object>(DockerWebEnvironment.NetworkComponentId));
 
     /// <summary>
     /// An artifact to hand an environment, made the way anything makes one.

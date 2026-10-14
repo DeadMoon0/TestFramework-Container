@@ -26,7 +26,6 @@ internal sealed class WebNetworkEnvComponent : WebEnvComponentBase
         ContainerRuntime.EnsureInitialized(context.Logger);
 
         INetwork network = await ContainerNetworkFactory.CreateAsync(DockerWebDefaults.NetworkNamePrefix, context.Deadline.Token).ConfigureAwait(false);
-        GetWebEnvironment(environment).SetRuntimeState(Id, network);
         return network;
     }
 

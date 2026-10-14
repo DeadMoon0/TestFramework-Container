@@ -37,7 +37,7 @@ public class SiteTargetResolutionTests
             .BuildServiceProvider();
 
         // No definitions, so nothing is containerized and the resolver has only the run to go on.
-        SiteEnvComponent.SiteTargetResolver resolver = new(new DockerWebEnvironment(), RunContext.Detached(services));
+        SiteEnvComponent.SiteTargetResolver resolver = new([], [], RunContext.Detached(services));
 
         Uri resolved = resolver.Resolve(SiteTargetKind.Api, "orders", networkFacing);
 
@@ -53,7 +53,7 @@ public class SiteTargetResolutionTests
     {
         using ServiceProvider services = ConfigInstance.Create().LoadWebConfig().BuildServiceProvider();
 
-        SiteEnvComponent.SiteTargetResolver resolver = new(new DockerWebEnvironment(), RunContext.Detached(services));
+        SiteEnvComponent.SiteTargetResolver resolver = new([], [], RunContext.Detached(services));
 
         FrameworkConfigurationException refused = Assert.Throws<FrameworkConfigurationException>(
             () => resolver.Resolve(SiteTargetKind.Api, "orders", networkFacing: true));

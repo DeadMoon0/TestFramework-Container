@@ -59,8 +59,6 @@ public class DockerWebEnvironment : EnvironmentProviderBase, IResourceNodeSource
 
     private readonly Dictionary<Type, DockerWebDefinition> _definitions = [];
     private readonly Dictionary<Type, StubDefinition> _stubDefinitions = [];
-    private readonly Dictionary<EnvComponentIdentifier, object?> _runtimeStates = [];
-    private readonly object _runtimeStateGate = new();
 
     /// <summary>
     /// Creates an environment with no resources declared yet.
@@ -109,13 +107,15 @@ public class DockerWebEnvironment : EnvironmentProviderBase, IResourceNodeSource
     public string SqlImage { get; private set; } = DockerWebDefaults.MsSqlImage;
 
     /// <summary>
-    /// The <c>sa</c> password of the SQL Server container.
+    /// The <c>sa</c> password pinned with <see cref="UseSqlPassword"/>, or <see langword="null"/> when each
+    /// SQL Server container generates its own.
     /// </summary>
     /// <remarks>
-    /// Generated per environment, so the login of a running test server is not something a package
-    /// download tells you. Call <see cref="UseSqlPassword"/> to pin one instead.
+    /// Generated per container rather than held here, so the login of a running test server is not something
+    /// a package download tells you, and two runs sharing this instance do not share one either. The running
+    /// server's connection strings carry whichever password it was started with.
     /// </remarks>
-    public string SqlPassword { get; private set; } = MsSqlContainerFactory.CreateMsSqlPassword();
+    internal string? PinnedSqlPassword { get; private set; }
 
     /// <summary>
     /// The memory limit handed to the SQL Server engine.
@@ -182,7 +182,7 @@ public class DockerWebEnvironment : EnvironmentProviderBase, IResourceNodeSource
     public DockerWebEnvironment UseSqlPassword(string password)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(password);
-        SqlPassword = password;
+        PinnedSqlPassword = password;
         return this;
     }
 
@@ -285,37 +285,6 @@ public class DockerWebEnvironment : EnvironmentProviderBase, IResourceNodeSource
         return [.. resolved];
     }
 
-    /// <summary>
-    /// Publishes the state a created component produced.
-    /// </summary>
-    /// <remarks>
-    /// Internal, because an outside caller overwriting a component's live state mid-run would make
-    /// teardown skip the real containers silently. Reachable must not mean manipulable.
-    /// </remarks>
-    /// <param name="identifier">The component that produced it.</param>
-    /// <param name="state">The state.</param>
-    internal void SetRuntimeState(EnvComponentIdentifier identifier, object? state)
-    {
-        lock (_runtimeStateGate)
-            _runtimeStates[identifier] = state;
-    }
-
-    /// <summary>
-    /// Reads the state a component produced earlier in the same setup.
-    /// </summary>
-    /// <typeparam name="TState">The expected state type.</typeparam>
-    /// <param name="identifier">The component that produced it.</param>
-    /// <exception cref="FrameworkStateException">The component has not produced that state.</exception>
-    internal TState GetRequiredRuntimeState<TState>(EnvComponentIdentifier identifier)
-    {
-        lock (_runtimeStateGate)
-        {
-            if (_runtimeStates.TryGetValue(identifier, out object? state) && state is TState typedState)
-                return typedState;
-        }
-
-        throw new FrameworkStateException($"The runtime state for environment component '{identifier}' is not available.");
-    }
 
     private void EnsureUniqueStubIdentifier(StubDefinition candidate)
     {

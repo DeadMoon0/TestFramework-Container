@@ -48,17 +48,21 @@ internal sealed class SqlServerEnvComponent : WebEnvComponentBase
         }
 
         SqlModelRegistry registry = SqlConfigResolver.ResolveModelRegistry(context.Services);
-        INetwork network = webEnvironment.GetRequiredRuntimeState<INetwork>(DockerWebEnvironment.NetworkComponentId);
+        INetwork network = StateOf<INetwork>(context, DockerWebEnvironment.NetworkComponentId);
 
         // Recorded on the run because nobody stated it: the tag lives in this package's defaults, so a
         // run that passed could not otherwise say which image proved it. §5's third demand.
         context.EffectiveSettings.Record(ImageSource, "sql:Image", webEnvironment.SqlImage);
 
+        // Generated per server rather than per environment instance: the login belongs to the container this
+        // creation starts, and a value on the instance is one that two runs sharing it would both claim.
+        string password = webEnvironment.PinnedSqlPassword ?? MsSqlContainerFactory.CreateMsSqlPassword();
+
         MsSqlContainer container = MsSqlContainerFactory.Create(
             new MsSqlContainerOptions
             {
                 Image = webEnvironment.SqlImage,
-                Password = webEnvironment.SqlPassword,
+                Password = password,
                 MemoryLimitMb = webEnvironment.SqlMemoryLimitMb,
                 NetworkAliases = [DockerWebDefaults.MsSqlNetworkAlias],
             },
@@ -80,8 +84,8 @@ internal sealed class SqlServerEnvComponent : WebEnvComponentBase
                 await SqlDatabaseProvisioner.EnsureDatabaseAsync(serverConnectionString, spec, context.Logger, context.Deadline.Token).ConfigureAwait(false);
 
                 SqlDatabaseEndpoint endpoint = new(
-                    ContainerEndpoints.HostSqlConnectionString(container, spec.DatabaseName, MsSqlContainerOptions.UserName, webEnvironment.SqlPassword),
-                    ContainerEndpoints.NetworkSqlConnectionString(DockerWebDefaults.MsSqlNetworkAlias, spec.DatabaseName, MsSqlContainerOptions.UserName, webEnvironment.SqlPassword));
+                    ContainerEndpoints.HostSqlConnectionString(container, spec.DatabaseName, MsSqlContainerOptions.UserName, password),
+                    ContainerEndpoints.NetworkSqlConnectionString(DockerWebDefaults.MsSqlNetworkAlias, spec.DatabaseName, MsSqlContainerOptions.UserName, password));
 
                 await SqlDatabaseProvisioner.ApplySchemaAsync(endpoint.HostConnectionString, spec, registry, context.Logger, context.Deadline.Token).ConfigureAwait(false);
 
@@ -91,9 +95,7 @@ internal sealed class SqlServerEnvComponent : WebEnvComponentBase
                 context.Logger.LogInformation("SQL identifier '{0}' is served by the database '{1}'.", definition.Identifier.ToString(), spec.DatabaseName);
             }
 
-            SqlServerComponentState state = new(container, databases);
-            webEnvironment.SetRuntimeState(Id, state);
-            return state;
+            return new SqlServerComponentState(container, databases);
         }).ConfigureAwait(false);
     }
 
