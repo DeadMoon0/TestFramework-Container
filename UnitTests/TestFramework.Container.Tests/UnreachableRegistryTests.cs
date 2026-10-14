@@ -333,6 +333,58 @@ public class UnreachableRegistryTests
         }
     }
 
+    /// <summary>
+    /// An application edited between two environments is built again, not handed the image of the first build.
+    /// </summary>
+    /// <remarks>
+    /// The cache outlives a run on purpose, which is exactly why it has to notice an edit: a test host kept up while
+    /// someone changes the application used to keep testing the build from before the change.
+    /// </remarks>
+    [Fact]
+    public async Task AnEditedApplication_IsBuiltAgainRatherThanHandedTheOldImage()
+    {
+        string baseImage = "mcr.microsoft.com/dotnet/aspnet:8.0";
+
+        if (!await DockerIsAvailableAsync() || !await ContainerImageBuilder.ImageExistsLocallyAsync(baseImage, CancellationToken.None))
+            return;
+
+        // A copy, so the edit below touches nothing in the repository and nothing another test process is building.
+        string copy = Path.Combine(Path.GetTempPath(), $"tf-edited-app-{Guid.NewGuid():N}");
+        string sampleDirectory = Path.GetDirectoryName(SampleApiProject)!;
+        Directory.CreateDirectory(copy);
+        foreach (string file in Directory.GetFiles(sampleDirectory, "*.cs*"))
+            File.Copy(file, Path.Combine(copy, Path.GetFileName(file)));
+
+        ContainerSource source = ContainerSource.Project(Path.Combine(copy, Path.GetFileName(SampleApiProject))).WithTargetFramework("net8.0").BuiltAsImage();
+        ScopedLogger logger = CreateLogger();
+        string program = Path.Combine(copy, "Program.cs");
+
+        ContainerSourcePlan first = await ContainerImageBuilder.BuildAsync(
+            await ContainerSourceResolver.PlanAsync(source, CancellationToken.None), "edit-one", logger, CancellationToken.None);
+        ContainerSourcePlan? second = null;
+
+        try
+        {
+            // The edit, as the file system sees one.
+            File.SetLastWriteTimeUtc(program, DateTime.UtcNow.AddMinutes(1));
+
+            second = await ContainerImageBuilder.BuildAsync(
+                await ContainerSourceResolver.PlanAsync(source, CancellationToken.None), "edit-two", logger, CancellationToken.None);
+
+            Assert.NotNull(second.Image);
+            Assert.NotEqual(first.Image, second.Image);
+        }
+        finally
+        {
+            ContainerImageBuilder.ForgetBuiltImages();
+            await ContainerImageBuilder.RemoveImageAsync(first.Image!, CancellationToken.None);
+            if (second?.Image is { } rebuilt)
+                await ContainerImageBuilder.RemoveImageAsync(rebuilt, CancellationToken.None);
+
+            Directory.Delete(copy, recursive: true);
+        }
+    }
+
     [Theory]
     [InlineData("mcr.microsoft.com/dotnet/aspnet:8.0", "mcr.microsoft.com", "dotnet/aspnet", "8.0")]
     [InlineData("mcr.microsoft.com/azure-functions/dotnet-isolated:4-dotnet-isolated10.0", "mcr.microsoft.com", "azure-functions/dotnet-isolated", "4-dotnet-isolated10.0")]

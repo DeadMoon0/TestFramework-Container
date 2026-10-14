@@ -20,7 +20,10 @@ namespace TestFramework.Container.Sources;
 /// </remarks>
 public static class ContainerImageBuilder
 {
-    private static readonly ConcurrentDictionary<string, ContainerSourcePlan> BuiltImages = new(StringComparer.Ordinal);
+    /// <summary>
+    /// The images built in this process, by build identity, each with the source fingerprint it was built from.
+    /// </summary>
+    private static readonly ConcurrentDictionary<string, BuiltImage> BuiltImages = new(StringComparer.Ordinal);
 
     private static readonly ConcurrentDictionary<string, SemaphoreSlim> BuildGates = new(StringComparer.Ordinal);
 
@@ -119,7 +122,8 @@ public static class ContainerImageBuilder
     }
 
     /// <summary>
-    /// Builds the image for a plan, or hands back the one an earlier environment in this run built.
+    /// Builds the image for a plan, or hands back the one an earlier environment in this process built from the
+    /// same, unchanged sources.
     /// </summary>
     /// <remarks>
     /// An image is decided entirely by its inputs -- the project, the configuration, the framework,
@@ -151,7 +155,10 @@ public static class ContainerImageBuilder
         await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (await TryReuseAsync(identity, plan, identifier, logger, cancellationToken).ConfigureAwait(false) is { } reused)
+            // Read under the gate, so a build that just finished is compared with the sources it was built from.
+            string fingerprint = plan.ProjectPath is { Length: > 0 } projectPath ? SourceFingerprint.Of(projectPath) : string.Empty;
+
+            if (await TryReuseAsync(identity, fingerprint, plan, identifier, logger, cancellationToken).ConfigureAwait(false) is { } reused)
                 return reused;
 
             // The same two-layer gate as the host publish: an SDK image build drives MSBuild over the
@@ -166,7 +173,7 @@ public static class ContainerImageBuilder
                 };
 
                 if (built.Image is { Length: > 0 })
-                    BuiltImages[identity] = built;
+                    BuiltImages[identity] = new BuiltImage(built, fingerprint);
 
                 return built;
             }
@@ -179,13 +186,24 @@ public static class ContainerImageBuilder
 
     private static async Task<ContainerSourcePlan?> TryReuseAsync(
         string identity,
+        string fingerprint,
         ContainerSourcePlan plan,
         string identifier,
         ScopedLogger logger,
         CancellationToken cancellationToken)
     {
-        if (!BuiltImages.TryGetValue(identity, out ContainerSourcePlan? earlier) || earlier.Image is not { Length: > 0 } image)
+        if (!BuiltImages.TryGetValue(identity, out BuiltImage? cached) || cached.Plan.Image is not { Length: > 0 } image)
             return null;
+
+        ContainerSourcePlan earlier = cached.Plan;
+        if (!string.Equals(cached.Fingerprint, fingerprint, StringComparison.Ordinal))
+        {
+            // Dropped rather than kept beside the new one: the old image is now only a leftover, and an entry
+            // here is what stops teardown from removing it.
+            BuiltImages.TryRemove(identity, out _);
+            logger.LogInformation("'{0}' does not reuse image '{1}': its sources changed since it was built, so it is built again.", identifier, image);
+            return null;
+        }
 
         // Asked rather than assumed: a developer clearing images between chapters, or a sweep on a
         // shared machine, would otherwise leave this handing out the name of an image that is gone,
@@ -197,7 +215,7 @@ public static class ContainerImageBuilder
         }
 
         logger.LogInformation(
-            "'{0}' is reusing image '{1}', already built in this run from the same project, configuration, framework and base image.",
+            "'{0}' is reusing image '{1}', built earlier in this process from the same sources, configuration, framework and base image.",
             identifier,
             image);
 
@@ -205,7 +223,7 @@ public static class ContainerImageBuilder
     }
 
     /// <summary>
-    /// Forgets which images this run built, so the next build produces a fresh one.
+    /// Forgets which images this process built, so the next build produces a fresh one.
     /// </summary>
     internal static void ForgetBuiltImages() => BuiltImages.Clear();
 
@@ -239,6 +257,10 @@ public static class ContainerImageBuilder
     /// <summary>
     /// The inputs that fully decide what an image built from this plan contains.
     /// </summary>
+    /// <remarks>
+    /// The sources are not part of the identity but are checked beside it (<see cref="SourceFingerprint"/>), so an
+    /// edit replaces the cached image instead of adding a second one for the same inputs.
+    /// </remarks>
     private static string BuildIdentityOf(ContainerSourcePlan plan)
         => string.Join(
             '|',
@@ -270,9 +292,9 @@ public static class ContainerImageBuilder
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(image);
 
-        foreach (ContainerSourcePlan built in BuiltImages.Values)
+        foreach (BuiltImage built in BuiltImages.Values)
         {
-            if (string.Equals(built.Image, image, StringComparison.Ordinal))
+            if (string.Equals(built.Plan.Image, image, StringComparison.Ordinal))
                 return;
         }
 
@@ -691,4 +713,3 @@ public static class ContainerImageBuilder
         return string.IsNullOrEmpty(cleaned) ? "testframework-app" : $"testframework-{cleaned}";
     }
 }
-

@@ -410,7 +410,7 @@ DockerWebEnvironment.For<SampleSqlDefinition>()
 | `needs a .NET N SDK, and this machine restores with M` | An offline in-container build must target the SDK generation that resolved the packages. Target that framework, or use `BuiltAsImage()`. |
 | `The container build for '...' failed` | The build output follows the message and the context is kept at the named path for inspection. |
 | Rows survive between runs | The default reset mode keeps them. Choose `RecreateDatabase`, or supply a reset script. |
-| A code change seems to have no effect | The application container is per-run and the framework builds the project itself, so this should not happen. Check the plan in the run log for which project was built. |
+| A code change seems to have no effect | An image is reused within a test process only while the sources of the project and the projects it references are unchanged; the run log says "reusing image" or "its sources changed". A reference added through an imported props file is not followed - check the plan in the run log for which project was built. |
 
 ## Scope
 
