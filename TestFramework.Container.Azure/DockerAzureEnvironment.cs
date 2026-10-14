@@ -545,29 +545,55 @@ public sealed class DockerAzureEnvironment : EnvironmentProviderBase, IRunScoped
         return new DockerAzureRunScopedServiceProvider(this, baseServiceProvider);
     }
 
+    /// <summary>
+    /// Records which resource an artifact this run holds lives in, for the four artifact kinds this environment serves.
+    /// </summary>
+    /// <remarks>
+    /// Matched on the concrete reference types. It used to match on a property <em>name</em>: any reference with a
+    /// public <c>Identifier</c> property counted as a storage account and started Azurite, whatever package it came
+    /// from. The property names below are written through <c>nameof</c>, so a rename in the Azure package breaks
+    /// this build instead of quietly matching nothing.
+    /// </remarks>
     private void CaptureIdentifiers(ArtifactReferenceGeneric reference)
     {
-        Type referenceType = reference.GetType();
-        if (reference is StorageAccountBlobArtifactReference blobReference)
+        if (reference is StorageAccountBlobArtifactReference blob)
         {
-            _usedStorageIdentifiers.Add(blobReference.Identifier);
+            _usedStorageIdentifiers.Add(blob.Identifier);
             return;
         }
 
-        if (TryReadIdentifier(reference, referenceType, "Identifier", out string? storageIdentifier))
-            _usedStorageIdentifiers.Add(storageIdentifier);
-
-        if (TryReadIdentifier(reference, referenceType, "DbIdentifier", out string? databaseIdentifier))
+        if (ClosedOver(reference.GetType(), typeof(TableStorageEntityArtifactReference<>)) is { } table)
         {
-            if (MatchesGenericType(referenceType, typeof(CosmosDbItemArtifactReference<>)))
-            {
-                _usedCosmosIdentifiers.Add(databaseIdentifier);
-                RegisterCosmosSchema(databaseIdentifier, referenceType.GetGenericArguments()[0]);
-            }
-            else if (MatchesGenericType(referenceType, typeof(SqlRowArtifactReference<>)))
-                _usedSqlIdentifiers.Add(databaseIdentifier);
+            _usedStorageIdentifiers.Add(Read(reference, table, nameof(TableStorageEntityArtifactReference<global::Azure.Data.Tables.TableEntity>.Identifier)));
+        }
+        else if (ClosedOver(reference.GetType(), typeof(CosmosDbItemArtifactReference<>)) is { } cosmos)
+        {
+            string identifier = Read(reference, cosmos, nameof(CosmosDbItemArtifactReference<object>.DbIdentifier));
+            _usedCosmosIdentifiers.Add(identifier);
+            RegisterCosmosSchema(identifier, cosmos.GetGenericArguments()[0]);
+        }
+        else if (ClosedOver(reference.GetType(), typeof(SqlRowArtifactReference<>)) is { } sql)
+        {
+            _usedSqlIdentifiers.Add(Read(reference, sql, nameof(SqlRowArtifactReference<object>.DbIdentifier)));
         }
     }
+
+    /// <summary>
+    /// The closed form of a generic reference type this reference is, or derives from.
+    /// </summary>
+    private static Type? ClosedOver(Type type, Type genericTypeDefinition)
+    {
+        for (Type? current = type; current is not null; current = current.BaseType)
+        {
+            if (current.IsGenericType && current.GetGenericTypeDefinition() == genericTypeDefinition)
+                return current;
+        }
+
+        return null;
+    }
+
+    private static string Read(object reference, Type declaringType, string propertyName)
+        => declaringType.GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public)!.GetValue(reference)!.ToString()!;
 
     private DockerAzureResolutionSnapshot CreateResolutionSnapshot(IEnumerable<EnvComponentIdentifier> resolvedComponents, IReadOnlyCollection<ComponentContractBinding> contractBindings)
     {
@@ -631,24 +657,6 @@ public sealed class DockerAzureEnvironment : EnvironmentProviderBase, IRunScoped
             throw new FrameworkConfigurationException($"Cosmos identifier '{identifier}' was configured with conflicting partition key paths: '{existingPath}' and '{partitionKeyPath}'.");
 
         CosmosPartitionKeyPaths[identifier] = partitionKeyPath;
-    }
-
-    private static bool TryReadIdentifier(object instance, Type instanceType, string propertyName, out string value)
-    {
-        PropertyInfo? property = instanceType.GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public);
-        if (property?.GetValue(instance) is not null)
-        {
-            value = property.GetValue(instance)!.ToString() ?? string.Empty;
-            return true;
-        }
-
-        value = string.Empty;
-        return false;
-    }
-
-    private static bool MatchesGenericType(Type candidate, Type genericTypeDefinition)
-    {
-        return candidate.IsGenericType && candidate.GetGenericTypeDefinition() == genericTypeDefinition;
     }
 
     private void CaptureRequirement(EnvironmentRequirement requirement)

@@ -76,6 +76,25 @@ public class DockerAzureEnvironmentTests
     }
 
     [Fact]
+    public void AnArtifactFromAnotherPackage_StartsNoEmulator_EvenWithAnIdentifierProperty()
+    {
+        // Matching on a property name made any reference with an 'Identifier' a storage account, and Azurite started
+        // for an artifact that had nothing to do with Azure.
+        DockerAzureEnvironment environment = new();
+        ArtifactInstanceGeneric[] artifacts =
+        [
+            CreateArtifactInstance<ForeignDescriber, ForeignData, ForeignReference>(new ForeignDescriber(), "foreign", new ForeignReference(), new ForeignData()),
+        ];
+
+        IReadOnlyCollection<EnvComponentIdentifier> result = environment.ResolveComponents(artifacts, []);
+
+        Assert.DoesNotContain(DockerAzureEnvironment.AzuriteComponentId, result);
+        Assert.DoesNotContain(DockerAzureEnvironment.MsSqlComponentId, result);
+        Assert.Empty(environment.UsedStorageIdentifiers);
+        Assert.Empty(environment.UsedSqlIdentifiers);
+    }
+
+    [Fact]
     public void ResolveComponents_IncludeOnlyDoesNotForceServiceBusComponent()
     {
         DockerAzureEnvironment environment = DockerAzureEnvironment.For<TestServiceBusDefinition>();
@@ -830,6 +849,41 @@ public class DockerAzureEnvironmentTests
     /// constructor gained a parameter. <c>ArtifactStore.Add</c> is the public way now - the store is the
     /// only thing that may hold an artifact, so it is also the thing that makes one.
     /// </remarks>
+    /// <summary>A reference from some other package, shaped like an Azure one by accident.</summary>
+    private sealed class ForeignReference : ArtifactReference<ForeignReference, ForeignDescriber, ForeignData>
+    {
+        public StorageAccountIdentifier Identifier => "storage";
+
+        public SqlDatabaseIdentifier DbIdentifier => "sql";
+
+        public override Task<ArtifactResolveResult<ForeignDescriber, ForeignData, ForeignReference>> ResolveToDataAsync(RunContext context, ArtifactVersionIdentifier versionIdentifier)
+            => Task.FromResult(new ArtifactResolveResult<ForeignDescriber, ForeignData, ForeignReference> { Found = false });
+
+        public override void DeclareIO(TestFramework.Core.Steps.Options.StepIOContract contract)
+        {
+        }
+
+        public override void OnPinReference(RunContext context)
+        {
+        }
+
+        public override string ToString() => nameof(ForeignReference);
+    }
+
+    private sealed class ForeignDescriber : ArtifactDescriber<ForeignDescriber, ForeignData, ForeignReference>
+    {
+        public override Task Setup(RunContext context, ForeignData data, ForeignReference reference) => Task.CompletedTask;
+
+        public override Task Deconstruct(RunContext context, ForeignReference reference) => Task.CompletedTask;
+
+        public override string ToString() => nameof(ForeignDescriber);
+    }
+
+    private sealed class ForeignData : ArtifactData<ForeignData, ForeignDescriber, ForeignReference>
+    {
+        public override string ToString() => nameof(ForeignData);
+    }
+
     private static ArtifactInstanceGeneric CreateArtifactInstance<TArtifactDescriber, TArtifactData, TArtifactReference>(
         TArtifactDescriber describer,
         ArtifactIdentifier identifier,
