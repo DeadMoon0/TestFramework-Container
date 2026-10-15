@@ -56,7 +56,7 @@ public class InContainerBuildSmokeTests
     {
         Timeline timeline = Timeline.Create()
             .Trigger(WebExt.Api.IsLive("self-built", ApiAlivenessLevel.Healthy))
-                .WithTimeOut(TimeSpan.FromMinutes(5)).Name("live")
+                .WithTimeout(TimeSpan.FromMinutes(5)).Label("live")
             .Build();
 
         TimelineRun run = await timeline.SetupRun(ConfigInstance.Create().LoadWebConfig().Build())

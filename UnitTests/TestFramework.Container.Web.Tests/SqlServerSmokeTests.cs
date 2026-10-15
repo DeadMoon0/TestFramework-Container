@@ -56,10 +56,10 @@ public class SqlServerSmokeTests
     public async Task Timeline_ReadsBackARowSeededIntoAContainerProvisionedFromModels()
     {
         Timeline timeline = Timeline.Create()
-            .Trigger(WebExt.Sql.IsLive("main", SqlAlivenessLevel.Database)).Name("live")
+            .Trigger(WebExt.Sql.IsLive("main", SqlAlivenessLevel.Database)).Label("live")
             .SetupArtifact("order")
             .Trigger(WebExt.Sql.Scalar<int>("main", "SELECT COUNT(1) FROM [Orders] WHERE [Name] = @name")
-                .WithParameter("name", Var.Const("smoke"))).Name("count")
+                .WithParameter("name", Var.Const("smoke"))).Label("count")
             .FindArtifact("found", WebExt.ArtifactFinder.Sql.Where<SmokeOrder>("main", "Quantity = @quantity")
                 .WithParameter("quantity", Var.Const(3)))
             .Build();

@@ -92,10 +92,10 @@ public class StubContainerSmokeTests
             .Trigger(WebExt.Api.Http("orders")
                 .Post("api/orders")
                 .WithJsonBody(Var.Const(new CreateSampleOrder("stubbed-order", 3)))
-                .Call()).Name("create")
+                .Call()).Label("create")
             .WaitForEvent(WebExt.Stub.Called("payments", HttpMethod.Post, "/api/charges"))
-                .WithTimeOut(TimeSpan.FromSeconds(30)).Name("charged")
-            .Trigger(WebExt.Stub.Calls("payments")).Name("calls")
+                .WithTimeout(TimeSpan.FromSeconds(30)).Label("charged")
+            .Trigger(WebExt.Stub.Calls("payments")).Label("calls")
             .Build();
 
         TimelineRun run = await timeline.SetupRun(CreateConfig())
@@ -121,7 +121,7 @@ public class StubContainerSmokeTests
     public async Task StubIsReachableFromTheTestProcess_AndReportsWhatItLoaded()
     {
         Timeline timeline = Timeline.Create()
-            .Trigger(WebExt.Api.IsLive("orders", ApiAlivenessLevel.Healthy)).Name("live")
+            .Trigger(WebExt.Api.IsLive("orders", ApiAlivenessLevel.Healthy)).Label("live")
             .Build();
 
         TimelineRun run = await timeline.SetupRun(CreateConfig())

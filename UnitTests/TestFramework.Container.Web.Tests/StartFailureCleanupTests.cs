@@ -54,7 +54,7 @@ public sealed class StartFailureCleanupTests
         IReadOnlyList<string> before = await SqlServerContainersAsync();
 
         TimelineRun run = await Timeline.Create()
-            .Trigger(WebExt.Sql.Execute("main", "SELECT 1")).Name("query")
+            .Trigger(WebExt.Sql.Execute("main", "SELECT 1")).Label("query")
             .Build()
             .SetupRun(ConfigInstance.Create().LoadWebConfig().Build())
             .SetEnv(DockerWebEnvironment.For<KeylessSqlDefinition>())

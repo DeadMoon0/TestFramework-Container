@@ -107,9 +107,9 @@ public class SiteContainerSmokeTests
     public async Task Site_ServesTheIndex_AndDeepLinksFallBackToIt()
     {
         Timeline timeline = Timeline.Create()
-            .Trigger(new FetchSiteStep("shop", "/")).Name("index")
-            .Trigger(new FetchSiteStep("shop", "/orders")).Name("deep-link")
-            .Trigger(new FetchSiteStep("shop", "/app.js")).Name("asset")
+            .Trigger(new FetchSiteStep("shop", "/")).Label("index")
+            .Trigger(new FetchSiteStep("shop", "/orders")).Label("deep-link")
+            .Trigger(new FetchSiteStep("shop", "/app.js")).Label("asset")
             .Build();
 
         TimelineRun run = await timeline.SetupRun(CreateConfig())
@@ -134,7 +134,7 @@ public class SiteContainerSmokeTests
     public async Task SiteWithoutFallback_AnswersUnknownPathsWith404()
     {
         Timeline timeline = Timeline.Create()
-            .Trigger(new FetchSiteStep("shop-plain", "/orders")).Name("deep-link")
+            .Trigger(new FetchSiteStep("shop-plain", "/orders")).Label("deep-link")
             .Build();
 
         TimelineRun run = await timeline.SetupRun(CreateConfig())
@@ -150,8 +150,8 @@ public class SiteContainerSmokeTests
     public async Task Proxy_ReachesTheApi_AndConfigJsonCarriesTheHostAddress()
     {
         Timeline timeline = Timeline.Create()
-            .Trigger(new FetchSiteStep("shop", "/api/orders")).Name("proxied")
-            .Trigger(new FetchSiteStep("shop", "/assets/config.json")).Name("config")
+            .Trigger(new FetchSiteStep("shop", "/api/orders")).Label("proxied")
+            .Trigger(new FetchSiteStep("shop", "/assets/config.json")).Label("config")
             .Build();
 
         TimelineRun run = await timeline.SetupRun(CreateConfig())
@@ -195,8 +195,8 @@ public class SiteContainerSmokeTests
         }
 
         Timeline timeline = Timeline.Create()
-            .Trigger(new FetchSiteStep("shop", "/orders")).Name("deep-link")
-            .Trigger(new FetchSiteStep("shop", "/api/orders")).Name("proxied")
+            .Trigger(new FetchSiteStep("shop", "/orders")).Label("deep-link")
+            .Trigger(new FetchSiteStep("shop", "/api/orders")).Label("proxied")
             .Build();
 
         TimelineRun run = await timeline.SetupRun(CreateConfig())
@@ -225,7 +225,7 @@ public class SiteContainerSmokeTests
         }
 
         Timeline timeline = Timeline.Create()
-            .Trigger(new FetchSiteStep("shop", "/")).Name("index")
+            .Trigger(new FetchSiteStep("shop", "/")).Label("index")
             .Build();
 
         TimelineRun run = await timeline.SetupRun(CreateConfig())
@@ -268,7 +268,7 @@ public class SiteContainerSmokeTests
         // Built by npm inside a node image, so the host needs Docker - which the trait already says - and no npm.
 
         Timeline timeline = Timeline.Create()
-            .Trigger(new FetchSiteStep("shop", "/")).Name("index")
+            .Trigger(new FetchSiteStep("shop", "/")).Label("index")
             .Build();
 
         TimelineRun run = await timeline.SetupRun(CreateConfig())

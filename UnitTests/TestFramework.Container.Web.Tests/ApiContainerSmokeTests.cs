@@ -103,14 +103,14 @@ public class ApiContainerSmokeTests
     public async Task ApiWritesToTheContainerDatabase_AndTheTestSeesTheRow()
     {
         Timeline timeline = Timeline.Create()
-            .Trigger(WebExt.Api.IsLive("orders", ApiAlivenessLevel.Healthy)).Name("live")
+            .Trigger(WebExt.Api.IsLive("orders", ApiAlivenessLevel.Healthy)).Label("live")
             .Trigger(WebExt.Api.Http("orders")
                 .Post("api/orders")
                 .WithJsonBody(Var.Const(new CreateSampleOrder("container-order", 7)))
-                .Call()).Name("create")
+                .Call()).Label("create")
             .FindArtifact("created", WebExt.ArtifactFinder.Sql.Where<Order>("sales", "Name = @name")
                 .WithParameter("name", Var.Const("container-order")))
-            .Trigger(WebExt.Api.Http("orders").Get("api/orders").Call()).Name("list")
+            .Trigger(WebExt.Api.Http("orders").Get("api/orders").Call()).Label("list")
             .Build();
 
         TimelineRun run = await timeline.SetupRun(CreateConfig())
@@ -134,7 +134,7 @@ public class ApiContainerSmokeTests
     public async Task ApiWithNoDatabase_StartsWithoutASqlServerContainer()
     {
         Timeline timeline = Timeline.Create()
-            .Trigger(WebExt.Api.IsLive("health-only", ApiAlivenessLevel.Healthy)).Name("live")
+            .Trigger(WebExt.Api.IsLive("health-only", ApiAlivenessLevel.Healthy)).Label("live")
             .Build();
 
         TimelineRun run = await timeline.SetupRun(CreateConfig())
@@ -153,7 +153,7 @@ public class ApiContainerSmokeTests
     public async Task ShippedApi_ReportsWhatWasActuallyPutInTheContainer()
     {
         Timeline timeline = Timeline.Create()
-            .Trigger(WebExt.Api.IsLive("orders", ApiAlivenessLevel.Healthy)).Name("live")
+            .Trigger(WebExt.Api.IsLive("orders", ApiAlivenessLevel.Healthy)).Label("live")
             .Build();
 
         TimelineRun run = await timeline.SetupRun(CreateConfig())

@@ -42,8 +42,8 @@ public class SharedEnvironmentTests
         DockerWebEnvironment shared = DockerWebEnvironment.For<SharedSqlDefinition>();
 
         async Task<TimelineRun> Run() => await Timeline.Create()
-            .Trigger(WebExt.Sql.IsLive("main", SqlAlivenessLevel.Reachable)).Name("live")
-            .Trigger(new RecordsSqlNetworks()).Name("networks")
+            .Trigger(WebExt.Sql.IsLive("main", SqlAlivenessLevel.Reachable)).Label("live")
+            .Trigger(new RecordsSqlNetworks()).Label("networks")
             .Build()
             .SetupRun(ConfigInstance.Create().LoadWebConfig().Build())
             .SetEnv(shared)

@@ -154,7 +154,7 @@ public class DockerAzureEnvironmentSmokeTests
     public async Task Timeline_CanRunTableIsLiveWithDockerAzureEnvironment_WhenSmokeEnabled()
     {
         TimelineRun run = await RunSmokeTimelineAsync(
-            [builder => builder.SetupArtifact("table").Trigger(AzureExt.Trigger.IsLive.Table("storage", AlivenessLevel.Resource)).WithTimeOut(TimeSpan.FromMinutes(1))],
+            [builder => builder.SetupArtifact("table").Trigger(AzureExt.Trigger.IsLive.Table("storage", AlivenessLevel.Resource)).WithTimeout(TimeSpan.FromMinutes(1))],
             runBuilder => runBuilder.AddArtifact(
                 "table",
                     new TableStorageEntityArtifactReference<SmokeTableEntity>("storage", Var.Const(SmokeTableName), Var.Const("pk"), Var.Const("rk")),
@@ -168,7 +168,7 @@ public class DockerAzureEnvironmentSmokeTests
     public async Task Timeline_CanRunCosmosIsLiveWithDockerAzureEnvironment_WhenSmokeEnabled()
     {
         TimelineRun run = await RunSmokeTimelineAsync(
-            [builder => builder.Trigger(AzureExt.Trigger.IsLive.Cosmos("cosmos", AlivenessLevel.Authenticated)).WithTimeOut(TimeSpan.FromMinutes(2))]);
+            [builder => builder.Trigger(AzureExt.Trigger.IsLive.Cosmos("cosmos", AlivenessLevel.Authenticated)).WithTimeout(TimeSpan.FromMinutes(2))]);
 
         Assert.True(run.EnvironmentContext.Contains(DockerAzureEnvironment.CosmosDbComponentId));
     }
@@ -201,8 +201,8 @@ public class DockerAzureEnvironmentSmokeTests
         TimelineRun run = await RunSmokeTimelineAsync(
             [
                 builder => builder.SetupArtifact("blob").WithRetry(5, CalcDelays.Fixed(TimeSpan.FromSeconds(2))).Trigger(AzureExt.Trigger.IsLive.Blob("storage", AlivenessLevel.Resource)),
-                builder => builder.SetupArtifact("table").Trigger(AzureExt.Trigger.IsLive.Table("storage", AlivenessLevel.Resource)).WithTimeOut(TimeSpan.FromMinutes(1)),
-                builder => builder.Trigger(AzureExt.Trigger.IsLive.Cosmos("cosmos", AlivenessLevel.Authenticated)).WithTimeOut(TimeSpan.FromMinutes(2)),
+                builder => builder.SetupArtifact("table").Trigger(AzureExt.Trigger.IsLive.Table("storage", AlivenessLevel.Resource)).WithTimeout(TimeSpan.FromMinutes(1)),
+                builder => builder.Trigger(AzureExt.Trigger.IsLive.Cosmos("cosmos", AlivenessLevel.Authenticated)).WithTimeout(TimeSpan.FromMinutes(2)),
                 builder => builder.Trigger(AzureExt.Trigger.IsLive.Sql("sql")),
                 builder => builder.Trigger(AzureExt.Trigger.ServiceBus.Send("bus", Var.Const(new ServiceBusMessage("payload"))))
             ],
@@ -222,8 +222,8 @@ public class DockerAzureEnvironmentSmokeTests
     {
         Timeline timeline = Timeline.Create()
             .Trigger(AzureExt.Trigger.IsLive.FunctionApp("func", AlivenessLevel.Reachable))
-            .WithTimeOut(TimeSpan.FromMinutes(1))
-            .Name("function-live")
+            .WithTimeout(TimeSpan.FromMinutes(1))
+            .Label("function-live")
             .Build();
 
         TimelineRun run = await timeline.SetupRun().SetEnv(_fixture.GetEnv()).RunAsync();
@@ -257,7 +257,7 @@ public class DockerAzureEnvironmentSmokeTests
     public async Task Timeline_UsesRunLocalServiceBusConfigOverrides_OnTopOfPersistentSnapshot()
     {
         Timeline timeline = Timeline.Create()
-            .Trigger(new InspectServiceBusConfigStep()).Name("inspect-servicebus-config")
+            .Trigger(new InspectServiceBusConfigStep()).Label("inspect-servicebus-config")
             .Build();
 
         // One key, overriding one entry of the persistent slice's declaration. The rest of the entry - and every
@@ -279,9 +279,9 @@ public class DockerAzureEnvironmentSmokeTests
         const string correlationId = "smoke-servicebus-correlation";
 
         Timeline timeline = Timeline.Create()
-            .Trigger(AzureExt.Trigger.IsLive.FunctionApp("func-sb", AlivenessLevel.Reachable)).WithTimeOut(TimeSpan.FromMinutes(1)).Name("func-sb-reachable")
+            .Trigger(AzureExt.Trigger.IsLive.FunctionApp("func-sb", AlivenessLevel.Reachable)).WithTimeout(TimeSpan.FromMinutes(1)).Label("func-sb-reachable")
             .Trigger(AzureExt.Trigger.ServiceBus.Send("func-trigger-bus", Var.Const(new ServiceBusMessage(correlationId) { CorrelationId = correlationId })))
-            .WaitForEvent(AzureExt.Event.ServiceBus.MessageReceived("func-reply-bus").WithCorrelationId(Var.Const(correlationId)).CompleteMessage(Var.Const(true))).WithTimeOut(TimeSpan.FromMinutes(1)).Name("reply-received")
+            .WaitForEvent(AzureExt.Event.ServiceBus.MessageReceived("func-reply-bus").WithCorrelationId(Var.Const(correlationId)).CompleteMessage(Var.Const(true))).WithTimeout(TimeSpan.FromMinutes(1)).Label("reply-received")
             .Build();
 
         TimelineRun run = await timeline.SetupRun().SetEnv(_fixture.GetEnv()).RunAsync();

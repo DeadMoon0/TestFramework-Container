@@ -68,7 +68,7 @@ public class HostedSqlServerTests
 
     private static Task<TimelineRun> RunSql(Core.Environment.IEnvironmentProvider environment, string sql)
         => Timeline.Create()
-            .Trigger(new CountsRows(sql)).Name("rows")
+            .Trigger(new CountsRows(sql)).Label("rows")
             .Build()
             .SetupRun(ConfigInstance.Create().LoadWebConfig().Build())
             .SetEnv(environment)

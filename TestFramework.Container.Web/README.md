@@ -42,7 +42,7 @@ ConfigInstance config = ConfigInstance.Create()
 
 Timeline timeline = Timeline.Create()
     .SetupArtifact("order")
-    .Trigger(WebExt.Sql.Scalar<int>("main", "SELECT COUNT(1) FROM [Orders]")).Name("count")
+    .Trigger(WebExt.Sql.Scalar<int>("main", "SELECT COUNT(1) FROM [Orders]")).Label("count")
     .Build();
 
 TimelineRun run = await timeline.SetupRun(config)
@@ -150,7 +150,7 @@ behind it:
 ```csharp
 Timeline timeline = Timeline.Create()
     .Trigger(WebExt.Api.Http("orders").Post("api/orders")
-        .WithJsonBody(Var.Const(new CreateOrder("container-order", 7))).Call()).Name("create")
+        .WithJsonBody(Var.Const(new CreateOrder("container-order", 7))).Call()).Label("create")
     .FindArtifact("created", WebExt.ArtifactFinder.Sql.Where<Order>("sales", "Name = @name")
         .WithParameter("name", Var.Const("container-order")))
     .Build();
@@ -249,8 +249,8 @@ DockerWebEnvironment.For<SalesSqlDefinition>()
 Then the timeline asserts on what the application sent **outwards**, which no response body can show:
 
 ```csharp
-.WaitForEvent(WebExt.Stub.Called("payments", HttpMethod.Post, "/api/charges")).Name("charged")
-.Trigger(WebExt.Stub.Calls("payments")).Name("calls")
+.WaitForEvent(WebExt.Stub.Called("payments", HttpMethod.Post, "/api/charges")).Label("charged")
+.Trigger(WebExt.Stub.Calls("payments")).Label("calls")
 
 run.StubCall("charged").Select(call => call.Body).Should().Contain("\"amount\":30");
 run.StubCalls("calls").Should().HaveCount(1);

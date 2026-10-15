@@ -104,7 +104,7 @@ public class DockerWebEnvironmentApiTests
         // resource list, and the engine refuses what nothing declares - before a single container starts.
         DockerWebEnvironment environment = DockerWebEnvironment.For<StandaloneApiDefinition>();
         Timeline timeline = Timeline.Create()
-            .Trigger(WebExt.Api.Http("billing").Get("api/invoices").Call()).Name("bill")
+            .Trigger(WebExt.Api.Http("billing").Get("api/invoices").Call()).Label("bill")
             .Build();
 
         FrameworkConfigurationException refusal = await Assert.ThrowsAsync<FrameworkConfigurationException>(
