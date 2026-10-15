@@ -9,6 +9,14 @@ namespace TestFramework.Container.Azure;
 /// </summary>
 public static class DockerAzureContractMatcher
 {
+    /// <summary>
+    /// Returns whether <paramref name="provider"/> satisfies <paramref name="requirement"/>. Both must be the same
+    /// contract kind (blob container, Cosmos, SQL database or Service Bus endpoint) with equal identity fields; an
+    /// optional field left empty on the requirement matches any value. Any other combination does not match.
+    /// </summary>
+    /// <param name="requirement">The contract a definition requires.</param>
+    /// <param name="provider">The contract another definition provides.</param>
+    /// <returns><c>true</c> when the provided contract satisfies the requirement.</returns>
     public static bool IsMatch(IEnvironmentResourceContract requirement, IEnvironmentResourceContract provider)
     {
         return requirement switch

@@ -21,21 +21,64 @@ using TestFramework.Core.Logging;
 
 namespace TestFramework.Container.Azure;
 
+/// <summary>
+/// An environment provider that runs Azure resources in Docker containers: Azurite for storage, the Cosmos DB
+/// emulator, SQL Server, the Service Bus emulator and Function App hosts, all on one Docker network.
+/// </summary>
+/// <remarks>
+/// What it can start is described by the definitions it includes; a run starts only the containers its artifacts
+/// and requirements use.
+/// </remarks>
 public sealed class DockerAzureEnvironment : EnvironmentProviderBase, IRunScopedServiceProviderFactory, IRunScopedEnvironmentFactory, IPersistentEnvironmentStateSink, IResourceNodeSource
 {
+    /// <summary>
+    /// The component that creates the Docker network the containers share.
+    /// </summary>
     public static readonly EnvComponentIdentifier NetworkComponentId = "docker-network";
+
+    /// <summary>
+    /// The component that starts the Function App host containers.
+    /// </summary>
     public static readonly EnvComponentIdentifier FunctionAppComponentId = "functionapp";
+
+    /// <summary>
+    /// The component that starts the SQL Server container.
+    /// </summary>
     public static readonly EnvComponentIdentifier MsSqlComponentId = "mssql";
+
+    /// <summary>
+    /// The component that starts the Azurite container.
+    /// </summary>
     public static readonly EnvComponentIdentifier AzuriteComponentId = "azurite";
+
+    /// <summary>
+    /// The component that starts the Cosmos DB emulator container.
+    /// </summary>
     public static readonly EnvComponentIdentifier CosmosDbComponentId = "cosmos-emulator";
+
+    /// <summary>
+    /// The component that starts the Service Bus emulator container.
+    /// </summary>
     public static readonly EnvComponentIdentifier ServiceBusComponentId = "servicebus-emulator";
 
     /// <summary>
     /// The per-run component that empties the emulators before anything is started against them.
     /// </summary>
     public static readonly EnvComponentIdentifier AzureResetComponentId = "azure-reset";
+
+    /// <summary>
+    /// The host name other containers on the network reach Azurite by.
+    /// </summary>
     public const string AzuriteNetworkAlias = "azurite";
+
+    /// <summary>
+    /// The host name other containers on the network reach the Cosmos DB emulator by.
+    /// </summary>
     public const string CosmosDbNetworkAlias = "cosmos-emulator";
+
+    /// <summary>
+    /// The host name other containers on the network reach the Service Bus emulator by.
+    /// </summary>
     public const string ServiceBusNetworkAlias = "servicebus-emulator";
     private static readonly DockerEndpointMap EndpointMapInstance = new();
 
@@ -81,6 +124,10 @@ public sealed class DockerAzureEnvironment : EnvironmentProviderBase, IRunScoped
     public IReadOnlyCollection<string> UsedFunctionAppIdentifiers => _usedFunctionAppIdentifiers;
     internal Dictionary<string, string> CosmosPartitionKeyPaths { get; } = [];
 
+    /// <summary>
+    /// Creates an environment with no definitions included. The container components are registered, and storage,
+    /// Cosmos and SQL artifacts are mapped to the emulator that serves them.
+    /// </summary>
     public DockerAzureEnvironment()
     {
         _definitionNodes = new DefinitionDefaults(_definitionState);
@@ -105,14 +152,29 @@ public sealed class DockerAzureEnvironment : EnvironmentProviderBase, IRunScoped
         MapArtifact(typeof(AzureSqlRowArtifactDescriber<>), MsSqlComponentId);
     }
 
+    /// <summary>
+    /// Includes a new instance of <typeparamref name="TDefinition"/>.
+    /// </summary>
+    /// <typeparam name="TDefinition">The definition to include.</typeparam>
+    /// <returns>This environment for chaining.</returns>
     public DockerAzureEnvironment Include<TDefinition>()
         where TDefinition : DockerAzureDefinition, new()
     {
         return Include(new TDefinition());
     }
 
+    /// <summary>
+    /// Always <c>true</c>: components whose dependencies are ready are created in parallel.
+    /// </summary>
     public override bool SupportsParallelComponentCreation => true;
 
+    /// <summary>
+    /// Includes a definition and, transitively, the definitions it depends on. A second definition of a type
+    /// already included is ignored.
+    /// </summary>
+    /// <param name="definition">The definition to include.</param>
+    /// <returns>This environment for chaining.</returns>
+    /// <exception cref="FrameworkConfigurationException">The definition conflicts with one already included.</exception>
     public DockerAzureEnvironment Include(DockerAzureDefinition definition)
     {
         ArgumentNullException.ThrowIfNull(definition);
@@ -122,6 +184,11 @@ public sealed class DockerAzureEnvironment : EnvironmentProviderBase, IRunScoped
         return this;
     }
 
+    /// <summary>
+    /// Creates an environment with <typeparamref name="TDefinition"/> included.
+    /// </summary>
+    /// <typeparam name="TDefinition">The definition to include.</typeparam>
+    /// <returns>The new environment.</returns>
     public static DockerAzureEnvironment For<TDefinition>()
         where TDefinition : DockerAzureDefinition, new()
     {
@@ -154,31 +221,90 @@ public sealed class DockerAzureEnvironment : EnvironmentProviderBase, IRunScoped
         return Include(new InlineFunctionAppDefinition(identifier, source, configure, image));
     }
 
+    /// <summary>
+    /// Creates an environment with one inline Function App and no bindings.
+    /// </summary>
+    /// <remarks>Uses <c>null</c> for <c>configure</c> and <c>image</c>; a longer overload states them.</remarks>
+    /// <param name="identifier">The Function App identifier.</param>
+    /// <param name="source">Where the payload mounted into the Functions host comes from.</param>
+    /// <returns>The new environment.</returns>
     public static DockerAzureEnvironment ForFunctionApp(FunctionAppIdentifier identifier, ContainerSource source)
         => ForFunctionApp(identifier, source, null, null);
 
+    /// <summary>
+    /// Creates an environment with one inline Function App.
+    /// </summary>
+    /// <remarks>Uses <c>null</c> for <c>image</c>; a longer overload states it.</remarks>
+    /// <param name="identifier">The Function App identifier.</param>
+    /// <param name="source">Where the payload mounted into the Functions host comes from.</param>
+    /// <param name="configure">Binds resources and adds app settings, or <c>null</c> for none.</param>
+    /// <returns>The new environment.</returns>
     public static DockerAzureEnvironment ForFunctionApp(FunctionAppIdentifier identifier, ContainerSource source, Action<DockerFunctionAppBuilder>? configure)
         => ForFunctionApp(identifier, source, configure, null);
 
+    /// <summary>
+    /// Creates an environment with one inline Function App.
+    /// </summary>
+    /// <param name="identifier">The Function App identifier.</param>
+    /// <param name="source">Where the payload mounted into the Functions host comes from.</param>
+    /// <param name="configure">Binds resources and adds app settings, or <c>null</c> for none.</param>
+    /// <param name="image">The Functions host image, or <c>null</c> to derive it from the payload's target framework.</param>
+    /// <returns>The new environment.</returns>
     public static DockerAzureEnvironment ForFunctionApp(FunctionAppIdentifier identifier, ContainerSource source, Action<DockerFunctionAppBuilder>? configure, string? image)
     {
         return new DockerAzureEnvironment().UseFunctionApp(identifier, source, configure, image);
     }
 
+    /// <summary>
+    /// Creates an environment with one inline Function App bound to <typeparamref name="TStorage"/>.
+    /// </summary>
+    /// <remarks>Uses <c>null</c> for <c>image</c>; a longer overload states it.</remarks>
+    /// <typeparam name="TStorage">The storage definition.</typeparam>
+    /// <param name="identifier">The Function App identifier.</param>
+    /// <param name="source">Where the payload mounted into the Functions host comes from.</param>
+    /// <returns>The new environment.</returns>
     public static DockerAzureEnvironment ForFunctionAppWithStorage<TStorage>(FunctionAppIdentifier identifier, ContainerSource source)
         where TStorage : DockerStorageDefinition, new()
         => ForFunctionAppWithStorage<TStorage>(identifier, source, null);
 
+    /// <summary>
+    /// Creates an environment with one inline Function App bound to <typeparamref name="TStorage"/>.
+    /// </summary>
+    /// <typeparam name="TStorage">The storage definition.</typeparam>
+    /// <param name="identifier">The Function App identifier.</param>
+    /// <param name="source">Where the payload mounted into the Functions host comes from.</param>
+    /// <param name="image">The Functions host image, or <c>null</c> to derive it from the payload's target framework.</param>
+    /// <returns>The new environment.</returns>
     public static DockerAzureEnvironment ForFunctionAppWithStorage<TStorage>(FunctionAppIdentifier identifier, ContainerSource source, string? image)
         where TStorage : DockerStorageDefinition, new()
     {
         return ForFunctionApp(identifier, source, builder => builder.UseStorage<TStorage>(), image);
     }
 
+    /// <summary>
+    /// Creates an environment with one inline Function App bound to <typeparamref name="TStorage"/> and
+    /// <typeparamref name="TCosmos"/>.
+    /// </summary>
+    /// <remarks>Uses <c>null</c> for <c>image</c>; a longer overload states it.</remarks>
+    /// <typeparam name="TStorage">The storage definition.</typeparam>
+    /// <typeparam name="TCosmos">The Cosmos definition.</typeparam>
+    /// <param name="identifier">The Function App identifier.</param>
+    /// <param name="source">Where the payload mounted into the Functions host comes from.</param>
+    /// <returns>The new environment.</returns>
     public static DockerAzureEnvironment ForFunctionAppWithStorageAndCosmos<TStorage, TCosmos>(FunctionAppIdentifier identifier, ContainerSource source)
         where TStorage : DockerStorageDefinition, new() where TCosmos : DockerCosmosDefinition, new()
         => ForFunctionAppWithStorageAndCosmos<TStorage, TCosmos>(identifier, source, null);
 
+    /// <summary>
+    /// Creates an environment with one inline Function App bound to <typeparamref name="TStorage"/> and
+    /// <typeparamref name="TCosmos"/>.
+    /// </summary>
+    /// <typeparam name="TStorage">The storage definition.</typeparam>
+    /// <typeparam name="TCosmos">The Cosmos definition.</typeparam>
+    /// <param name="identifier">The Function App identifier.</param>
+    /// <param name="source">Where the payload mounted into the Functions host comes from.</param>
+    /// <param name="image">The Functions host image, or <c>null</c> to derive it from the payload's target framework.</param>
+    /// <returns>The new environment.</returns>
     public static DockerAzureEnvironment ForFunctionAppWithStorageAndCosmos<TStorage, TCosmos>(FunctionAppIdentifier identifier, ContainerSource source, string? image)
         where TStorage : DockerStorageDefinition, new()
         where TCosmos : DockerCosmosDefinition, new()
@@ -188,10 +314,34 @@ public sealed class DockerAzureEnvironment : EnvironmentProviderBase, IRunScoped
             .UseCosmos<TCosmos>(), image);
     }
 
+    /// <summary>
+    /// Creates an environment with one inline Function App bound to <typeparamref name="TStorage"/>, triggered by
+    /// one <typeparamref name="TServiceBus"/> endpoint and replying to another.
+    /// </summary>
+    /// <remarks>Uses <c>null</c> for <c>image</c>; a longer overload states it.</remarks>
+    /// <typeparam name="TStorage">The storage definition.</typeparam>
+    /// <typeparam name="TServiceBus">The Service Bus definition.</typeparam>
+    /// <param name="identifier">The Function App identifier.</param>
+    /// <param name="source">Where the payload mounted into the Functions host comes from.</param>
+    /// <param name="triggerSelector">Picks the trigger endpoint from the definition.</param>
+    /// <param name="replySelector">Picks the reply endpoint from the definition.</param>
+    /// <returns>The new environment.</returns>
     public static DockerAzureEnvironment ForFunctionAppWithStorageAndServiceBus<TStorage, TServiceBus>(FunctionAppIdentifier identifier, ContainerSource source, Func<TServiceBus, DockerServiceBusEndpoint> triggerSelector, Func<TServiceBus, DockerServiceBusEndpoint> replySelector)
         where TStorage : DockerStorageDefinition, new() where TServiceBus : DockerServiceBusDefinition, new()
         => ForFunctionAppWithStorageAndServiceBus<TStorage, TServiceBus>(identifier, source, triggerSelector, replySelector, null);
 
+    /// <summary>
+    /// Creates an environment with one inline Function App bound to <typeparamref name="TStorage"/>, triggered by
+    /// one <typeparamref name="TServiceBus"/> endpoint and replying to another.
+    /// </summary>
+    /// <typeparam name="TStorage">The storage definition.</typeparam>
+    /// <typeparam name="TServiceBus">The Service Bus definition.</typeparam>
+    /// <param name="identifier">The Function App identifier.</param>
+    /// <param name="source">Where the payload mounted into the Functions host comes from.</param>
+    /// <param name="triggerSelector">Picks the trigger endpoint from the definition.</param>
+    /// <param name="replySelector">Picks the reply endpoint from the definition.</param>
+    /// <param name="image">The Functions host image, or <c>null</c> to derive it from the payload's target framework.</param>
+    /// <returns>The new environment.</returns>
     public static DockerAzureEnvironment ForFunctionAppWithStorageAndServiceBus<TStorage, TServiceBus>(FunctionAppIdentifier identifier, ContainerSource source, Func<TServiceBus, DockerServiceBusEndpoint> triggerSelector, Func<TServiceBus, DockerServiceBusEndpoint> replySelector, string? image)
         where TStorage : DockerStorageDefinition, new()
         where TServiceBus : DockerServiceBusDefinition, new()
@@ -202,10 +352,36 @@ public sealed class DockerAzureEnvironment : EnvironmentProviderBase, IRunScoped
             .UseServiceBusReply<TServiceBus>(replySelector), image);
     }
 
+    /// <summary>
+    /// Creates an environment with one inline Function App bound to <typeparamref name="TStorage"/> and
+    /// <typeparamref name="TCosmos"/>, triggered by one <typeparamref name="TServiceBus"/> endpoint and replying to another.
+    /// </summary>
+    /// <remarks>Uses <c>null</c> for <c>image</c>; a longer overload states it.</remarks>
+    /// <typeparam name="TStorage">The storage definition.</typeparam>
+    /// <typeparam name="TCosmos">The Cosmos definition.</typeparam>
+    /// <typeparam name="TServiceBus">The Service Bus definition.</typeparam>
+    /// <param name="identifier">The Function App identifier.</param>
+    /// <param name="source">Where the payload mounted into the Functions host comes from.</param>
+    /// <param name="triggerSelector">Picks the trigger endpoint from the definition.</param>
+    /// <param name="replySelector">Picks the reply endpoint from the definition.</param>
+    /// <returns>The new environment.</returns>
     public static DockerAzureEnvironment ForFunctionAppWithCommonBindings<TStorage, TCosmos, TServiceBus>(FunctionAppIdentifier identifier, ContainerSource source, Func<TServiceBus, DockerServiceBusEndpoint> triggerSelector, Func<TServiceBus, DockerServiceBusEndpoint> replySelector)
         where TStorage : DockerStorageDefinition, new() where TCosmos : DockerCosmosDefinition, new() where TServiceBus : DockerServiceBusDefinition, new()
         => ForFunctionAppWithCommonBindings<TStorage, TCosmos, TServiceBus>(identifier, source, triggerSelector, replySelector, null);
 
+    /// <summary>
+    /// Creates an environment with one inline Function App bound to <typeparamref name="TStorage"/> and
+    /// <typeparamref name="TCosmos"/>, triggered by one <typeparamref name="TServiceBus"/> endpoint and replying to another.
+    /// </summary>
+    /// <typeparam name="TStorage">The storage definition.</typeparam>
+    /// <typeparam name="TCosmos">The Cosmos definition.</typeparam>
+    /// <typeparam name="TServiceBus">The Service Bus definition.</typeparam>
+    /// <param name="identifier">The Function App identifier.</param>
+    /// <param name="source">Where the payload mounted into the Functions host comes from.</param>
+    /// <param name="triggerSelector">Picks the trigger endpoint from the definition.</param>
+    /// <param name="replySelector">Picks the reply endpoint from the definition.</param>
+    /// <param name="image">The Functions host image, or <c>null</c> to derive it from the payload's target framework.</param>
+    /// <returns>The new environment.</returns>
     public static DockerAzureEnvironment ForFunctionAppWithCommonBindings<TStorage, TCosmos, TServiceBus>(FunctionAppIdentifier identifier, ContainerSource source, Func<TServiceBus, DockerServiceBusEndpoint> triggerSelector, Func<TServiceBus, DockerServiceBusEndpoint> replySelector, string? image)
         where TStorage : DockerStorageDefinition, new()
         where TCosmos : DockerCosmosDefinition, new()
@@ -218,6 +394,19 @@ public sealed class DockerAzureEnvironment : EnvironmentProviderBase, IRunScoped
             .UseServiceBusReply<TServiceBus>(replySelector), image);
     }
 
+    /// <summary>
+    /// Works out which containers the run needs: the resources its requirements and artifacts name, the definitions
+    /// those depend on or are contract-bound to, and the per-run reset when an emulator is in use.
+    /// </summary>
+    /// <remarks>
+    /// Clears and refills the used-identifier collections, such as <see cref="UsedStorageIdentifiers"/>.
+    /// </remarks>
+    /// <param name="artifacts">Artifacts already available for the run.</param>
+    /// <param name="requirements">The environment requirements routed to this environment.</param>
+    /// <returns>The identifiers of the components the run needs.</returns>
+    /// <exception cref="FrameworkConfigurationException">
+    /// A used Function App has no registration, or Service Bus is used without a topology.
+    /// </exception>
     public override IReadOnlyCollection<EnvComponentIdentifier> ResolveComponents(IEnumerable<ArtifactInstanceGeneric> artifacts, IEnumerable<EnvironmentRequirement> requirements)
     {
         _usedStorageIdentifiers.Clear();
@@ -303,6 +492,12 @@ public sealed class DockerAzureEnvironment : EnvironmentProviderBase, IRunScoped
             logger.LogInformation(line);
     }
 
+    /// <summary>
+    /// Records that the component was created by an earlier run, so the per-run reset knows there may be emulator
+    /// contents to purge. The state itself is not kept.
+    /// </summary>
+    /// <param name="identifier">The component created by an earlier run.</param>
+    /// <param name="state">The component's state; ignored.</param>
     public void SetPersistentState(EnvComponentIdentifier identifier, object? state)
     {
         // Being handed state is the one signal that this component was created by an earlier run. The state
@@ -542,6 +737,12 @@ public sealed class DockerAzureEnvironment : EnvironmentProviderBase, IRunScoped
         }
     }
 
+    /// <summary>
+    /// Wraps <paramref name="baseServiceProvider"/> so that it also resolves this environment as
+    /// <see cref="DockerAzureEnvironment"/> for the run.
+    /// </summary>
+    /// <param name="baseServiceProvider">The service provider configured for the run.</param>
+    /// <returns>The run's service provider.</returns>
     public IServiceProvider CreateRunScopedServiceProvider(IServiceProvider baseServiceProvider)
     {
         return new DockerAzureRunScopedServiceProvider(this, baseServiceProvider);

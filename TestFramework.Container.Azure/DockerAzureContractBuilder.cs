@@ -16,6 +16,11 @@ public sealed class DockerAzureContractBuilder
 
     internal IReadOnlyCollection<IEnvironmentResourceContract> Requires => _requires;
 
+    /// <summary>
+    /// Declares a contract the definition offers to other definitions.
+    /// </summary>
+    /// <param name="contract">The provided contract.</param>
+    /// <returns>This builder for chaining.</returns>
     public DockerAzureContractBuilder Provide(IEnvironmentResourceContract contract)
     {
         ArgumentNullException.ThrowIfNull(contract);
@@ -23,6 +28,11 @@ public sealed class DockerAzureContractBuilder
         return this;
     }
 
+    /// <summary>
+    /// Declares a contract the definition needs another definition to provide.
+    /// </summary>
+    /// <param name="contract">The required contract.</param>
+    /// <returns>This builder for chaining.</returns>
     public DockerAzureContractBuilder Require(IEnvironmentResourceContract contract)
     {
         ArgumentNullException.ThrowIfNull(contract);

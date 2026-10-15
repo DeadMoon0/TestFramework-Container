@@ -10,13 +10,28 @@ using Testcontainers.ServiceBus;
 
 namespace TestFramework.Container.Azure;
 
+/// <summary>
+/// Declares the Service Bus emulator topology (namespaces, queues, topics, subscriptions) in code instead of a config file.
+/// </summary>
 public sealed class DockerServiceBusTopologyBuilder
 {
     private readonly List<ServiceBusEmulatorNamespaceDefinition> _namespaces = [];
 
+    /// <summary>
+    /// Adds an empty namespace.
+    /// </summary>
+    /// <remarks>Uses <c>null</c> for <c>configure</c>; a longer overload states it.</remarks>
+    /// <param name="name">The namespace name; must not be empty.</param>
+    /// <returns>This builder for chaining.</returns>
     public DockerServiceBusTopologyBuilder AddNamespace(string name)
         => this.AddNamespace(name, null);
 
+    /// <summary>
+    /// Adds a namespace and lets <paramref name="configure"/> declare its queues and topics.
+    /// </summary>
+    /// <param name="name">The namespace name; must not be empty.</param>
+    /// <param name="configure">Declares the namespace's entities, or <c>null</c> for an empty namespace.</param>
+    /// <returns>This builder for chaining.</returns>
     public DockerServiceBusTopologyBuilder AddNamespace(string name, Action<DockerServiceBusNamespaceBuilder>? configure)
     {
         DockerServiceBusNamespaceBuilder builder = new(name);
@@ -36,6 +51,9 @@ public sealed class DockerServiceBusTopologyBuilder
     }
 }
 
+/// <summary>
+/// Declares the queues and topics of one Service Bus emulator namespace.
+/// </summary>
 public sealed class DockerServiceBusNamespaceBuilder
 {
     private readonly string _name;
@@ -49,15 +67,32 @@ public sealed class DockerServiceBusNamespaceBuilder
             : name;
     }
 
+    /// <summary>
+    /// Adds a queue to the namespace.
+    /// </summary>
+    /// <param name="name">The queue name; must not be empty.</param>
+    /// <returns>This builder for chaining.</returns>
     public DockerServiceBusNamespaceBuilder AddQueue(string name)
     {
         _queues.Add(new ServiceBusEmulatorQueueDefinition(RequireName(name, "Queue")));
         return this;
     }
 
+    /// <summary>
+    /// Adds a topic without subscriptions to the namespace.
+    /// </summary>
+    /// <remarks>Uses <c>null</c> for <c>configure</c>; a longer overload states it.</remarks>
+    /// <param name="name">The topic name; must not be empty.</param>
+    /// <returns>This builder for chaining.</returns>
     public DockerServiceBusNamespaceBuilder AddTopic(string name)
         => this.AddTopic(name, null);
 
+    /// <summary>
+    /// Adds a topic to the namespace and lets <paramref name="configure"/> declare its subscriptions.
+    /// </summary>
+    /// <param name="name">The topic name; must not be empty.</param>
+    /// <param name="configure">Declares the topic's subscriptions, or <c>null</c> for none.</param>
+    /// <returns>This builder for chaining.</returns>
     public DockerServiceBusNamespaceBuilder AddTopic(string name, Action<DockerServiceBusTopicBuilder>? configure)
     {
         DockerServiceBusTopicBuilder builder = new(name);
@@ -80,6 +115,9 @@ public sealed class DockerServiceBusNamespaceBuilder
     }
 }
 
+/// <summary>
+/// Declares the subscriptions of one Service Bus emulator topic.
+/// </summary>
 public sealed class DockerServiceBusTopicBuilder
 {
     private readonly string _name;
@@ -92,6 +130,11 @@ public sealed class DockerServiceBusTopicBuilder
             : name;
     }
 
+    /// <summary>
+    /// Adds a subscription to the topic.
+    /// </summary>
+    /// <param name="name">The subscription name; must not be empty.</param>
+    /// <returns>This builder for chaining.</returns>
     public DockerServiceBusTopicBuilder AddSubscription(string name)
     {
         if (string.IsNullOrWhiteSpace(name))

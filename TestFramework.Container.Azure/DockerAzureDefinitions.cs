@@ -11,16 +11,35 @@ using TestFramework.Core.Exceptions;
 
 namespace TestFramework.Container.Azure;
 
+/// <summary>
+/// Base of every definition a <see cref="DockerAzureEnvironment"/> includes: one containerised resource or
+/// infrastructure setting, plus the definitions and contracts it depends on.
+/// </summary>
 public abstract class DockerAzureDefinition
 {
+    /// <summary>
+    /// Declares the definitions this one depends on. They are included with it and started whenever it is used.
+    /// The default declares none.
+    /// </summary>
+    /// <param name="dependencies">Collects the dependencies.</param>
     protected virtual void ConfigureDependencies(DockerAzureDependencyBuilder dependencies)
     {
     }
 
+    /// <summary>
+    /// Declares the resource contracts this definition provides and requires. Each requirement is bound to a
+    /// matching provider (see <see cref="DockerAzureContractMatcher"/>) when the environment resolves, and the
+    /// provider is started with the definition that requires it. The default declares none.
+    /// </summary>
+    /// <param name="contracts">Collects the contracts.</param>
     protected virtual void ConfigureContracts(DockerAzureContractBuilder contracts)
     {
     }
 
+    /// <summary>
+    /// Runs <see cref="ConfigureDependencies"/> on a fresh builder and returns what it declared.
+    /// </summary>
+    /// <returns>The declared dependencies, one per definition type.</returns>
     protected internal IReadOnlyCollection<ComponentDependency> GetDependencies()
     {
         DockerAzureDependencyBuilder dependencies = new();
@@ -28,6 +47,10 @@ public abstract class DockerAzureDefinition
         return dependencies.Dependencies;
     }
 
+    /// <summary>
+    /// Runs <see cref="ConfigureContracts"/> on a fresh builder and returns the contracts it provides.
+    /// </summary>
+    /// <returns>The provided contracts.</returns>
     protected internal IReadOnlyCollection<IEnvironmentResourceContract> GetProvidedContracts()
     {
         DockerAzureContractBuilder contracts = new();
@@ -35,6 +58,10 @@ public abstract class DockerAzureDefinition
         return contracts.Provides;
     }
 
+    /// <summary>
+    /// Runs <see cref="ConfigureContracts"/> on a fresh builder and returns the contracts it requires.
+    /// </summary>
+    /// <returns>The required contracts.</returns>
     protected internal IReadOnlyCollection<IEnvironmentResourceContract> GetRequiredContracts()
     {
         DockerAzureContractBuilder contracts = new();
@@ -43,14 +70,35 @@ public abstract class DockerAzureDefinition
     }
 }
 
+/// <summary>
+/// Overrides environment-wide container settings: images, SQL Server limits and password, and the Service Bus
+/// emulator topology.
+/// </summary>
+/// <remarks>
+/// Every property left <c>null</c> keeps the matching <see cref="DockerAzureDefaults"/> value. Several
+/// infrastructure definitions may be included; two that set the same property to different values fail when
+/// the second is included.
+/// </remarks>
 public abstract class DockerAzureInfrastructureDefinition : DockerAzureDefinition
 {
+    /// <summary>
+    /// The Azurite image to start instead of <see cref="DockerAzureDefaults.AzuriteImage"/>.
+    /// </summary>
     public virtual string? AzuriteImage => null;
 
+    /// <summary>
+    /// The Cosmos DB emulator image to start instead of <see cref="DockerAzureDefaults.CosmosDbImage"/>.
+    /// </summary>
     public virtual string? CosmosDbImage => null;
 
+    /// <summary>
+    /// The SQL Server image to start instead of <see cref="DockerAzureDefaults.MsSqlImage"/>.
+    /// </summary>
     public virtual string? MsSqlImage => null;
 
+    /// <summary>
+    /// The SQL Server container's memory limit in megabytes, instead of <see cref="DockerAzureDefaults.MsSqlMemoryLimitMb"/>.
+    /// </summary>
     public virtual int? MsSqlMemoryLimitMb => null;
 
     /// <summary>
@@ -62,12 +110,28 @@ public abstract class DockerAzureInfrastructureDefinition : DockerAzureDefinitio
     /// </remarks>
     public virtual TimeSpan? MsSqlReadinessTimeout => null;
 
+    /// <summary>
+    /// The Service Bus emulator image to start instead of <see cref="DockerAzureDefaults.ServiceBusImage"/>.
+    /// </summary>
     public virtual string? ServiceBusImage => null;
 
+    /// <summary>
+    /// A fixed <c>sa</c> password for the SQL Server container. When <c>null</c>, each SQL Server container
+    /// generates its own.
+    /// </summary>
     public virtual string? MsSqlPassword => null;
 
+    /// <summary>
+    /// An emulator config file naming the Service Bus queues and topics. Used only when
+    /// <see cref="ConfigureServiceBusTopology"/> declares no namespace.
+    /// </summary>
     public virtual string? ServiceBusTopologyConfigPath => null;
 
+    /// <summary>
+    /// Declares the Service Bus emulator topology in code. A topology declared here takes precedence over
+    /// <see cref="ServiceBusTopologyConfigPath"/>. The default declares nothing.
+    /// </summary>
+    /// <param name="builder">Collects the namespaces.</param>
     protected virtual void ConfigureServiceBusTopology(DockerServiceBusTopologyBuilder builder)
     {
     }
@@ -86,14 +150,33 @@ public abstract class DockerAzureInfrastructureDefinition : DockerAzureDefinitio
     }
 }
 
+/// <summary>
+/// A storage account served by the Azurite container.
+/// </summary>
+/// <remarks>
+/// When at least one container name is set, the definition declares a storage account configuration for
+/// <see cref="Identifier"/> to the run; its connection string is replaced by the address Azurite publishes.
+/// </remarks>
 public abstract class DockerStorageDefinition : DockerAzureDefinition
 {
+    /// <summary>
+    /// The storage account identifier steps and configuration refer to.
+    /// </summary>
     public abstract StorageAccountIdentifier Identifier { get; }
 
+    /// <summary>
+    /// The blob container name declared in the storage account configuration, or <c>null</c> for none.
+    /// </summary>
     protected virtual string? BlobContainerName => null;
 
+    /// <summary>
+    /// The queue name declared in the storage account configuration, or <c>null</c> for none.
+    /// </summary>
     protected virtual string? QueueContainerName => null;
 
+    /// <summary>
+    /// The table name declared in the storage account configuration, or <c>null</c> for none.
+    /// </summary>
     protected virtual string? TableContainerName => null;
 
     internal StorageAccountConfig BuildConfig(string connectionString) => new()
@@ -117,14 +200,34 @@ public abstract class DockerStorageDefinition : DockerAzureDefinition
     }
 }
 
+/// <summary>
+/// A Cosmos DB container served by the Cosmos DB emulator container.
+/// </summary>
+/// <remarks>
+/// When both <see cref="DatabaseName"/> and <see cref="ContainerName"/> are set, the definition declares a Cosmos
+/// configuration for <see cref="Identifier"/> to the run; its connection string is replaced by the address the
+/// emulator publishes.
+/// </remarks>
 public abstract class DockerCosmosDefinition : DockerAzureDefinition
 {
+    /// <summary>
+    /// The Cosmos container identifier steps and configuration refer to.
+    /// </summary>
     public abstract CosmosContainerIdentifier Identifier { get; }
 
+    /// <summary>
+    /// The document type stored in the container. When set, the container's partition key path is read from it.
+    /// </summary>
     public virtual Type? ModelType => null;
 
+    /// <summary>
+    /// The Cosmos database name declared in the configuration, or <c>null</c> to declare no configuration.
+    /// </summary>
     protected virtual string? DatabaseName => null;
 
+    /// <summary>
+    /// The Cosmos container name declared in the configuration, or <c>null</c> to declare no configuration.
+    /// </summary>
     protected virtual string? ContainerName => null;
 
     internal CosmosContainerDbConfig BuildConfig(string connectionString) => new()
@@ -147,15 +250,35 @@ public abstract class DockerCosmosDefinition : DockerAzureDefinition
     }
 }
 
+/// <summary>
+/// A <see cref="DockerCosmosDefinition"/> whose document type is <typeparamref name="TDocument"/>.
+/// </summary>
+/// <typeparam name="TDocument">The document type; the container's partition key path is read from it.</typeparam>
 public abstract class DockerCosmosDefinition<TDocument> : DockerCosmosDefinition
 {
+    /// <summary>
+    /// Always <typeparamref name="TDocument"/>.
+    /// </summary>
     public sealed override Type ModelType => typeof(TDocument);
 }
 
+/// <summary>
+/// A SQL database served by the SQL Server container.
+/// </summary>
+/// <remarks>
+/// When <see cref="DatabaseName"/> is set, the definition declares a SQL database configuration for
+/// <see cref="Identifier"/> to the run; its connection string is replaced by the address SQL Server publishes.
+/// </remarks>
 public abstract class DockerAzureSqlDefinition : DockerAzureDefinition
 {
+    /// <summary>
+    /// The SQL database identifier steps and configuration refer to.
+    /// </summary>
     public abstract SqlDatabaseIdentifier Identifier { get; }
 
+    /// <summary>
+    /// The database name declared in the configuration, or <c>null</c> to declare no configuration.
+    /// </summary>
     protected virtual string? DatabaseName => null;
 
     internal SqlDatabaseConfig BuildConfig(string connectionString) => new()
@@ -177,6 +300,9 @@ public abstract class DockerAzureSqlDefinition : DockerAzureDefinition
     }
 }
 
+/// <summary>
+/// One Service Bus entity a Function App binds to: a queue, a topic, or a topic subscription.
+/// </summary>
 public sealed class DockerServiceBusEndpoint
 {
     private DockerServiceBusEndpoint(ServiceBusEndpointKind kind, string entityName, string? subscriptionName)
@@ -195,16 +321,41 @@ public sealed class DockerServiceBusEndpoint
         SubscriptionName = subscriptionName;
     }
 
+    /// <summary>
+    /// Whether the endpoint is a queue, a topic or a topic subscription.
+    /// </summary>
     public ServiceBusEndpointKind Kind { get; }
 
+    /// <summary>
+    /// The queue name, or the topic name for a topic or topic subscription.
+    /// </summary>
     public string EntityName { get; }
 
+    /// <summary>
+    /// The subscription name; set only for a topic subscription.
+    /// </summary>
     public string? SubscriptionName { get; }
 
+    /// <summary>
+    /// A queue endpoint.
+    /// </summary>
+    /// <param name="queueName">The queue name; must not be empty.</param>
+    /// <returns>The endpoint.</returns>
     public static DockerServiceBusEndpoint Queue(string queueName) => new(ServiceBusEndpointKind.Queue, queueName, null);
 
+    /// <summary>
+    /// A topic endpoint.
+    /// </summary>
+    /// <param name="topicName">The topic name; must not be empty.</param>
+    /// <returns>The endpoint.</returns>
     public static DockerServiceBusEndpoint Topic(string topicName) => new(ServiceBusEndpointKind.Topic, topicName, null);
 
+    /// <summary>
+    /// A topic subscription endpoint.
+    /// </summary>
+    /// <param name="topicName">The topic name; must not be empty.</param>
+    /// <param name="subscriptionName">The subscription name; must not be empty.</param>
+    /// <returns>The endpoint.</returns>
     public static DockerServiceBusEndpoint TopicSubscription(string topicName, string subscriptionName) => new(ServiceBusEndpointKind.TopicSubscription, topicName, subscriptionName);
 
     internal ServiceBusConfig CreateConfig(string connectionString, bool requiredSession) => new()
@@ -217,8 +368,19 @@ public sealed class DockerServiceBusEndpoint
     };
 }
 
+/// <summary>
+/// A Service Bus namespace served by the Service Bus emulator container.
+/// </summary>
+/// <remarks>
+/// The definition always declares a Service Bus configuration for <see cref="Identifier"/> to the run; its
+/// connection string is replaced by the address the emulator publishes. A run that uses Service Bus needs a
+/// topology, from <see cref="ConfigureServiceBusTopology"/> or <see cref="TopologyConfigPath"/>.
+/// </remarks>
 public abstract class DockerServiceBusDefinition : DockerAzureDefinition
 {
+    /// <summary>
+    /// The Service Bus identifier steps and configuration refer to.
+    /// </summary>
     public abstract ServiceBusIdentifier Identifier { get; }
 
     /// <summary>
@@ -232,16 +394,39 @@ public abstract class DockerServiceBusDefinition : DockerAzureDefinition
     /// </remarks>
     public virtual string? TopologyConfigPath => null;
 
+    /// <summary>
+    /// The <see cref="ServiceBusConfig.RequiredSession"/> value of every configuration this definition builds.
+    /// Defaults to <c>false</c>.
+    /// </summary>
     protected virtual bool RequiredSession => false;
 
+    /// <summary>
+    /// Builds a Service Bus configuration for <paramref name="endpoint"/>, with <see cref="RequiredSession"/> applied.
+    /// </summary>
+    /// <param name="connectionString">The connection string to put in the configuration.</param>
+    /// <param name="endpoint">The queue, topic or topic subscription the configuration names.</param>
+    /// <returns>The configuration.</returns>
     protected ServiceBusConfig BuildConfig(string connectionString, DockerServiceBusEndpoint endpoint)
         => endpoint.CreateConfig(connectionString, RequiredSession);
 
+    /// <summary>
+    /// The configuration this definition declares to the run, typically built with <see cref="BuildConfig"/>.
+    /// </summary>
+    /// <remarks>
+    /// The default returns <c>null</c>, which declares a configuration naming no entity. An empty connection string
+    /// is replaced by <see cref="DockerAzureDefaults.PlaceholderConnectionString"/>.
+    /// </remarks>
+    /// <returns>The configuration, or <c>null</c> for one naming no entity.</returns>
     protected virtual ServiceBusConfig? CreateDefaultConfig()
     {
         return null;
     }
 
+    /// <summary>
+    /// Declares the emulator's queues and topics in code. A topology declared here takes precedence over
+    /// <see cref="TopologyConfigPath"/>. The default declares nothing.
+    /// </summary>
+    /// <param name="builder">Collects the namespaces.</param>
     protected virtual void ConfigureServiceBusTopology(DockerServiceBusTopologyBuilder builder)
     {
     }
@@ -277,13 +462,27 @@ public abstract class DockerServiceBusDefinition : DockerAzureDefinition
     }
 }
 
+/// <summary>
+/// A Function App run in a Functions host container, with its payload mounted from a declared
+/// <see cref="Source"/>.
+/// </summary>
 public abstract class DockerFunctionAppDefinition : DockerAzureDefinition
 {
     private const string SynthesizedBaseUrl = "http://localhost/";
     private const string SynthesizedHostKey = "unused";
 
+    /// <summary>
+    /// The Function App identifier steps and configuration refer to.
+    /// </summary>
     public abstract FunctionAppIdentifier Identifier { get; }
 
+    /// <summary>
+    /// The Functions host image the payload is mounted into.
+    /// </summary>
+    /// <remarks>
+    /// Left at <see cref="DockerAzureDefaults.FunctionAppImage"/>, the image is derived from the payload's target
+    /// framework (see <see cref="DockerAzureDefaults.FunctionAppImageFor(string)"/>). Any other value is used as given.
+    /// </remarks>
     public virtual string Image => DockerAzureDefaults.FunctionAppImage;
 
     /// <summary>
@@ -300,6 +499,14 @@ public abstract class DockerFunctionAppDefinition : DockerAzureDefinition
         RecoverySteps = ["Override Source with ContainerSource.Project(\"...\").BuiltOnHost() or ContainerSource.Directory(\"...\")."],
     };
 
+    /// <summary>
+    /// The Function App configuration this definition declares to the run.
+    /// </summary>
+    /// <remarks>
+    /// The default carries a placeholder base URL, which the address the container publishes replaces, and host
+    /// keys set to a fixed unused value. Return <c>null</c> to declare no configuration.
+    /// </remarks>
+    /// <returns>The configuration, or <c>null</c> for none.</returns>
     protected virtual FunctionAppConfig? CreateDefaultConfig() => new()
     {
         BaseUrl = SynthesizedBaseUrl,
@@ -307,6 +514,11 @@ public abstract class DockerFunctionAppDefinition : DockerAzureDefinition
         AdminCode = SynthesizedHostKey,
     };
 
+    /// <summary>
+    /// Binds the Function App to storage, Cosmos and Service Bus definitions and adds app settings. Each binding
+    /// also makes the bound definition a dependency. The default binds nothing.
+    /// </summary>
+    /// <param name="builder">Collects the bindings and settings.</param>
     protected virtual void Configure(DockerFunctionAppBuilder builder)
     {
     }
@@ -345,16 +557,33 @@ public abstract class DockerFunctionAppDefinition : DockerAzureDefinition
     }
 }
 
+/// <summary>
+/// Collects the definitions a <see cref="DockerAzureDefinition"/> depends on.
+/// </summary>
 public sealed class DockerAzureDependencyBuilder
 {
     private readonly Dictionary<Type, ComponentDependency> _dependencies = [];
 
     internal IReadOnlyCollection<ComponentDependency> Dependencies => _dependencies.Values;
 
+    /// <summary>
+    /// Declares a shared dependency on <typeparamref name="TDefinition"/>.
+    /// </summary>
+    /// <remarks>Uses <see cref="DependencyOwnership.Shared"/> for <c>ownership</c>; a longer overload states it.</remarks>
+    /// <typeparam name="TDefinition">The definition depended on.</typeparam>
+    /// <returns>This builder for chaining.</returns>
     public DockerAzureDependencyBuilder Include<TDefinition>()
         where TDefinition : DockerAzureDefinition, new()
         => this.Include<TDefinition>(DependencyOwnership.Shared);
 
+    /// <summary>
+    /// Declares a dependency on <typeparamref name="TDefinition"/>. Declaring the same type again is allowed only
+    /// with the same <paramref name="ownership"/>.
+    /// </summary>
+    /// <typeparam name="TDefinition">The definition depended on.</typeparam>
+    /// <param name="ownership">Whether the dependency may be shared with other dependents.</param>
+    /// <returns>This builder for chaining.</returns>
+    /// <exception cref="FrameworkConfigurationException">The type was already declared with a different ownership.</exception>
     public DockerAzureDependencyBuilder Include<TDefinition>(DependencyOwnership ownership)
         where TDefinition : DockerAzureDefinition, new()
     {
@@ -369,6 +598,14 @@ public sealed class DockerAzureDependencyBuilder
     }
 }
 
+/// <summary>
+/// Collects a Function App's resource bindings and extra app settings; passed to
+/// <see cref="DockerFunctionAppDefinition"/>'s <c>Configure</c> override.
+/// </summary>
+/// <remarks>
+/// Each binding kind (storage, Cosmos, Service Bus trigger, Service Bus reply) is held once: binding the same kind
+/// again replaces the earlier binding.
+/// </remarks>
 public sealed class DockerFunctionAppBuilder
 {
     private readonly Dictionary<Type, ComponentDependency> _dependencies = [];
@@ -513,6 +750,12 @@ public sealed class DockerFunctionAppBuilder
         return this;
     }
 
+    /// <summary>
+    /// Adds an app setting the Functions host container starts with. Setting the same key again replaces the value.
+    /// </summary>
+    /// <param name="key">The setting name.</param>
+    /// <param name="value">The setting value.</param>
+    /// <returns>This builder.</returns>
     public DockerFunctionAppBuilder WithAppSetting(string key, string value)
     {
         AdditionalSettings[key] = value;
@@ -547,6 +790,9 @@ public sealed class DockerFunctionAppBuilder
     }
 }
 
+/// <summary>
+/// The images, credentials and limits the Docker Azure environment uses when no definition overrides them.
+/// </summary>
 public static class DockerAzureDefaults
 {
     /// <summary>
@@ -592,8 +838,21 @@ public static class DockerAzureDefaults
             ? $"{FunctionAppImageRepository}:4-dotnet-isolated{version}"
             : null;
     }
+
+    /// <summary>
+    /// The connection string a definition's declared configuration carries until its container starts; the address
+    /// the container publishes while it starts takes its place.
+    /// </summary>
     public const string PlaceholderConnectionString = "placeholder://container-managed";
+
+    /// <summary>
+    /// The SQL Server image started for declared SQL databases and as the Service Bus emulator's backing store.
+    /// </summary>
     public const string MsSqlImage = "mcr.microsoft.com/mssql/server:2022-CU14-ubuntu-22.04";
+
+    /// <summary>
+    /// The SQL Server container's memory limit in megabytes.
+    /// </summary>
     public const int MsSqlMemoryLimitMb = 1536;
 
     /// <summary>
@@ -605,8 +864,20 @@ public static class DockerAzureDefaults
     /// <see cref="DockerAzureInfrastructureDefinition.MsSqlReadinessTimeout"/>.
     /// </remarks>
     public static readonly TimeSpan MsSqlReadinessTimeout = TimeSpan.FromSeconds(90);
+
+    /// <summary>
+    /// The Azurite image started for declared storage accounts.
+    /// </summary>
     public const string AzuriteImage = "mcr.microsoft.com/azure-storage/azurite:3.33.0";
+
+    /// <summary>
+    /// Azurite's well-known development account name.
+    /// </summary>
     public const string AzuriteAccountName = "devstoreaccount1";
+
+    /// <summary>
+    /// Azurite's well-known development account key.
+    /// </summary>
     public const string AzuriteAccountKey = "Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==";
     /// <summary>
     /// The Cosmos DB emulator image started for declared Cosmos containers.
@@ -636,6 +907,10 @@ public static class DockerAzureDefaults
     /// once defaulted differently, and the lower default reproduced exactly that misdiagnosis.
     /// </remarks>
     public static readonly TimeSpan PersistentSetupTimeout = TimeSpan.FromMinutes(10);
+
+    /// <summary>
+    /// The Cosmos DB emulator's well-known account key.
+    /// </summary>
     public const string CosmosDbEmulatorAccountKey = "C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==";
     /// <summary>
     /// The Service Bus emulator image started for declared Service Bus entities.
@@ -648,7 +923,6 @@ public static class DockerAzureDefaults
     /// digest, when a run has to be reproducible over time.
     /// </remarks>
     public const string ServiceBusImage = "mcr.microsoft.com/azure-messaging/servicebus-emulator:latest";
-    public static readonly string DefaultAzuriteConnectionString = $"DefaultEndpointsProtocol=http;AccountName={AzuriteAccountName};AccountKey={AzuriteAccountKey};BlobEndpoint=http://127.0.0.1:10000/{AzuriteAccountName};QueueEndpoint=http://127.0.0.1:10001/{AzuriteAccountName};TableEndpoint=http://127.0.0.1:10002/{AzuriteAccountName};";
 }
 
 internal sealed record FunctionAppDefinitionDescriptor(

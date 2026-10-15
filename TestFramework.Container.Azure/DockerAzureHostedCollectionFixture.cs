@@ -10,8 +10,14 @@ using TestFramework.Core.Exceptions;
 
 namespace TestFramework.Container.Azure;
 
+/// <summary>
+/// Describes the persistent container stack a <see cref="DockerAzureHostedCollectionFixture{TState}"/> boots.
+/// </summary>
 public interface IDockerAzureHostedFixtureState
 {
+    /// <summary>
+    /// The requirements whose components are started once for the collection and kept alive across runs.
+    /// </summary>
     IReadOnlyList<EnvironmentRequirement> PersistentRequirements { get; }
 
     /// <summary>
@@ -23,8 +29,16 @@ public interface IDockerAzureHostedFixtureState
     /// </remarks>
     TimeSpan PersistentSetupTimeout => DockerAzureDefaults.PersistentSetupTimeout;
 
+    /// <summary>
+    /// Creates the environment whose definitions the persistent stack and every run environment are built from.
+    /// </summary>
+    /// <returns>An environment with the collection's definitions included.</returns>
     DockerAzureEnvironment CreateEnvironment();
 
+    /// <summary>
+    /// Creates the configuration the persistent stack boots with; each run configuration is a sub-instance of it.
+    /// </summary>
+    /// <returns>The persistent configuration.</returns>
     ConfigInstance CreatePersistentConfig();
 }
 
@@ -93,9 +107,22 @@ public class DockerAzureHostedCollectionFixture<TState>
             await _persistentContext.DisposeAsync().ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Creates a fresh environment provider for one timeline run on top of the persistent stack.
+    /// </summary>
+    /// <remarks>Uses <c>null</c> for <c>configure</c>; a longer overload states it.</remarks>
+    /// <returns>The run's environment provider.</returns>
+    /// <exception cref="FrameworkStateException"><see cref="InitializeAsync"/> has not completed.</exception>
     public IEnvironmentProvider GetEnv()
         => this.GetEnv(null);
 
+    /// <summary>
+    /// Creates a fresh environment provider for one timeline run on top of the persistent stack, with a run
+    /// configuration layered on the persistent configuration.
+    /// </summary>
+    /// <param name="configure">Adjusts the run configuration's builder, or <c>null</c> to take the persistent configuration as is.</param>
+    /// <returns>The run's environment provider.</returns>
+    /// <exception cref="FrameworkStateException"><see cref="InitializeAsync"/> has not completed.</exception>
     public IEnvironmentProvider GetEnv(Action<IConfigInstanceBuilder>? configure)
     {
         PersistentEnvironmentContext<DockerAzurePersistentSetup> persistentContext = _persistentContext ?? throw new FrameworkStateException("The hosted Docker Azure fixture has not finished initialization.");
