@@ -12,6 +12,7 @@ using TestFramework.Azure.Identifier;
 using TestFramework.Azure.ServiceBus;
 using TestFramework.Azure.StorageAccount.Blob;
 using TestFramework.Azure.StorageAccount.Table;
+using TestFramework.Config;
 using TestFramework.Container.Azure;
 using TestFramework.Container.Azure.FunctionApp;
 using TestFramework.Container.Sources;

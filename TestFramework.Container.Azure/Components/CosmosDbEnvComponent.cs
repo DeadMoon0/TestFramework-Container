@@ -1,4 +1,5 @@
-﻿using TestFramework.Core.Steps;
+﻿using TestFramework.Config;
+using TestFramework.Core.Steps;
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
 using DotNet.Testcontainers.Networks;
