@@ -152,7 +152,7 @@ Timeline timeline = Timeline.Create()
     .Trigger(WebExt.Api.Http("orders").Post("api/orders")
         .WithJsonBody(Var.Const(new CreateOrder("container-order", 7))).Call()).Label("create")
     .FindArtifact("created", WebExt.ArtifactFinder.Sql.Where<Order>("sales", "Name = @name")
-        .WithParameter("name", Var.Const("container-order")))
+        .WithParameter("name", "container-order"))
     .Build();
 
 TimelineRun run = await timeline.SetupRun(config)

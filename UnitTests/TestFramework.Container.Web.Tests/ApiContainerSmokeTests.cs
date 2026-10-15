@@ -109,7 +109,7 @@ public class ApiContainerSmokeTests
                 .WithJsonBody(Var.Const(new CreateSampleOrder("container-order", 7)))
                 .Call()).Label("create")
             .FindArtifact("created", WebExt.ArtifactFinder.Sql.Where<Order>("sales", "Name = @name")
-                .WithParameter("name", Var.Const("container-order")))
+                .WithParameter("name", "container-order"))
             .Trigger(WebExt.Api.Http("orders").Get("api/orders").Call()).Label("list")
             .Build();
 

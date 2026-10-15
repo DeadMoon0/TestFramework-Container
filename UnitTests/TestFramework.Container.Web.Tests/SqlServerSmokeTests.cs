@@ -59,9 +59,9 @@ public class SqlServerSmokeTests
             .Trigger(WebExt.Sql.IsLive("main", SqlAlivenessLevel.Database)).Label("live")
             .SetupArtifact("order")
             .Trigger(WebExt.Sql.Scalar<int>("main", "SELECT COUNT(1) FROM [Orders] WHERE [Name] = @name")
-                .WithParameter("name", Var.Const("smoke"))).Label("count")
+                .WithParameter("name", "smoke")).Label("count")
             .FindArtifact("found", WebExt.ArtifactFinder.Sql.Where<SmokeOrder>("main", "Quantity = @quantity")
-                .WithParameter("quantity", Var.Const(3)))
+                .WithParameter("quantity", 3))
             .Build();
 
         TimelineRun run = await timeline.SetupRun(CreateConfig())
