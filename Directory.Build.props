@@ -24,4 +24,16 @@
 		<EmbedUntrackedSources>true</EmbedUntrackedSources>
 	</PropertyGroup>
 
+
+  <!-- The package icon comes from the TestFramework-Common submodule. A clone without it would otherwise fail
+       to pack with NuGet's opaque "icon not found"; this names the cause and the command that fixes it. -->
+  <PropertyGroup>
+    <PackageIconSourcePath>$(MSBuildThisFileDirectory)Modules\TestFramework-Common\Assets\Icon.png</PackageIconSourcePath>
+  </PropertyGroup>
+
+  <Target Name="EnsurePackageIconSubmoduleIsInitialized" BeforeTargets="GenerateNuspec" Condition="'$(PackageIcon)' != ''">
+    <Error Condition="!Exists('$(PackageIconSourcePath)')"
+           Text="The package icon &quot;$(PackageIconSourcePath)&quot; is missing because the TestFramework-Common submodule is not checked out. Run 'git submodule update --init --recursive' in the repository root and pack again." />
+  </Target>
+
 </Project>

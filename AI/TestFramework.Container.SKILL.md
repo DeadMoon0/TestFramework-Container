@@ -212,7 +212,7 @@
 
 <grounding_files>
     Most important files for expert grounding:
-    - TestFramework-Container/TestFramework.Container/AzureDocker/DockerAzureEnvironment.cs
+    - TestFramework-Container/TestFramework.Container.Azure/DockerAzureEnvironment.cs
     - TestFramework-Container/TestFramework.Container/AzureDocker/Components/AzuriteEnvComponent.cs
     - TestFramework-Container/TestFramework.Container/AzureDocker/Components/CosmosDbEnvComponent.cs
     - TestFramework-Container/TestFramework.Container/AzureDocker/Components/MsSqlEnvComponent.cs

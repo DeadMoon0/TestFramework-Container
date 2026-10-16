@@ -32,19 +32,34 @@ public static class ContainerDockerHost
     /// <returns>The value that was set, or <see langword="null"/> when nothing was changed.</returns>
     public static string? EnsureConfigured()
     {
-        if (!OperatingSystem.IsWindows())
-            return null;
+        string? chosen = HostToConfigure(Environment.GetEnvironmentVariable(DockerHostVariable), OperatingSystem.IsWindows(), NamedPipeExists);
 
-        if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(DockerHostVariable)))
+        if (chosen is not null)
+            Environment.SetEnvironmentVariable(DockerHostVariable, chosen);
+
+        return chosen;
+    }
+
+    /// <summary>
+    /// Decides which host to point the process at, without reading or writing the environment.
+    /// </summary>
+    /// <remarks>
+    /// Apart from <see cref="EnsureConfigured"/> so the decision can be tested without setting <c>DOCKER_HOST</c>
+    /// for the whole test process, which every other test running beside it would then read.
+    /// </remarks>
+    /// <param name="configured">The <c>DOCKER_HOST</c> already set, if any.</param>
+    /// <param name="onWindows">Whether this is Windows, the only platform with named-pipe hosts.</param>
+    /// <param name="pipeExists">Whether a named-pipe address exists.</param>
+    /// <returns>The host to set, or null when nothing should change.</returns>
+    internal static string? HostToConfigure(string? configured, bool onWindows, Func<string, bool> pipeExists)
+    {
+        if (!onWindows || !string.IsNullOrWhiteSpace(configured))
             return null;
 
         foreach (string candidate in CandidateHosts)
         {
-            if (!NamedPipeExists(candidate))
-                continue;
-
-            Environment.SetEnvironmentVariable(DockerHostVariable, candidate);
-            return candidate;
+            if (pipeExists(candidate))
+                return candidate;
         }
 
         return null;

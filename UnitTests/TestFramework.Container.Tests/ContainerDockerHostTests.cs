@@ -27,20 +27,19 @@ public class ContainerDockerHostTests
         Assert.Contains("npipe://./pipe/dockerDesktopLinuxEngine", ContainerDockerHost.CandidateHosts);
     }
 
+    // The decision is tested without DOCKER_HOST: the variable is process-wide, and setting it here made a
+    // container test running in parallel try to reach the fake address.
     [Fact]
-    public void EnsureConfigured_LeavesAnExplicitlyConfiguredHostAlone()
-    {
-        string? original = Environment.GetEnvironmentVariable("DOCKER_HOST");
-        try
-        {
-            Environment.SetEnvironmentVariable("DOCKER_HOST", "tcp://explicit:2375");
+    public void AnExplicitlyConfiguredHostIsLeftAlone()
+        => Assert.Null(ContainerDockerHost.HostToConfigure("tcp://explicit:2375", onWindows: true, pipeExists: _ => true));
 
-            Assert.Null(ContainerDockerHost.EnsureConfigured());
-            Assert.Equal("tcp://explicit:2375", Environment.GetEnvironmentVariable("DOCKER_HOST"));
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable("DOCKER_HOST", original);
-        }
-    }
+    [Fact]
+    public void WithNothingConfigured_TheFirstDockerDesktopPipeThatExistsIsChosen()
+        => Assert.Equal(
+            "npipe://./pipe/dockerDesktopLinuxEngine",
+            ContainerDockerHost.HostToConfigure(null, onWindows: true, pipeExists: pipe => pipe.EndsWith("dockerDesktopLinuxEngine", StringComparison.Ordinal)));
+
+    [Fact]
+    public void OffWindows_NoPipeIsChosen()
+        => Assert.Null(ContainerDockerHost.HostToConfigure(null, onWindows: false, pipeExists: _ => true));
 }

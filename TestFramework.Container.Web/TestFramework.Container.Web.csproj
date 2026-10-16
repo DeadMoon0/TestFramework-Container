@@ -47,7 +47,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<None Include="..\Modules\TestFramework-Common\Assets\Icon.png">
+		<None Include="$(PackageIconSourcePath)">
 			<Pack>True</Pack>
 			<PackagePath>\</PackagePath>
 		</None>
