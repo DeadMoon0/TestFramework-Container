@@ -21,7 +21,7 @@ using TestFramework.Core.Exceptions;
 using TestFramework.Azure;
 using TestFramework.Core.Environment.Graph;
 using TestFramework.Azure.StorageAccount;
-using TestFramework.Azure.DB.CosmosDB;
+using TestFramework.Azure.DB.CosmosDb;
 using TestFramework.Azure.ServiceBus;
 using TestFramework.Core.Environment;
 using TestFramework.Core.Logging;
@@ -333,7 +333,7 @@ internal sealed class FunctionAppEnvComponent(DockerAzureEnvironment owner) : Do
         {
             switch (binding.Kind)
             {
-                case FunctionAppResourceBindingKind.Storage:
+                case FunctionAppResourceBindingKind.StorageAccount:
                     StorageAccountConfig storage = context.Configured<StorageAccountConfig>(binding.ResourceIdentifier);
                     string rewrittenStorage = dockerEnvironment.GetEndpointMap().RewriteStorageForContainer(storage.ConnectionString);
                     settings[binding.PrimarySettingName] = rewrittenStorage;
@@ -341,14 +341,14 @@ internal sealed class FunctionAppEnvComponent(DockerAzureEnvironment owner) : Do
                         settings[binding.SecondarySettingName] = rewrittenStorage;
                     if (binding.TertiarySettingName is not null)
                     {
-                        if (!string.IsNullOrWhiteSpace(storage.TableContainerName))
-                            settings[binding.TertiarySettingName] = storage.TableContainerName;
+                        if (!string.IsNullOrWhiteSpace(storage.TableName))
+                            settings[binding.TertiarySettingName] = storage.TableName;
                         else
-                            logger?.LogWarning($"Storage identifier '{binding.ResourceIdentifier}' does not define TableContainerName, so Function App setting '{binding.TertiarySettingName}' was not populated.");
+                            logger?.LogWarning($"Storage identifier '{binding.ResourceIdentifier}' does not define TableName, so Function App setting '{binding.TertiarySettingName}' was not populated.");
                     }
                     break;
-                case FunctionAppResourceBindingKind.Cosmos:
-                    CosmosContainerDbConfig cosmos = context.Configured<CosmosContainerDbConfig>(binding.ResourceIdentifier);
+                case FunctionAppResourceBindingKind.CosmosDb:
+                    CosmosDbConfig cosmos = context.Configured<CosmosDbConfig>(binding.ResourceIdentifier);
                     settings[binding.PrimarySettingName] = dockerEnvironment.GetEndpointMap().RewriteCosmosForContainer(cosmos.ConnectionString);
                     if (binding.SecondarySettingName is not null)
                         settings[binding.SecondarySettingName] = cosmos.DatabaseName;

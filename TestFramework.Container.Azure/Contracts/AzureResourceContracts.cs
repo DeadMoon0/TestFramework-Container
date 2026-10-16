@@ -89,7 +89,7 @@ public sealed record CosmosContract : IEnvironmentResourceContract
     /// <summary>
     /// CosmosIdentifier
     /// </summary>
-    public required CosmosContainerIdentifier CosmosIdentifier { get; init; }
+    public required CosmosDbIdentifier CosmosIdentifier { get; init; }
 
     /// <summary>
     /// DatabaseName

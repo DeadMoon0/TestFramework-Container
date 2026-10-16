@@ -11,7 +11,7 @@ namespace TestFramework.Container.Azure;
 /// When <see cref="DatabaseName"/> is set, the definition declares a SQL database configuration for
 /// <see cref="Identifier"/> to the run; its connection string is replaced by the address SQL Server publishes.
 /// </remarks>
-public abstract class DockerAzureSqlDefinition : DockerAzureDefinition
+public abstract class DockerSqlDatabaseDefinition : DockerAzureDefinition
 {
     /// <summary>
     /// The SQL database identifier steps and configuration refer to.

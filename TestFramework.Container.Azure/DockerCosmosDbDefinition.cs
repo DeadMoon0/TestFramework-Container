@@ -13,12 +13,12 @@ namespace TestFramework.Container.Azure;
 /// configuration for <see cref="Identifier"/> to the run; its connection string is replaced by the address the
 /// emulator publishes.
 /// </remarks>
-public abstract class DockerCosmosDefinition : DockerAzureDefinition
+public abstract class DockerCosmosDbDefinition : DockerAzureDefinition
 {
     /// <summary>
     /// The Cosmos container identifier steps and configuration refer to.
     /// </summary>
-    public abstract CosmosContainerIdentifier Identifier { get; }
+    public abstract CosmosDbIdentifier Identifier { get; }
 
     /// <summary>
     /// The document type stored in the container. When set, the container's partition key path is read from it.
@@ -35,14 +35,14 @@ public abstract class DockerCosmosDefinition : DockerAzureDefinition
     /// </summary>
     protected virtual string? ContainerName => null;
 
-    internal CosmosContainerDbConfig BuildConfig(string connectionString) => new()
+    internal CosmosDbConfig BuildConfig(string connectionString) => new()
     {
         ConnectionString = connectionString,
         DatabaseName = DatabaseName ?? throw new FrameworkConfigurationException($"Override '{nameof(DatabaseName)}' on '{GetType().Name}' to provide a Cosmos database name."),
         ContainerName = ContainerName ?? throw new FrameworkConfigurationException($"Override '{nameof(ContainerName)}' on '{GetType().Name}' to provide a Cosmos container name."),
     };
 
-    internal bool TryCreateDefaultConfig(out CosmosContainerDbConfig config)
+    internal bool TryCreateDefaultConfig(out CosmosDbConfig config)
     {
         if (DatabaseName is null || ContainerName is null)
         {
@@ -56,10 +56,10 @@ public abstract class DockerCosmosDefinition : DockerAzureDefinition
 }
 
 /// <summary>
-/// A <see cref="DockerCosmosDefinition"/> whose document type is <typeparamref name="TDocument"/>.
+/// A <see cref="DockerCosmosDbDefinition"/> whose document type is <typeparamref name="TDocument"/>.
 /// </summary>
 /// <typeparam name="TDocument">The document type; the container's partition key path is read from it.</typeparam>
-public abstract class DockerCosmosDefinition<TDocument> : DockerCosmosDefinition
+public abstract class DockerCosmosDbDefinition<TDocument> : DockerCosmosDbDefinition
 {
     /// <summary>
     /// Always <typeparamref name="TDocument"/>.

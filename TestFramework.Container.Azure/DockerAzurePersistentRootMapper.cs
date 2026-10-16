@@ -26,13 +26,13 @@ internal static class DockerAzurePersistentRootMapper
     {
         switch (requirement.ResourceKind)
         {
-            case AzureResourceKinds.Storage:
+            case AzureResourceKinds.StorageAccount:
                 persistentRoots.Add(DockerAzureEnvironment.AzuriteComponentId);
                 return;
-            case AzureResourceKinds.Cosmos:
+            case AzureResourceKinds.CosmosDb:
                 persistentRoots.Add(DockerAzureEnvironment.CosmosDbComponentId);
                 return;
-            case AzureResourceKinds.Sql:
+            case AzureResourceKinds.SqlDatabase:
                 persistentRoots.Add(DockerAzureEnvironment.MsSqlComponentId);
                 return;
             case AzureResourceKinds.ServiceBus:

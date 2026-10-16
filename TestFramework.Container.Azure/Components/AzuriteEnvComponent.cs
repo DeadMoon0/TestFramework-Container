@@ -26,13 +26,13 @@ internal sealed class AzuriteEnvComponent : DockerAzureEnvComponent
     public override async Task<object?> CreateAsync(IEnvironmentProvider environment, RunContext context)
     {
         DockerAzureEnvironment dockerEnvironment = GetDockerEnvironment(environment);
-        if (dockerEnvironment.UsedStorageIdentifiers.Count == 0)
+        if (dockerEnvironment.UsedStorageAccountIdentifiers.Count == 0)
         {
             context.Logger.LogInformation("Skipping Azurite environment setup because no storage identifiers were requested.");
             return null;
         }
 
-        EnvComponentResourceGuard.EnsureSupplied(context, AzureResourceKinds.StorageKind, dockerEnvironment.UsedStorageIdentifiers, "Azurite environment setup");
+        EnvComponentResourceGuard.EnsureSupplied(context, AzureResourceKinds.StorageAccountKind, dockerEnvironment.UsedStorageAccountIdentifiers, "Azurite environment setup");
         INetwork network = StateOf<INetwork>(context, DockerAzureEnvironment.NetworkComponentId);
         string azuriteImage = dockerEnvironment.GetAzuriteImage();
 
@@ -61,10 +61,10 @@ internal sealed class AzuriteEnvComponent : DockerAzureEnvComponent
             // Published rather than written back into the Azure package's configuration store. That store holds
             // what a person declared, and a mapped port is not something a person can declare - it is chosen when
             // the container starts. Where a resource ended up belongs to the run.
-            foreach (string identifier in dockerEnvironment.UsedStorageIdentifiers)
+            foreach (string identifier in dockerEnvironment.UsedStorageAccountIdentifiers)
             {
                 PublishOn(context).Produce(
-                    AzureResourceKinds.StorageKind,
+                    AzureResourceKinds.StorageAccountKind,
                     identifier,
                     ValueNames.ConnectionString,
                     ResourceVantage.Host,

@@ -114,7 +114,7 @@ public sealed partial class DockerAzureEnvironment
     /// <param name="source">Where the payload mounted into the Functions host comes from.</param>
     /// <returns>The new environment.</returns>
     public static DockerAzureEnvironment ForFunctionAppWithStorage<TStorage>(FunctionAppIdentifier identifier, ContainerSource source)
-        where TStorage : DockerStorageDefinition, new()
+        where TStorage : DockerStorageAccountDefinition, new()
         => ForFunctionAppWithStorage<TStorage>(identifier, source, null);
 
     /// <summary>
@@ -126,9 +126,9 @@ public sealed partial class DockerAzureEnvironment
     /// <param name="image">The Functions host image, or <c>null</c> to derive it from the payload's target framework.</param>
     /// <returns>The new environment.</returns>
     public static DockerAzureEnvironment ForFunctionAppWithStorage<TStorage>(FunctionAppIdentifier identifier, ContainerSource source, string? image)
-        where TStorage : DockerStorageDefinition, new()
+        where TStorage : DockerStorageAccountDefinition, new()
     {
-        return ForFunctionApp(identifier, source, builder => builder.UseStorage<TStorage>(), image);
+        return ForFunctionApp(identifier, source, builder => builder.UseStorageAccount<TStorage>(), image);
     }
 
     /// <summary>
@@ -142,7 +142,7 @@ public sealed partial class DockerAzureEnvironment
     /// <param name="source">Where the payload mounted into the Functions host comes from.</param>
     /// <returns>The new environment.</returns>
     public static DockerAzureEnvironment ForFunctionAppWithStorageAndCosmos<TStorage, TCosmos>(FunctionAppIdentifier identifier, ContainerSource source)
-        where TStorage : DockerStorageDefinition, new() where TCosmos : DockerCosmosDefinition, new()
+        where TStorage : DockerStorageAccountDefinition, new() where TCosmos : DockerCosmosDbDefinition, new()
         => ForFunctionAppWithStorageAndCosmos<TStorage, TCosmos>(identifier, source, null);
 
     /// <summary>
@@ -156,12 +156,12 @@ public sealed partial class DockerAzureEnvironment
     /// <param name="image">The Functions host image, or <c>null</c> to derive it from the payload's target framework.</param>
     /// <returns>The new environment.</returns>
     public static DockerAzureEnvironment ForFunctionAppWithStorageAndCosmos<TStorage, TCosmos>(FunctionAppIdentifier identifier, ContainerSource source, string? image)
-        where TStorage : DockerStorageDefinition, new()
-        where TCosmos : DockerCosmosDefinition, new()
+        where TStorage : DockerStorageAccountDefinition, new()
+        where TCosmos : DockerCosmosDbDefinition, new()
     {
         return ForFunctionApp(identifier, source, builder => builder
-            .UseStorage<TStorage>()
-            .UseCosmos<TCosmos>(), image);
+            .UseStorageAccount<TStorage>()
+            .UseCosmosDb<TCosmos>(), image);
     }
 
     /// <summary>
@@ -177,7 +177,7 @@ public sealed partial class DockerAzureEnvironment
     /// <param name="replySelector">Picks the reply endpoint from the definition.</param>
     /// <returns>The new environment.</returns>
     public static DockerAzureEnvironment ForFunctionAppWithStorageAndServiceBus<TStorage, TServiceBus>(FunctionAppIdentifier identifier, ContainerSource source, Func<TServiceBus, DockerServiceBusEndpoint> triggerSelector, Func<TServiceBus, DockerServiceBusEndpoint> replySelector)
-        where TStorage : DockerStorageDefinition, new() where TServiceBus : DockerServiceBusDefinition, new()
+        where TStorage : DockerStorageAccountDefinition, new() where TServiceBus : DockerServiceBusDefinition, new()
         => ForFunctionAppWithStorageAndServiceBus<TStorage, TServiceBus>(identifier, source, triggerSelector, replySelector, null);
 
     /// <summary>
@@ -193,11 +193,11 @@ public sealed partial class DockerAzureEnvironment
     /// <param name="image">The Functions host image, or <c>null</c> to derive it from the payload's target framework.</param>
     /// <returns>The new environment.</returns>
     public static DockerAzureEnvironment ForFunctionAppWithStorageAndServiceBus<TStorage, TServiceBus>(FunctionAppIdentifier identifier, ContainerSource source, Func<TServiceBus, DockerServiceBusEndpoint> triggerSelector, Func<TServiceBus, DockerServiceBusEndpoint> replySelector, string? image)
-        where TStorage : DockerStorageDefinition, new()
+        where TStorage : DockerStorageAccountDefinition, new()
         where TServiceBus : DockerServiceBusDefinition, new()
     {
         return ForFunctionApp(identifier, source, builder => builder
-            .UseStorage<TStorage>()
+            .UseStorageAccount<TStorage>()
             .UseServiceBusTrigger<TServiceBus>(triggerSelector)
             .UseServiceBusReply<TServiceBus>(replySelector), image);
     }
@@ -216,7 +216,7 @@ public sealed partial class DockerAzureEnvironment
     /// <param name="replySelector">Picks the reply endpoint from the definition.</param>
     /// <returns>The new environment.</returns>
     public static DockerAzureEnvironment ForFunctionAppWithCommonBindings<TStorage, TCosmos, TServiceBus>(FunctionAppIdentifier identifier, ContainerSource source, Func<TServiceBus, DockerServiceBusEndpoint> triggerSelector, Func<TServiceBus, DockerServiceBusEndpoint> replySelector)
-        where TStorage : DockerStorageDefinition, new() where TCosmos : DockerCosmosDefinition, new() where TServiceBus : DockerServiceBusDefinition, new()
+        where TStorage : DockerStorageAccountDefinition, new() where TCosmos : DockerCosmosDbDefinition, new() where TServiceBus : DockerServiceBusDefinition, new()
         => ForFunctionAppWithCommonBindings<TStorage, TCosmos, TServiceBus>(identifier, source, triggerSelector, replySelector, null);
 
     /// <summary>
@@ -233,13 +233,13 @@ public sealed partial class DockerAzureEnvironment
     /// <param name="image">The Functions host image, or <c>null</c> to derive it from the payload's target framework.</param>
     /// <returns>The new environment.</returns>
     public static DockerAzureEnvironment ForFunctionAppWithCommonBindings<TStorage, TCosmos, TServiceBus>(FunctionAppIdentifier identifier, ContainerSource source, Func<TServiceBus, DockerServiceBusEndpoint> triggerSelector, Func<TServiceBus, DockerServiceBusEndpoint> replySelector, string? image)
-        where TStorage : DockerStorageDefinition, new()
-        where TCosmos : DockerCosmosDefinition, new()
+        where TStorage : DockerStorageAccountDefinition, new()
+        where TCosmos : DockerCosmosDbDefinition, new()
         where TServiceBus : DockerServiceBusDefinition, new()
     {
         return ForFunctionApp(identifier, source, builder => builder
-            .UseStorage<TStorage>()
-            .UseCosmos<TCosmos>()
+            .UseStorageAccount<TStorage>()
+            .UseCosmosDb<TCosmos>()
             .UseServiceBusTrigger<TServiceBus>(triggerSelector)
             .UseServiceBusReply<TServiceBus>(replySelector), image);
     }

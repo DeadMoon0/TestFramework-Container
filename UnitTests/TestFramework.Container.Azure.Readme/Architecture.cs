@@ -10,14 +10,14 @@ namespace TestFramework.Container.Azure.Readme.Architecture;
 public sealed record ProfileDocument(string Id, string PartitionKey);
 
 #region snippet:arch-definitions
-public sealed class MainStorage : DockerStorageDefinition
+public sealed class MainStorage : DockerStorageAccountDefinition
 {
     public override StorageAccountIdentifier Identifier => "MainStorage";
 }
 
-public sealed class MainDb : DockerCosmosDefinition<ProfileDocument>
+public sealed class MainDb : DockerCosmosDbDefinition<ProfileDocument>
 {
-    public override CosmosContainerIdentifier Identifier => "MainDb";
+    public override CosmosDbIdentifier Identifier => "MainDb";
 }
 
 public sealed class MainBus : DockerServiceBusDefinition
@@ -39,8 +39,8 @@ public sealed class DefaultFunctionApp : DockerFunctionAppDefinition
     protected override void Configure(DockerFunctionAppBuilder builder)
     {
         builder
-            .UseStorage<MainStorage>()
-            .UseCosmos<MainDb>()
+            .UseStorageAccount<MainStorage>()
+            .UseCosmosDb<MainDb>()
             .UseServiceBusReply<MainBus>(bus => bus.Reply)
             .WithAppSetting("FeatureFlags__VerboseStartup", "true");
     }

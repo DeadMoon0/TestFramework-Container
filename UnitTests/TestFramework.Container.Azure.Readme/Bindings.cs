@@ -3,11 +3,11 @@ using TestFramework.Container.Sources;
 
 namespace TestFramework.Container.Azure.Readme.Bindings;
 
-public sealed class OrdersStorage : DockerStorageDefinition
+public sealed class OrdersStorage : DockerStorageAccountDefinition
 {
     public override StorageAccountIdentifier Identifier => "orders";
 
-    protected override string? TableContainerName => "orders";
+    protected override string? TableName => "orders";
 }
 
 public sealed class OrdersApp : DockerFunctionAppDefinition
@@ -19,7 +19,7 @@ public sealed class OrdersApp : DockerFunctionAppDefinition
     protected override void Configure(DockerFunctionAppBuilder builder)
     {
         #region snippet:storage-binding
-        builder.UseStorage<OrdersStorage>(new FunctionAppStorageBinding
+        builder.UseStorageAccount<OrdersStorage>(new FunctionAppStorageAccountBinding
         {
             TableNameSettingName = "OrdersTable",
         });

@@ -57,11 +57,11 @@ internal sealed class DockerAzureDefinitionState
                 if (infrastructure.GetServiceBusTopologySource() is ServiceBusTopologySource infrastructureTopologySource)
                     SetServiceBusTopologySource(infrastructureTopologySource);
                 break;
-            case DockerStorageDefinition:
+            case DockerStorageAccountDefinition:
                 break;
-            case DockerCosmosDefinition:
+            case DockerCosmosDbDefinition:
                 break;
-            case DockerAzureSqlDefinition:
+            case DockerSqlDatabaseDefinition:
                 break;
             case DockerServiceBusDefinition serviceBus:
                 if (serviceBus.GetTopologySource() is { } serviceBusTopologySource)
@@ -112,7 +112,7 @@ internal sealed class DockerAzureDefinitionState
     public IReadOnlyCollection<DockerAzureDefinitionMetadata> ExpandActivatedDefinitions(
         IEnumerable<FunctionAppIdentifier> functionAppIdentifiers,
         IEnumerable<StorageAccountIdentifier> storageIdentifiers,
-        IEnumerable<CosmosContainerIdentifier> cosmosIdentifiers,
+        IEnumerable<CosmosDbIdentifier> cosmosIdentifiers,
         IEnumerable<SqlDatabaseIdentifier> sqlIdentifiers,
         IEnumerable<ServiceBusIdentifier> serviceBusIdentifiers,
         IEnumerable<ComponentContractBinding> bindings)
@@ -126,7 +126,7 @@ internal sealed class DockerAzureDefinitionState
             EnqueueKnownIdentity(pending, $"functionapp:{identifier}");
         foreach (StorageAccountIdentifier identifier in storageIdentifiers)
             EnqueueKnownIdentity(pending, $"storage:{identifier}");
-        foreach (CosmosContainerIdentifier identifier in cosmosIdentifiers)
+        foreach (CosmosDbIdentifier identifier in cosmosIdentifiers)
             EnqueueKnownIdentity(pending, $"cosmos:{identifier}");
         foreach (SqlDatabaseIdentifier identifier in sqlIdentifiers)
             EnqueueKnownIdentity(pending, $"sql:{identifier}");
@@ -186,13 +186,13 @@ internal sealed class DockerAzureDefinitionState
         {
             switch (metadata.Definition)
             {
-                case DockerStorageDefinition storage when storage.TryCreateDefaultConfig(out StorageAccountConfig storageConfig):
+                case DockerStorageAccountDefinition storage when storage.TryCreateDefaultConfig(out StorageAccountConfig storageConfig):
                     yield return (typeof(StorageAccountConfig), storage.Identifier, storageConfig);
                     break;
-                case DockerCosmosDefinition cosmos when cosmos.TryCreateDefaultConfig(out CosmosContainerDbConfig cosmosConfig):
-                    yield return (typeof(CosmosContainerDbConfig), cosmos.Identifier, cosmosConfig);
+                case DockerCosmosDbDefinition cosmos when cosmos.TryCreateDefaultConfig(out CosmosDbConfig cosmosConfig):
+                    yield return (typeof(CosmosDbConfig), cosmos.Identifier, cosmosConfig);
                     break;
-                case DockerAzureSqlDefinition sql when sql.TryCreateDefaultConfig(out SqlDatabaseConfig sqlConfig):
+                case DockerSqlDatabaseDefinition sql when sql.TryCreateDefaultConfig(out SqlDatabaseConfig sqlConfig):
                     yield return (typeof(SqlDatabaseConfig), sql.Identifier, sqlConfig);
                     break;
                 case DockerServiceBusDefinition serviceBus when serviceBus.TryCreateDefaultConfig(out ServiceBusConfig serviceBusConfig):
@@ -215,13 +215,13 @@ internal sealed class DockerAzureDefinitionState
 
         switch (metadata.Definition)
         {
-            case DockerStorageDefinition storage when configType == typeof(StorageAccountConfig) && storage.TryCreateDefaultConfig(out StorageAccountConfig storageConfig):
+            case DockerStorageAccountDefinition storage when configType == typeof(StorageAccountConfig) && storage.TryCreateDefaultConfig(out StorageAccountConfig storageConfig):
                 config = storageConfig;
                 return true;
-            case DockerCosmosDefinition cosmos when configType == typeof(CosmosContainerDbConfig) && cosmos.TryCreateDefaultConfig(out CosmosContainerDbConfig cosmosConfig):
+            case DockerCosmosDbDefinition cosmos when configType == typeof(CosmosDbConfig) && cosmos.TryCreateDefaultConfig(out CosmosDbConfig cosmosConfig):
                 config = cosmosConfig;
                 return true;
-            case DockerAzureSqlDefinition sql when configType == typeof(SqlDatabaseConfig) && sql.TryCreateDefaultConfig(out SqlDatabaseConfig sqlConfig):
+            case DockerSqlDatabaseDefinition sql when configType == typeof(SqlDatabaseConfig) && sql.TryCreateDefaultConfig(out SqlDatabaseConfig sqlConfig):
                 config = sqlConfig;
                 return true;
             case DockerServiceBusDefinition serviceBus when configType == typeof(ServiceBusConfig) && serviceBus.TryCreateDefaultConfig(out ServiceBusConfig serviceBusConfig):
@@ -323,7 +323,7 @@ internal sealed class DockerAzureDefinitionState
     {
         if (configType == typeof(StorageAccountConfig))
             return $"storage:{identifier}";
-        if (configType == typeof(CosmosContainerDbConfig))
+        if (configType == typeof(CosmosDbConfig))
             return $"cosmos:{identifier}";
         if (configType == typeof(SqlDatabaseConfig))
             return $"sql:{identifier}";
@@ -356,9 +356,9 @@ internal sealed class DockerAzureDefinitionState
     {
         return definition switch
         {
-            DockerStorageDefinition storage => $"storage:{storage.Identifier}",
-            DockerCosmosDefinition cosmos => $"cosmos:{cosmos.Identifier}",
-            DockerAzureSqlDefinition sql => $"sql:{sql.Identifier}",
+            DockerStorageAccountDefinition storage => $"storage:{storage.Identifier}",
+            DockerCosmosDbDefinition cosmos => $"cosmos:{cosmos.Identifier}",
+            DockerSqlDatabaseDefinition sql => $"sql:{sql.Identifier}",
             DockerServiceBusDefinition serviceBus => $"servicebus:{serviceBus.Identifier}",
             DockerFunctionAppDefinition functionApp => $"functionapp:{functionApp.Identifier}",
             DockerAzureInfrastructureDefinition infrastructure => $"infrastructure:{infrastructure.GetType().FullName}",

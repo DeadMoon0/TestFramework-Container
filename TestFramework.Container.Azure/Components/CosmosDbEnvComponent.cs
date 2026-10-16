@@ -12,7 +12,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using TestFramework.Azure.Configuration;
 using TestFramework.Azure.Configuration.SpecificConfigs;
-using TestFramework.Azure.DB.CosmosDB;
+using TestFramework.Azure.DB.CosmosDb;
 using TestFramework.Core.Artifacts;
 using TestFramework.Azure;
 using TestFramework.Core.Environment.Graph;
@@ -36,13 +36,13 @@ internal sealed class CosmosDbEnvComponent : DockerAzureEnvComponent
     public override async Task<object?> CreateAsync(IEnvironmentProvider environment, RunContext context)
     {
         DockerAzureEnvironment dockerEnvironment = GetDockerEnvironment(environment);
-        if (dockerEnvironment.UsedCosmosIdentifiers.Count == 0)
+        if (dockerEnvironment.UsedCosmosDbIdentifiers.Count == 0)
         {
             context.Logger.LogInformation("Skipping Cosmos environment setup because no Cosmos identifiers were requested.");
             return null;
         }
 
-        EnvComponentResourceGuard.EnsureSupplied(context, AzureResourceKinds.CosmosKind, dockerEnvironment.UsedCosmosIdentifiers, "Cosmos environment setup");
+        EnvComponentResourceGuard.EnsureSupplied(context, AzureResourceKinds.CosmosDbKind, dockerEnvironment.UsedCosmosDbIdentifiers, "Cosmos environment setup");
         INetwork network = StateOf<INetwork>(context, DockerAzureEnvironment.NetworkComponentId);
         string cosmosImage = dockerEnvironment.GetCosmosDbImage();
 
@@ -76,10 +76,10 @@ internal sealed class CosmosDbEnvComponent : DockerAzureEnvComponent
             // Published rather than written back into the Azure package's configuration store. That store holds
             // what a person declared, and a mapped port is not something a person can declare - it is chosen when
             // the container starts. Where a resource ended up belongs to the run.
-            foreach (string identifier in dockerEnvironment.UsedCosmosIdentifiers)
+            foreach (string identifier in dockerEnvironment.UsedCosmosDbIdentifiers)
             {
                 PublishOn(context).Produce(
-                    AzureResourceKinds.CosmosKind,
+                    AzureResourceKinds.CosmosDbKind,
                     identifier,
                     ValueNames.ConnectionString,
                     ResourceVantage.Host,
@@ -91,7 +91,7 @@ internal sealed class CosmosDbEnvComponent : DockerAzureEnvComponent
                 // Read back from the run, which is where the address above has just gone. The declared entry
                 // names the database and the container; this one also carries the endpoint the emulator ended
                 // up on, so nothing has to staple the two together by hand.
-                CosmosContainerDbConfig target = context.Configured<CosmosContainerDbConfig>(identifier);
+                CosmosDbConfig target = context.Configured<CosmosDbConfig>(identifier);
                 await DeploySchemaAsync(identifier, target, partitionKeyPath, context.Logger, context.Deadline.Token).ConfigureAwait(false);
             }
 
@@ -132,7 +132,7 @@ internal sealed class CosmosDbEnvComponent : DockerAzureEnvComponent
         logger.LogInformation($"Cosmos gateway is ready after {attempts} attempt(s).");
     }
 
-    private static async Task DeploySchemaAsync(string identifier, CosmosContainerDbConfig config, string partitionKeyPath, ScopedLogger logger, CancellationToken cancellationToken)
+    private static async Task DeploySchemaAsync(string identifier, CosmosDbConfig config, string partitionKeyPath, ScopedLogger logger, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
 

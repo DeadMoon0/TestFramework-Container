@@ -2,8 +2,8 @@
 
 internal enum FunctionAppResourceBindingKind
 {
-    Storage,
-    Cosmos,
+    StorageAccount,
+    CosmosDb,
     ServiceBusTrigger,
     ServiceBusReply,
 }

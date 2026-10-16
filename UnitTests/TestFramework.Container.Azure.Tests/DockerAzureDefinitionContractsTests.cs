@@ -141,7 +141,7 @@ public class DockerAzureDefinitionContractsTests
         }
     }
 
-    private sealed class TestStorageDefinition : DockerStorageDefinition
+    private sealed class TestStorageDefinition : DockerStorageAccountDefinition
     {
         public override StorageAccountIdentifier Identifier => new("storage");
     }

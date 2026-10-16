@@ -1,5 +1,5 @@
 ﻿using TestFramework.Azure;
-using TestFramework.Azure.DB.SqlServer;
+using TestFramework.Azure.DB.SqlDatabase;
 using TestFramework.Azure.Extensions;
 using TestFramework.Container.Azure;
 using TestFramework.Config;
@@ -25,9 +25,9 @@ public sealed class DockerAzureSmokeState : IDockerAzureHostedFixtureState
 {
     public IReadOnlyList<EnvironmentRequirement> PersistentRequirements =>
     [
-        new(AzureResourceKinds.Storage, "storage"),
-        new(AzureResourceKinds.Cosmos, "cosmos"),
-        new(AzureResourceKinds.Sql, "sql"),
+        new(AzureResourceKinds.StorageAccount, "storage"),
+        new(AzureResourceKinds.CosmosDb, "cosmos"),
+        new(AzureResourceKinds.SqlDatabase, "sql"),
         new(AzureResourceKinds.ServiceBus, "bus"),
         new(AzureResourceKinds.ServiceBus, "func-trigger-bus"),
         new(AzureResourceKinds.ServiceBus, "func-reply-bus"),
@@ -91,7 +91,7 @@ internal static class DockerAzureSmokeConfigFactory
         {
             ["StorageAccount:storage:ConnectionString"] = "UseDevelopmentStorage=true",
             ["StorageAccount:storage:BlobContainerName"] = "smoke-blob",
-            ["StorageAccount:storage:TableContainerName"] = DockerAzureEnvironmentSmokeTests.SmokeTableName,
+            ["StorageAccount:storage:TableName"] = DockerAzureEnvironmentSmokeTests.SmokeTableName,
 
             ["CosmosDb:cosmos:ConnectionString"] = "AccountEndpoint=https://localhost:8081/;AccountKey=C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==;",
             ["CosmosDb:cosmos:DatabaseName"] = "smoke-db",
@@ -117,7 +117,7 @@ internal static class DockerAzureSmokeConfigFactory
         declared[$"ServiceBus:{identifier}:QueueName"] = queueName;
         declared[$"ServiceBus:{identifier}:TopicName"] = topicName;
         declared[$"ServiceBus:{identifier}:SubscriptionName"] = subscriptionName;
-        declared[$"ServiceBus:{identifier}:RequiredSession"] = bool.FalseString;
+        declared[$"ServiceBus:{identifier}:RequiresSession"] = bool.FalseString;
     }
 
     private static void AddFunctionApp(Dictionary<string, string?> declared, string identifier)

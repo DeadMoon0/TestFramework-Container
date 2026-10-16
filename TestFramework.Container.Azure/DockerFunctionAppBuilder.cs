@@ -28,9 +28,9 @@ public sealed class DockerFunctionAppBuilder
     /// </summary>
     /// <typeparam name="TStorage">The storage definition.</typeparam>
     /// <returns>This builder.</returns>
-    public DockerFunctionAppBuilder UseStorage<TStorage>()
-        where TStorage : DockerStorageDefinition, new()
-        => UseStorage<TStorage>(FunctionAppStorageBinding.Default);
+    public DockerFunctionAppBuilder UseStorageAccount<TStorage>()
+        where TStorage : DockerStorageAccountDefinition, new()
+        => UseStorageAccount<TStorage>(FunctionAppStorageAccountBinding.Default);
 
     /// <summary>
     /// Binds a storage definition into the Function App container settings.
@@ -38,15 +38,15 @@ public sealed class DockerFunctionAppBuilder
     /// <typeparam name="TStorage">The storage definition.</typeparam>
     /// <param name="binding">Which app settings carry what, and whether the storage is shared.</param>
     /// <returns>This builder.</returns>
-    public DockerFunctionAppBuilder UseStorage<TStorage>(FunctionAppStorageBinding binding)
-        where TStorage : DockerStorageDefinition, new()
+    public DockerFunctionAppBuilder UseStorageAccount<TStorage>(FunctionAppStorageAccountBinding binding)
+        where TStorage : DockerStorageAccountDefinition, new()
     {
         ArgumentNullException.ThrowIfNull(binding);
 
         TStorage definition = new();
         AddDependency(typeof(TStorage), binding.Ownership);
         ReplaceResourceBinding(new FunctionAppResourceBinding(
-            FunctionAppResourceBindingKind.Storage,
+            FunctionAppResourceBindingKind.StorageAccount,
             definition.Identifier,
             binding.ConnectionSettingName,
             binding.HostStorageSettingName,
@@ -59,9 +59,9 @@ public sealed class DockerFunctionAppBuilder
     /// </summary>
     /// <typeparam name="TCosmos">The Cosmos definition.</typeparam>
     /// <returns>This builder.</returns>
-    public DockerFunctionAppBuilder UseCosmos<TCosmos>()
-        where TCosmos : DockerCosmosDefinition, new()
-        => UseCosmos<TCosmos>(FunctionAppCosmosBinding.Default);
+    public DockerFunctionAppBuilder UseCosmosDb<TCosmos>()
+        where TCosmos : DockerCosmosDbDefinition, new()
+        => UseCosmosDb<TCosmos>(FunctionAppCosmosDbBinding.Default);
 
     /// <summary>
     /// Binds a Cosmos definition into the Function App container settings.
@@ -69,15 +69,15 @@ public sealed class DockerFunctionAppBuilder
     /// <typeparam name="TCosmos">The Cosmos definition.</typeparam>
     /// <param name="binding">Which app settings carry what, and whether the emulator is shared.</param>
     /// <returns>This builder.</returns>
-    public DockerFunctionAppBuilder UseCosmos<TCosmos>(FunctionAppCosmosBinding binding)
-        where TCosmos : DockerCosmosDefinition, new()
+    public DockerFunctionAppBuilder UseCosmosDb<TCosmos>(FunctionAppCosmosDbBinding binding)
+        where TCosmos : DockerCosmosDbDefinition, new()
     {
         ArgumentNullException.ThrowIfNull(binding);
 
         TCosmos definition = new();
         AddDependency(typeof(TCosmos), binding.Ownership);
         ReplaceResourceBinding(new FunctionAppResourceBinding(
-            FunctionAppResourceBindingKind.Cosmos,
+            FunctionAppResourceBindingKind.CosmosDb,
             definition.Identifier,
             binding.ConnectionSettingName,
             binding.DatabaseSettingName,

@@ -3,8 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using TestFramework.Azure;
-using TestFramework.Azure.DB.CosmosDB;
-using TestFramework.Azure.DB.SqlServer;
+using TestFramework.Azure.DB.CosmosDb;
+using TestFramework.Azure.DB.SqlDatabase;
 using TestFramework.Azure.Identifier;
 using TestFramework.Azure.StorageAccount.Blob;
 using TestFramework.Azure.StorageAccount.Table;
@@ -22,7 +22,7 @@ public sealed partial class DockerAzureEnvironment
     /// those depend on or are contract-bound to, and the per-run reset when an emulator is in use.
     /// </summary>
     /// <remarks>
-    /// Clears and refills the used-identifier collections, such as <see cref="UsedStorageIdentifiers"/>.
+    /// Clears and refills the used-identifier collections, such as <see cref="UsedStorageAccountIdentifiers"/>.
     /// </remarks>
     /// <param name="artifacts">Artifacts already available for the run.</param>
     /// <param name="requirements">The environment requirements routed to this environment.</param>
@@ -32,9 +32,9 @@ public sealed partial class DockerAzureEnvironment
     /// </exception>
     public override IReadOnlyCollection<EnvComponentIdentifier> ResolveComponents(IEnumerable<ArtifactInstanceGeneric> artifacts, IEnumerable<EnvironmentRequirement> requirements)
     {
-        _usedStorageIdentifiers.Clear();
-        _usedCosmosIdentifiers.Clear();
-        _usedSqlIdentifiers.Clear();
+        _usedStorageAccountIdentifiers.Clear();
+        _usedCosmosDbIdentifiers.Clear();
+        _usedSqlDatabaseIdentifiers.Clear();
         _usedServiceBusIdentifiers.Clear();
         _usedFunctionAppIdentifiers.Clear();
         CosmosPartitionKeyPaths.Clear();
@@ -54,25 +54,25 @@ public sealed partial class DockerAzureEnvironment
         HashSet<EnvComponentIdentifier> resolved = [.. base.ResolveComponents(artifacts, requirements)];
         CaptureActivatedDefinitionUsage(_definitionState.ExpandActivatedDefinitions(
             UsedFunctionAppIdentifiers.Select(x => new FunctionAppIdentifier(x)),
-            UsedStorageIdentifiers.Select(x => new StorageAccountIdentifier(x)),
-            UsedCosmosIdentifiers.Select(x => new CosmosContainerIdentifier(x)),
-            UsedSqlIdentifiers.Select(x => new SqlDatabaseIdentifier(x)),
+            UsedStorageAccountIdentifiers.Select(x => new StorageAccountIdentifier(x)),
+            UsedCosmosDbIdentifiers.Select(x => new CosmosDbIdentifier(x)),
+            UsedSqlDatabaseIdentifiers.Select(x => new SqlDatabaseIdentifier(x)),
             UsedServiceBusIdentifiers.Select(x => new ServiceBusIdentifier(x)),
             contractBindings));
 
         if (UsedFunctionAppIdentifiers.Count > 0)
             resolved.Add(FunctionAppComponentId);
-        if (UsedStorageIdentifiers.Count > 0)
+        if (UsedStorageAccountIdentifiers.Count > 0)
             resolved.Add(AzuriteComponentId);
-        if (UsedCosmosIdentifiers.Count > 0)
+        if (UsedCosmosDbIdentifiers.Count > 0)
             resolved.Add(CosmosDbComponentId);
-        if (UsedSqlIdentifiers.Count > 0)
+        if (UsedSqlDatabaseIdentifiers.Count > 0)
             resolved.Add(MsSqlComponentId);
         if (UsedServiceBusIdentifiers.Count > 0)
             resolved.Add(ServiceBusComponentId);
 
         // Whatever emulator resolved may be carrying a previous run's data.
-        if (UsedStorageIdentifiers.Count > 0 || UsedCosmosIdentifiers.Count > 0 || UsedSqlIdentifiers.Count > 0 || UsedServiceBusIdentifiers.Count > 0)
+        if (UsedStorageAccountIdentifiers.Count > 0 || UsedCosmosDbIdentifiers.Count > 0 || UsedSqlDatabaseIdentifiers.Count > 0 || UsedServiceBusIdentifiers.Count > 0)
             resolved.Add(AzureResetComponentId);
 
         ValidateFunctionAppRegistrations();
@@ -128,23 +128,23 @@ public sealed partial class DockerAzureEnvironment
     {
         if (reference is StorageAccountBlobArtifactReference blob)
         {
-            _usedStorageIdentifiers.Add(blob.Identifier);
+            _usedStorageAccountIdentifiers.Add(blob.Identifier);
             return;
         }
 
-        if (ClosedOver(reference.GetType(), typeof(TableStorageEntityArtifactReference<>)) is { } table)
+        if (ClosedOver(reference.GetType(), typeof(StorageAccountTableEntityArtifactReference<>)) is { } table)
         {
-            _usedStorageIdentifiers.Add(Read(reference, table, nameof(TableStorageEntityArtifactReference<global::Azure.Data.Tables.TableEntity>.Identifier)));
+            _usedStorageAccountIdentifiers.Add(Read(reference, table, nameof(StorageAccountTableEntityArtifactReference<global::Azure.Data.Tables.TableEntity>.Identifier)));
         }
         else if (ClosedOver(reference.GetType(), typeof(CosmosDbItemArtifactReference<>)) is { } cosmos)
         {
             string identifier = Read(reference, cosmos, nameof(CosmosDbItemArtifactReference<object>.DbIdentifier));
-            _usedCosmosIdentifiers.Add(identifier);
+            _usedCosmosDbIdentifiers.Add(identifier);
             RegisterCosmosSchema(identifier, cosmos.GetGenericArguments()[0]);
         }
-        else if (ClosedOver(reference.GetType(), typeof(AzureSqlRowArtifactReference<>)) is { } sql)
+        else if (ClosedOver(reference.GetType(), typeof(SqlDatabaseRowArtifactReference<>)) is { } sql)
         {
-            _usedSqlIdentifiers.Add(Read(reference, sql, nameof(AzureSqlRowArtifactReference<object>.DbIdentifier)));
+            _usedSqlDatabaseIdentifiers.Add(Read(reference, sql, nameof(SqlDatabaseRowArtifactReference<object>.DbIdentifier)));
         }
     }
 
@@ -170,9 +170,9 @@ public sealed partial class DockerAzureEnvironment
         return new DockerAzureResolutionSnapshot(
             [.. resolvedComponents.Select(component => component.ToString()).OrderBy(x => x, StringComparer.Ordinal)],
             [.. UsedFunctionAppIdentifiers.OrderBy(x => x, StringComparer.Ordinal)],
-            [.. UsedStorageIdentifiers.OrderBy(x => x, StringComparer.Ordinal)],
-            [.. UsedCosmosIdentifiers.OrderBy(x => x, StringComparer.Ordinal)],
-            [.. UsedSqlIdentifiers.OrderBy(x => x, StringComparer.Ordinal)],
+            [.. UsedStorageAccountIdentifiers.OrderBy(x => x, StringComparer.Ordinal)],
+            [.. UsedCosmosDbIdentifiers.OrderBy(x => x, StringComparer.Ordinal)],
+            [.. UsedSqlDatabaseIdentifiers.OrderBy(x => x, StringComparer.Ordinal)],
             [.. UsedServiceBusIdentifiers.OrderBy(x => x, StringComparer.Ordinal)],
             [.. contractBindings.Select(FormatContractBinding).OrderBy(x => x, StringComparer.Ordinal)]);
     }
@@ -199,16 +199,16 @@ public sealed partial class DockerAzureEnvironment
         {
             switch (metadata.Definition)
             {
-                case DockerStorageDefinition storage:
-                    _usedStorageIdentifiers.Add(storage.Identifier);
+                case DockerStorageAccountDefinition storage:
+                    _usedStorageAccountIdentifiers.Add(storage.Identifier);
                     break;
-                case DockerCosmosDefinition cosmos:
-                    _usedCosmosIdentifiers.Add(cosmos.Identifier);
+                case DockerCosmosDbDefinition cosmos:
+                    _usedCosmosDbIdentifiers.Add(cosmos.Identifier);
                     if (cosmos.ModelType is not null)
                         RegisterCosmosSchema(cosmos.Identifier, cosmos.ModelType);
                     break;
-                case DockerAzureSqlDefinition sql:
-                    _usedSqlIdentifiers.Add(sql.Identifier);
+                case DockerSqlDatabaseDefinition sql:
+                    _usedSqlDatabaseIdentifiers.Add(sql.Identifier);
                     break;
                 case DockerServiceBusDefinition serviceBus:
                     _usedServiceBusIdentifiers.Add(serviceBus.Identifier);
@@ -233,14 +233,14 @@ public sealed partial class DockerAzureEnvironment
     {
         switch (requirement.ResourceKind)
         {
-            case AzureResourceKinds.Storage:
-                _usedStorageIdentifiers.Add(requirement.ResourceIdentifier);
+            case AzureResourceKinds.StorageAccount:
+                _usedStorageAccountIdentifiers.Add(requirement.ResourceIdentifier);
                 break;
-            case AzureResourceKinds.Cosmos:
-                _usedCosmosIdentifiers.Add(requirement.ResourceIdentifier);
+            case AzureResourceKinds.CosmosDb:
+                _usedCosmosDbIdentifiers.Add(requirement.ResourceIdentifier);
                 break;
-            case AzureResourceKinds.Sql:
-                _usedSqlIdentifiers.Add(requirement.ResourceIdentifier);
+            case AzureResourceKinds.SqlDatabase:
+                _usedSqlDatabaseIdentifiers.Add(requirement.ResourceIdentifier);
                 break;
             case AzureResourceKinds.ServiceBus:
                 _usedServiceBusIdentifiers.Add(requirement.ResourceIdentifier);

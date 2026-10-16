@@ -6,7 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using TestFramework.Azure;
 using TestFramework.Azure.Configuration;
 using TestFramework.Azure.Configuration.SpecificConfigs;
-using TestFramework.Azure.DB.SqlServer;
+using TestFramework.Azure.DB.SqlDatabase;
 using TestFramework.Azure.Extensions;
 using TestFramework.Azure.Identifier;
 using TestFramework.Azure.ServiceBus;
@@ -48,14 +48,14 @@ public class DockerAzureEnvironmentSmokeTests
         _fixture = fixture;
     }
 
-    internal sealed class SmokeStorageDefinition : DockerStorageDefinition
+    internal sealed class SmokeStorageDefinition : DockerStorageAccountDefinition
     {
         public override StorageAccountIdentifier Identifier => "storage";
     }
 
-    internal sealed class SmokeCosmosDefinition : DockerCosmosDefinition<SmokeTableEntity>
+    internal sealed class SmokeCosmosDefinition : DockerCosmosDbDefinition<SmokeTableEntity>
     {
-        public override CosmosContainerIdentifier Identifier => "cosmos";
+        public override CosmosDbIdentifier Identifier => "cosmos";
     }
 
     internal sealed class SmokeFunctionServiceBusDefinition : DockerServiceBusDefinition
@@ -108,8 +108,8 @@ public class DockerAzureEnvironmentSmokeTests
         protected override void Configure(DockerFunctionAppBuilder builder)
         {
             builder
-                .UseStorage<SmokeStorageDefinition>(new FunctionAppStorageBinding { TableNameSettingName = "StorageTableName" })
-                .UseCosmos<SmokeCosmosDefinition>()
+                .UseStorageAccount<SmokeStorageDefinition>(new FunctionAppStorageAccountBinding { TableNameSettingName = "StorageTableName" })
+                .UseCosmosDb<SmokeCosmosDefinition>()
                 .UseServiceBusReply<SmokeServiceBusDefinition>(d => d.Reply);
         }
     }
@@ -125,7 +125,7 @@ public class DockerAzureEnvironmentSmokeTests
         protected override void Configure(DockerFunctionAppBuilder builder)
         {
             builder
-                .UseStorage<SmokeStorageDefinition>()
+                .UseStorageAccount<SmokeStorageDefinition>()
                 .UseServiceBusTrigger<SmokeFunctionServiceBusDefinition>(d => d.Trigger)
                 .UseServiceBusReply<SmokeFunctionServiceBusDefinition>(d => d.Reply);
         }
@@ -158,8 +158,8 @@ public class DockerAzureEnvironmentSmokeTests
             [builder => builder.SetupArtifact("table").Trigger(AzureExt.Trigger.IsLive.Table("storage", AlivenessLevel.Resource)).WithTimeout(TimeSpan.FromMinutes(1))],
             runBuilder => runBuilder.AddArtifact(
                 "table",
-                    new TableStorageEntityArtifactReference<SmokeTableEntity>("storage", Var.Const(SmokeTableName), Var.Const("pk"), Var.Const("rk")),
-                new TableStorageEntityArtifactData<SmokeTableEntity>(new SmokeTableEntity())));
+                    new StorageAccountTableEntityArtifactReference<SmokeTableEntity>("storage", Var.Const(SmokeTableName), Var.Const("pk"), Var.Const("rk")),
+                new StorageAccountTableEntityArtifactData<SmokeTableEntity>(new SmokeTableEntity())));
 
         Assert.True(run.EnvironmentContext.Contains(DockerAzureEnvironment.AzuriteComponentId));
     }
@@ -169,7 +169,7 @@ public class DockerAzureEnvironmentSmokeTests
     public async Task Timeline_CanRunCosmosIsLiveWithDockerAzureEnvironment_WhenSmokeEnabled()
     {
         TimelineRun run = await RunSmokeTimelineAsync(
-            [builder => builder.Trigger(AzureExt.Trigger.IsLive.Cosmos("cosmos", AlivenessLevel.Authenticated)).WithTimeout(TimeSpan.FromMinutes(2))]);
+            [builder => builder.Trigger(AzureExt.Trigger.IsLive.CosmosDb("cosmos", AlivenessLevel.Authenticated)).WithTimeout(TimeSpan.FromMinutes(2))]);
 
         Assert.True(run.EnvironmentContext.Contains(DockerAzureEnvironment.CosmosDbComponentId));
     }
@@ -179,7 +179,7 @@ public class DockerAzureEnvironmentSmokeTests
     public async Task Timeline_CanRunSqlIsLiveWithDockerAzureEnvironment_WhenSmokeEnabled()
     {
         TimelineRun run = await RunSmokeTimelineAsync(
-            [builder => builder.Trigger(AzureExt.Trigger.IsLive.Sql("sql"))]);
+            [builder => builder.Trigger(AzureExt.Trigger.IsLive.SqlDatabase("sql"))]);
 
         Assert.True(run.EnvironmentContext.Contains(DockerAzureEnvironment.MsSqlComponentId));
     }
@@ -203,13 +203,13 @@ public class DockerAzureEnvironmentSmokeTests
             [
                 builder => builder.SetupArtifact("blob").WithRetry(5, CalcDelays.Fixed(TimeSpan.FromSeconds(2))).Trigger(AzureExt.Trigger.IsLive.Blob("storage", AlivenessLevel.Resource)),
                 builder => builder.SetupArtifact("table").Trigger(AzureExt.Trigger.IsLive.Table("storage", AlivenessLevel.Resource)).WithTimeout(TimeSpan.FromMinutes(1)),
-                builder => builder.Trigger(AzureExt.Trigger.IsLive.Cosmos("cosmos", AlivenessLevel.Authenticated)).WithTimeout(TimeSpan.FromMinutes(2)),
-                builder => builder.Trigger(AzureExt.Trigger.IsLive.Sql("sql")),
+                builder => builder.Trigger(AzureExt.Trigger.IsLive.CosmosDb("cosmos", AlivenessLevel.Authenticated)).WithTimeout(TimeSpan.FromMinutes(2)),
+                builder => builder.Trigger(AzureExt.Trigger.IsLive.SqlDatabase("sql")),
                 builder => builder.Trigger(AzureExt.Trigger.ServiceBus.Send("bus", Var.Const(new ServiceBusMessage("payload"))))
             ],
             runBuilder => runBuilder
                 .AddArtifact("blob", new StorageAccountBlobArtifactReference("storage", Var.Const("smoke-blob.txt")), new StorageAccountBlobArtifactData([1, 2, 3], new Dictionary<string, string>()))
-                    .AddArtifact("table", new TableStorageEntityArtifactReference<SmokeTableEntity>("storage", Var.Const(SmokeTableName), Var.Const("pk"), Var.Const("rk")), new TableStorageEntityArtifactData<SmokeTableEntity>(new SmokeTableEntity())));
+                    .AddArtifact("table", new StorageAccountTableEntityArtifactReference<SmokeTableEntity>("storage", Var.Const(SmokeTableName), Var.Const("pk"), Var.Const("rk")), new StorageAccountTableEntityArtifactData<SmokeTableEntity>(new SmokeTableEntity())));
 
         Assert.True(run.EnvironmentContext.Contains(DockerAzureEnvironment.AzuriteComponentId));
         Assert.True(run.EnvironmentContext.Contains(DockerAzureEnvironment.CosmosDbComponentId));

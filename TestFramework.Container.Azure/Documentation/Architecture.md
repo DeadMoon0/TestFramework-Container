@@ -22,14 +22,14 @@ Minimal examples:
 
 <!-- snippet: arch-definitions -->
 ```csharp
-public sealed class MainStorage : DockerStorageDefinition
+public sealed class MainStorage : DockerStorageAccountDefinition
 {
     public override StorageAccountIdentifier Identifier => "MainStorage";
 }
 
-public sealed class MainDb : DockerCosmosDefinition<ProfileDocument>
+public sealed class MainDb : DockerCosmosDbDefinition<ProfileDocument>
 {
-    public override CosmosContainerIdentifier Identifier => "MainDb";
+    public override CosmosDbIdentifier Identifier => "MainDb";
 }
 
 public sealed class MainBus : DockerServiceBusDefinition
@@ -42,9 +42,9 @@ public sealed class MainBus : DockerServiceBusDefinition
 
 Examples:
 
-- `DockerStorageDefinition`
-- `DockerCosmosDefinition<TDocument>`
-- `DockerAzureSqlDefinition`
+- `DockerStorageAccountDefinition`
+- `DockerCosmosDbDefinition<TDocument>`
+- `DockerSqlDatabaseDefinition`
 - `DockerServiceBusDefinition`
 - `DockerFunctionAppDefinition`
 - `DockerAzureInfrastructureDefinition`
@@ -68,7 +68,7 @@ Two authoring styles feed the same graph:
 1. `ConfigureDependencies(DockerAzureDependencyBuilder)` for structural dependencies.
 2. `Configure(DockerFunctionAppBuilder)` for Function App-owned resource usage.
 
-That means a Function App builder call such as `UseStorage<TStorage>()` is not just a convenience method.
+That means a Function App builder call such as `UseStorageAccount<TStorage>()` is not just a convenience method.
 It creates a real dependency edge that the graph validator and activation pass can see.
 
 ## Function Apps As First-Class Components
@@ -101,8 +101,8 @@ public sealed class DefaultFunctionApp : DockerFunctionAppDefinition
     protected override void Configure(DockerFunctionAppBuilder builder)
     {
         builder
-            .UseStorage<MainStorage>()
-            .UseCosmos<MainDb>()
+            .UseStorageAccount<MainStorage>()
+            .UseCosmosDb<MainDb>()
             .UseServiceBusReply<MainBus>(bus => bus.Reply)
             .WithAppSetting("FeatureFlags__VerboseStartup", "true");
     }

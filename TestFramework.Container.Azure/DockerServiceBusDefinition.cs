@@ -30,19 +30,19 @@ public abstract class DockerServiceBusDefinition : DockerAzureDefinition
     public virtual string? TopologyConfigPath => null;
 
     /// <summary>
-    /// The <see cref="ServiceBusConfig.RequiredSession"/> value of every configuration this definition builds.
+    /// The <see cref="ServiceBusConfig.RequiresSession"/> value of every configuration this definition builds.
     /// Defaults to <c>false</c>.
     /// </summary>
-    protected virtual bool RequiredSession => false;
+    protected virtual bool RequiresSession => false;
 
     /// <summary>
-    /// Builds a Service Bus configuration for <paramref name="endpoint"/>, with <see cref="RequiredSession"/> applied.
+    /// Builds a Service Bus configuration for <paramref name="endpoint"/>, with <see cref="RequiresSession"/> applied.
     /// </summary>
     /// <param name="connectionString">The connection string to put in the configuration.</param>
     /// <param name="endpoint">The queue, topic or topic subscription the configuration names.</param>
     /// <returns>The configuration.</returns>
     protected ServiceBusConfig BuildConfig(string connectionString, DockerServiceBusEndpoint endpoint)
-        => endpoint.CreateConfig(connectionString, RequiredSession);
+        => endpoint.CreateConfig(connectionString, RequiresSession);
 
     /// <summary>
     /// The configuration this definition declares to the run, typically built with <see cref="BuildConfig"/>.
@@ -74,7 +74,7 @@ public abstract class DockerServiceBusDefinition : DockerAzureDefinition
             QueueName = null,
             TopicName = null,
             SubscriptionName = null,
-            RequiredSession = RequiredSession,
+            RequiresSession = RequiresSession,
         };
 
         if (string.IsNullOrWhiteSpace(config.ConnectionString))

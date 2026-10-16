@@ -89,7 +89,7 @@ using Xunit;
 
 public class ContainerAzureSample
 {
-    private sealed class OrdersStorage : DockerStorageDefinition
+    private sealed class OrdersStorage : DockerStorageAccountDefinition
     {
         public override StorageAccountIdentifier Identifier => "orders";
 
@@ -136,16 +136,16 @@ The current public model is single-source-of-truth based:
 
 <!-- snippet: composition -->
 ```csharp
-public sealed class MainStorage : DockerStorageDefinition
+public sealed class MainStorage : DockerStorageAccountDefinition
 {
     public override StorageAccountIdentifier Identifier => "MainStorage";
 
     protected override string? BlobContainerName => "uploads";
 }
 
-public sealed class MainDb : DockerCosmosDefinition<SampleDocument>
+public sealed class MainDb : DockerCosmosDbDefinition<SampleDocument>
 {
-    public override CosmosContainerIdentifier Identifier => "MainDb";
+    public override CosmosDbIdentifier Identifier => "MainDb";
 
     protected override string? DatabaseName => "AppDb";
 
@@ -177,8 +177,8 @@ public sealed class DefaultFunctionApp : DockerFunctionAppDefinition
     protected override void Configure(DockerFunctionAppBuilder builder)
     {
         builder
-            .UseStorage<MainStorage>()
-            .UseCosmos<MainDb>()
+            .UseStorageAccount<MainStorage>()
+            .UseCosmosDb<MainDb>()
             .UseServiceBusReply<ProcessingReply>(bus => bus.Reply);
     }
 }
@@ -192,12 +192,12 @@ TimelineRun run = await timeline
 In that example, including `DefaultFunctionApp` is enough because its `Configure(...)` method already declares `MainStorage`, `MainDb`, and `ProcessingReply` by component type.
 The component types are the contract: identifier, dependency graph, and, when useful for a shared setup, the default config they own before the environment rewrites runtime endpoints.
 
-`.UseStorage<TStorage>()` injects `StorageTableName` by default when the storage config defines `TableContainerName`.
-Pass a `FunctionAppStorageBinding` when your Function App reads a different setting name, or set `TableNameSettingName` to `null` to inject none:
+`.UseStorageAccount<TStorage>()` injects `StorageTableName` by default when the storage config defines `TableName`.
+Pass a `FunctionAppStorageAccountBinding` when your Function App reads a different setting name, or set `TableNameSettingName` to `null` to inject none:
 
 <!-- snippet: storage-binding -->
 ```csharp
-builder.UseStorage<OrdersStorage>(new FunctionAppStorageBinding
+builder.UseStorageAccount<OrdersStorage>(new FunctionAppStorageAccountBinding
 {
     TableNameSettingName = "OrdersTable",
 });
@@ -208,7 +208,7 @@ At runtime, the Function App definition is compiled into a descriptor that carri
 - dependency edges for graph validation and activation
 - resource bindings used to derive the actual app settings inside the Function App container
 
-A definition names its own resources - `BlobContainerName`, `TableContainerName` and `QueueContainerName` on a
+A definition names its own resources - `BlobContainerName`, `TableName` and `QueueName` on a
 storage definition, `DatabaseName` and `ContainerName` on a Cosmos one - so a shared stack needs no configuration
 entries for them. A configuration entry for the same identifier still wins: a default is for what nobody wrote down.
 
@@ -382,8 +382,8 @@ public sealed class DockerAzureHostedFixtureState : IDockerAzureHostedFixtureSta
 {
     public IReadOnlyList<EnvironmentRequirement> PersistentRequirements =>
     [
-        new(AzureResourceKinds.Storage, "MainStorage"),
-        new(AzureResourceKinds.Cosmos, "MainDb"),
+        new(AzureResourceKinds.StorageAccount, "MainStorage"),
+        new(AzureResourceKinds.CosmosDb, "MainDb"),
         new(AzureResourceKinds.FunctionApp, "Default"),
     ];
 

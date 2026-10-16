@@ -62,12 +62,12 @@ public sealed class DockerServiceBusEndpoint
     /// <returns>The endpoint.</returns>
     public static DockerServiceBusEndpoint TopicSubscription(string topicName, string subscriptionName) => new(ServiceBusEndpointKind.TopicSubscription, topicName, subscriptionName);
 
-    internal ServiceBusConfig CreateConfig(string connectionString, bool requiredSession) => new()
+    internal ServiceBusConfig CreateConfig(string connectionString, bool requiresSession) => new()
     {
         ConnectionString = connectionString,
         QueueName = Kind == ServiceBusEndpointKind.Queue ? EntityName : null,
         TopicName = Kind == ServiceBusEndpointKind.Queue ? null : EntityName,
         SubscriptionName = SubscriptionName,
-        RequiredSession = requiredSession,
+        RequiresSession = requiresSession,
     };
 }

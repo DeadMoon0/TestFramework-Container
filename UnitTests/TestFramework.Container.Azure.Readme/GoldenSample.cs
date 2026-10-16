@@ -14,7 +14,7 @@ namespace TestFramework.Container.Azure.Readme.GoldenSample;
 #region snippet:golden-sample
 public class ContainerAzureSample
 {
-    private sealed class OrdersStorage : DockerStorageDefinition
+    private sealed class OrdersStorage : DockerStorageAccountDefinition
     {
         public override StorageAccountIdentifier Identifier => "orders";
 

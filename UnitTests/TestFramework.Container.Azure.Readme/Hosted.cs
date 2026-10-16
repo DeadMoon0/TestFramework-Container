@@ -25,8 +25,8 @@ public sealed class DockerAzureHostedFixtureState : IDockerAzureHostedFixtureSta
 {
     public IReadOnlyList<EnvironmentRequirement> PersistentRequirements =>
     [
-        new(AzureResourceKinds.Storage, "MainStorage"),
-        new(AzureResourceKinds.Cosmos, "MainDb"),
+        new(AzureResourceKinds.StorageAccount, "MainStorage"),
+        new(AzureResourceKinds.CosmosDb, "MainDb"),
         new(AzureResourceKinds.FunctionApp, "Default"),
     ];
 

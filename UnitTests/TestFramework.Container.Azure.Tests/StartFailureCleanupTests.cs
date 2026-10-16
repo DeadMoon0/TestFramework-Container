@@ -44,7 +44,7 @@ public sealed class StartFailureCleanupTests
         IReadOnlyList<string> before = await SqlServerContainersAsync();
 
         TimelineRun run = await Timeline.Create()
-            .Trigger(AzureExt.Trigger.IsLive.Sql("sql")).Label("live")
+            .Trigger(AzureExt.Trigger.IsLive.SqlDatabase("sql")).Label("live")
             .Build()
             .SetupRun(ConfigInstance.Create()
                 .LoadDockerAzureConfig()

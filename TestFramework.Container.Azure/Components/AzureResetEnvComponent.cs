@@ -19,7 +19,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using TestFramework.Azure.Configuration;
 using TestFramework.Azure.Configuration.SpecificConfigs;
-using TestFramework.Azure.DB.CosmosDB;
+using TestFramework.Azure.DB.CosmosDb;
 using TestFramework.Core.Artifacts;
 using TestFramework.Azure.StorageAccount;
 using TestFramework.Azure.ServiceBus;
@@ -144,7 +144,7 @@ internal sealed class AzureResetEnvComponent(DockerAzureEnvironment owner) : Doc
 
     private static async Task PurgeStorageAsync(DockerAzureEnvironment dockerEnvironment, RunContext context)
     {
-        IReadOnlyCollection<string> identifiers = dockerEnvironment.UsedStorageIdentifiers;
+        IReadOnlyCollection<string> identifiers = dockerEnvironment.UsedStorageAccountIdentifiers;
         if (identifiers.Count == 0)
             return;
 
@@ -203,7 +203,7 @@ internal sealed class AzureResetEnvComponent(DockerAzureEnvironment owner) : Doc
 
     private static async Task PurgeCosmosAsync(DockerAzureEnvironment dockerEnvironment, RunContext context)
     {
-        IReadOnlyCollection<string> identifiers = dockerEnvironment.UsedCosmosIdentifiers;
+        IReadOnlyCollection<string> identifiers = dockerEnvironment.UsedCosmosDbIdentifiers;
         if (identifiers.Count == 0)
             return;
 
@@ -212,7 +212,7 @@ internal sealed class AzureResetEnvComponent(DockerAzureEnvironment owner) : Doc
 
         foreach (string identifier in identifiers.OrderBy(x => x, StringComparer.Ordinal))
         {
-            CosmosContainerDbConfig config = context.Configured<CosmosContainerDbConfig>(identifier);
+            CosmosDbConfig config = context.Configured<CosmosDbConfig>(identifier);
             if (!dockerEnvironment.CosmosPartitionKeyPaths.TryGetValue(identifier, out string? partitionKeyPath))
             {
                 logger.LogWarning($"Cosmos identifier '{identifier}' has no recorded partition key path, so its container was left as it is.");
@@ -249,7 +249,7 @@ internal sealed class AzureResetEnvComponent(DockerAzureEnvironment owner) : Doc
         }
     }
 
-    private static async Task DeleteCosmosContainerAsync(CosmosContainerDbConfig config, ScopedLogger logger, CancellationToken cancellationToken)
+    private static async Task DeleteCosmosContainerAsync(CosmosDbConfig config, ScopedLogger logger, CancellationToken cancellationToken)
     {
         using CosmosClient client = new(config.ConnectionString, CosmosEmulator.ClientOptions());
 
@@ -348,7 +348,7 @@ internal sealed class AzureResetEnvComponent(DockerAzureEnvironment owner) : Doc
     /// </remarks>
     private static async Task PurgeSqlAsync(DockerAzureEnvironment dockerEnvironment, RunContext context)
     {
-        IReadOnlyCollection<string> identifiers = dockerEnvironment.UsedSqlIdentifiers;
+        IReadOnlyCollection<string> identifiers = dockerEnvironment.UsedSqlDatabaseIdentifiers;
         if (identifiers.Count == 0)
             return;
 

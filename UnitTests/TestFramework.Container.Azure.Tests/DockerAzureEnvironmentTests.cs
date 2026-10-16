@@ -2,12 +2,12 @@ using Azure.Messaging.ServiceBus;
 using Microsoft.Extensions.DependencyInjection;
 using Newtonsoft.Json;
 using System.Reflection;
-using TestFramework.Azure.DB.CosmosDB;
+using TestFramework.Azure.DB.CosmosDb;
 using TestFramework.Azure.FunctionApp;
 using TestFramework.Azure;
 using TestFramework.Azure.Configuration;
 using TestFramework.Azure.Configuration.SpecificConfigs;
-using TestFramework.Azure.DB.SqlServer;
+using TestFramework.Azure.DB.SqlDatabase;
 using TestFramework.Azure.Identifier;
 using TestFramework.Azure.ServiceBus;
 using TestFramework.Azure.StorageAccount.Blob;
@@ -51,13 +51,13 @@ public class DockerAzureEnvironmentTests
             CreateArtifactInstance<CosmosDbItemArtifactDescriber<TestCosmosItem>, CosmosDbItemArtifactData<TestCosmosItem>, CosmosDbItemArtifactReference<TestCosmosItem>>(
                 new CosmosDbItemArtifactDescriber<TestCosmosItem>(),
                 "cosmos",
-                AzureExt.Artifact.DB.CosmosRef<TestCosmosItem>("cosmos", Var.Const("id"), Var.Const(new Microsoft.Azure.Cosmos.PartitionKey("tenant-1"))),
+                AzureExt.Artifact.DB.CosmosDbRef<TestCosmosItem>("cosmos", Var.Const("id"), Var.Const(new Microsoft.Azure.Cosmos.PartitionKey("tenant-1"))),
                 new CosmosDbItemArtifactData<TestCosmosItem>(new TestCosmosItem("id", "tenant-1"))),
-            CreateArtifactInstance<AzureSqlRowArtifactDescriber<TestRow>, AzureSqlRowArtifactData<TestRow>, AzureSqlRowArtifactReference<TestRow>>(
-                new AzureSqlRowArtifactDescriber<TestRow>(),
+            CreateArtifactInstance<SqlDatabaseRowArtifactDescriber<TestRow>, SqlDatabaseRowArtifactData<TestRow>, SqlDatabaseRowArtifactReference<TestRow>>(
+                new SqlDatabaseRowArtifactDescriber<TestRow>(),
                 "sql",
-                new AzureSqlRowArtifactReference<TestRow>("sql", Var.Const("42")),
-                new AzureSqlRowArtifactData<TestRow>(new TestRow()))
+                new SqlDatabaseRowArtifactReference<TestRow>("sql", Var.Const("42")),
+                new SqlDatabaseRowArtifactData<TestRow>(new TestRow()))
         ];
 
         IReadOnlyCollection<EnvComponentIdentifier> result = environment.ResolveComponents(artifacts, []);
@@ -65,9 +65,9 @@ public class DockerAzureEnvironmentTests
         Assert.Contains(DockerAzureEnvironment.AzuriteComponentId, result);
         Assert.Contains(DockerAzureEnvironment.CosmosDbComponentId, result);
         Assert.Contains(DockerAzureEnvironment.MsSqlComponentId, result);
-        Assert.Contains("storage", environment.UsedStorageIdentifiers);
-        Assert.Contains("cosmos", environment.UsedCosmosIdentifiers);
-        Assert.Contains("sql", environment.UsedSqlIdentifiers);
+        Assert.Contains("storage", environment.UsedStorageAccountIdentifiers);
+        Assert.Contains("cosmos", environment.UsedCosmosDbIdentifiers);
+        Assert.Contains("sql", environment.UsedSqlDatabaseIdentifiers);
 
         Dictionary<string, string> cosmosPartitionKeyPaths = (Dictionary<string, string>)typeof(DockerAzureEnvironment)
             .GetProperty("CosmosPartitionKeyPaths", BindingFlags.Instance | BindingFlags.NonPublic)!
@@ -90,8 +90,8 @@ public class DockerAzureEnvironmentTests
 
         Assert.DoesNotContain(DockerAzureEnvironment.AzuriteComponentId, result);
         Assert.DoesNotContain(DockerAzureEnvironment.MsSqlComponentId, result);
-        Assert.Empty(environment.UsedStorageIdentifiers);
-        Assert.Empty(environment.UsedSqlIdentifiers);
+        Assert.Empty(environment.UsedStorageAccountIdentifiers);
+        Assert.Empty(environment.UsedSqlDatabaseIdentifiers);
     }
 
     [Fact]
@@ -115,17 +115,17 @@ public class DockerAzureEnvironmentTests
         DockerAzureEnvironment environment = new();
         ArtifactInstanceGeneric[] artifacts =
         [
-            CreateArtifactInstance<TableStorageEntityArtifactDescriber<TestTableEntity>, TableStorageEntityArtifactData<TestTableEntity>, TableStorageEntityArtifactReference<TestTableEntity>>(
-                new TableStorageEntityArtifactDescriber<TestTableEntity>(),
+            CreateArtifactInstance<StorageAccountTableEntityArtifactDescriber<TestTableEntity>, StorageAccountTableEntityArtifactData<TestTableEntity>, StorageAccountTableEntityArtifactReference<TestTableEntity>>(
+                new StorageAccountTableEntityArtifactDescriber<TestTableEntity>(),
                 "table",
-                new TableStorageEntityArtifactReference<TestTableEntity>("table-storage", Var.Const("table"), Var.Const("pk"), Var.Const("rk")),
-                new TableStorageEntityArtifactData<TestTableEntity>(new TestTableEntity()))
+                new StorageAccountTableEntityArtifactReference<TestTableEntity>("table-storage", Var.Const("table"), Var.Const("pk"), Var.Const("rk")),
+                new StorageAccountTableEntityArtifactData<TestTableEntity>(new TestTableEntity()))
         ];
 
         IReadOnlyCollection<EnvComponentIdentifier> result = environment.ResolveComponents(artifacts, []);
 
         Assert.Contains(DockerAzureEnvironment.AzuriteComponentId, result);
-        Assert.Contains("table-storage", environment.UsedStorageIdentifiers);
+        Assert.Contains("table-storage", environment.UsedStorageAccountIdentifiers);
     }
 
     [Fact]
@@ -137,16 +137,16 @@ public class DockerAzureEnvironmentTests
         DockerAzureEnvironment storageRun = (DockerAzureEnvironment)shared.CreateForRun();
         DockerAzureEnvironment busRun = (DockerAzureEnvironment)shared.CreateForRun();
 
-        storageRun.ResolveComponents([], ((IHasEnvironmentRequirements)new IsLiveTrigger().Blob("storage")).GetEnvironmentRequirements(null!));
+        storageRun.ResolveComponents([], ((IHasEnvironmentRequirements)new IsLiveTriggers().Blob("storage")).GetEnvironmentRequirements(null!));
         busRun.ResolveComponents([], ((IHasEnvironmentRequirements)new ServiceBusSendTrigger("bus", Var.Const(new ServiceBusMessage("payload")))).GetEnvironmentRequirements(null!));
 
-        Assert.Equal(["storage"], storageRun.UsedStorageIdentifiers);
+        Assert.Equal(["storage"], storageRun.UsedStorageAccountIdentifiers);
         Assert.Empty(storageRun.UsedServiceBusIdentifiers);
         Assert.Equal(["bus"], busRun.UsedServiceBusIdentifiers);
-        Assert.Empty(busRun.UsedStorageIdentifiers);
+        Assert.Empty(busRun.UsedStorageAccountIdentifiers);
 
         // The description took part in neither run, and each run kept what was configured on it.
-        Assert.Empty(shared.UsedStorageIdentifiers);
+        Assert.Empty(shared.UsedStorageAccountIdentifiers);
         Assert.Empty(shared.UsedServiceBusIdentifiers);
         Assert.Equal(AzureResetMode.None, typeof(DockerAzureEnvironment).GetMethod("GetResetMode", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(busRun, []));
     }
@@ -167,10 +167,10 @@ public class DockerAzureEnvironmentTests
     public void ResolveComponents_MapsIsLiveStepRequirementsWithoutArtifacts()
     {
         DockerAzureEnvironment environment = DockerAzureEnvironment.For<MinimalFunctionAppDefinition>();
-        var functionStep = new IsLiveTrigger().FunctionApp("func");
-        var blobStep = new IsLiveTrigger().Blob("storage");
-        var cosmosStep = new IsLiveTrigger().Cosmos("cosmos");
-        var sqlStep = new IsLiveTrigger().Sql("sql");
+        var functionStep = new IsLiveTriggers().FunctionApp("func");
+        var blobStep = new IsLiveTriggers().Blob("storage");
+        var cosmosStep = new IsLiveTriggers().CosmosDb("cosmos");
+        var sqlStep = new IsLiveTriggers().SqlDatabase("sql");
 
         List<EnvironmentRequirement> requirements = [];
         requirements.AddRange(((IHasEnvironmentRequirements)functionStep).GetEnvironmentRequirements(null!));
@@ -191,7 +191,7 @@ public class DockerAzureEnvironmentTests
     public void ResolveComponents_ForAddsTypedFunctionAppDefinitionsAndDependencies()
     {
         DockerAzureEnvironment environment = DockerAzureEnvironment.For<TestFunctionAppDefinition>();
-        var functionStep = new IsLiveTrigger().FunctionApp("func");
+        var functionStep = new IsLiveTriggers().FunctionApp("func");
 
         IReadOnlyCollection<EnvComponentIdentifier> result = environment.ResolveComponents([], ((IHasEnvironmentRequirements)functionStep).GetEnvironmentRequirements(null!));
 
@@ -200,8 +200,8 @@ public class DockerAzureEnvironmentTests
         Assert.Contains(DockerAzureEnvironment.CosmosDbComponentId, result);
         Assert.Contains(DockerAzureEnvironment.ServiceBusComponentId, result);
         Assert.Contains("func", environment.UsedFunctionAppIdentifiers);
-        Assert.Contains("storage", environment.UsedStorageIdentifiers);
-        Assert.Contains("cosmos", environment.UsedCosmosIdentifiers);
+        Assert.Contains("storage", environment.UsedStorageAccountIdentifiers);
+        Assert.Contains("cosmos", environment.UsedCosmosDbIdentifiers);
         Assert.Contains("bus", environment.UsedServiceBusIdentifiers);
 
         IReadOnlyCollection<DockerFunctionAppRegistration> registrations = (IReadOnlyCollection<DockerFunctionAppRegistration>)typeof(DockerAzureEnvironment)
@@ -216,7 +216,7 @@ public class DockerAzureEnvironmentTests
     public void ForFunctionAppWithCommonBindings_AddsCommonLocalStackWithoutCustomDefinition()
     {
         DockerAzureEnvironment environment = DockerAzureEnvironment.ForFunctionAppWithCommonBindings<TestStorageDefinition, TestCosmosDefinition, TestServiceBusDefinition>("func-inline", ContainerSource.Directory(AppContext.BaseDirectory), d => d.Trigger, d => d.Reply);
-        var functionStep = new IsLiveTrigger().FunctionApp("func-inline");
+        var functionStep = new IsLiveTriggers().FunctionApp("func-inline");
 
         IReadOnlyCollection<EnvComponentIdentifier> result = environment.ResolveComponents([], ((IHasEnvironmentRequirements)functionStep).GetEnvironmentRequirements(null!));
 
@@ -231,7 +231,7 @@ public class DockerAzureEnvironmentTests
     public async Task ResolveComponents_FormatsResolutionSummaryWithIdentifiersAndContracts()
     {
         DockerAzureEnvironment environment = DockerAzureEnvironment.For<ContractLoggingFunctionAppDefinition>();
-        var functionStep = new IsLiveTrigger().FunctionApp("func-contract");
+        var functionStep = new IsLiveTriggers().FunctionApp("func-contract");
 
         environment.ResolveComponents([], ((IHasEnvironmentRequirements)functionStep).GetEnvironmentRequirements(null!));
 
@@ -251,7 +251,7 @@ public class DockerAzureEnvironmentTests
     public void ResolveComponents_ForAppliesServiceBusTopologyPathFromDependencies()
     {
         DockerAzureEnvironment environment = DockerAzureEnvironment.For<TestFunctionAppDefinition>();
-        var functionStep = new IsLiveTrigger().FunctionApp("func");
+        var functionStep = new IsLiveTriggers().FunctionApp("func");
 
         IReadOnlyCollection<EnvComponentIdentifier> result = environment.ResolveComponents([], ((IHasEnvironmentRequirements)functionStep).GetEnvironmentRequirements(null!));
 
@@ -282,12 +282,12 @@ public class DockerAzureEnvironmentTests
             {
                 ["StorageAccount:storage:ConnectionString"] = "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=key=;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;QueueEndpoint=http://127.0.0.1:10001/devstoreaccount1;TableEndpoint=http://127.0.0.1:10002/devstoreaccount1;",
                 ["StorageAccount:storage:BlobContainerName"] = "blob-container",
-                ["StorageAccount:storage:TableContainerName"] = "table-container",
+                ["StorageAccount:storage:TableName"] = "table-container",
                 ["CosmosDb:cosmos:ConnectionString"] = "AccountEndpoint=https://localhost:8081/;AccountKey=key=;",
                 ["CosmosDb:cosmos:DatabaseName"] = "test-db",
                 ["CosmosDb:cosmos:ContainerName"] = "test-container",
                 ["ServiceBus:bus:ConnectionString"] = "Endpoint=sb://localhost/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=key=;",
-                ["ServiceBus:bus:RequiredSession"] = "false",
+                ["ServiceBus:bus:RequiresSession"] = "false",
             })
             .BuildServiceProvider();
 
@@ -358,7 +358,7 @@ public class DockerAzureEnvironmentTests
             .AddService(registered => registered.AddSingleton<IResourceNodeSource>(environment))
             .BuildServiceProvider();
 
-        CosmosContainerDbConfig config = RunContext.Detached(services).Configured<CosmosContainerDbConfig>("cosmos-default");
+        CosmosDbConfig config = RunContext.Detached(services).Configured<CosmosDbConfig>("cosmos-default");
 
         Assert.Equal("test-db", config.DatabaseName);
         Assert.Equal("test-container", config.ContainerName);
@@ -512,7 +512,7 @@ public class DockerAzureEnvironmentTests
     public void ResolveComponents_ThrowsWhenFunctionAppRegistrationIsMissing()
     {
         DockerAzureEnvironment environment = new();
-        var functionStep = new IsLiveTrigger().FunctionApp("func");
+        var functionStep = new IsLiveTriggers().FunctionApp("func");
 
         FrameworkConfigurationException exception = Assert.Throws<FrameworkConfigurationException>(() => environment.ResolveComponents([], ((IHasEnvironmentRequirements)functionStep).GetEnvironmentRequirements(null!)));
 
@@ -525,7 +525,7 @@ public class DockerAzureEnvironmentTests
         // Damage before: any Logic App requirement threw, so a run could not use a live Logic App at all once
         // this environment provided its storage.
         DockerAzureEnvironment environment = new();
-        var logicAppStep = new IsLiveTrigger().LogicApp("logic");
+        var logicAppStep = new IsLiveTriggers().LogicApp("logic");
 
         Assert.False(environment.ProvidesEveryResourceOf(AzureResourceKinds.LogicApp));
         Assert.Empty(environment.ResolveComponents([], ((IHasEnvironmentRequirements)logicAppStep).GetEnvironmentRequirements(null!)));
@@ -540,12 +540,12 @@ public class DockerAzureEnvironmentTests
             CreateArtifactInstance<CosmosDbItemArtifactDescriber<TestCosmosItem>, CosmosDbItemArtifactData<TestCosmosItem>, CosmosDbItemArtifactReference<TestCosmosItem>>(
                 new CosmosDbItemArtifactDescriber<TestCosmosItem>(),
                 "first",
-                AzureExt.Artifact.DB.CosmosRef<TestCosmosItem>("cosmos", Var.Const("id-1"), Var.Const(new Microsoft.Azure.Cosmos.PartitionKey("tenant-1"))),
+                AzureExt.Artifact.DB.CosmosDbRef<TestCosmosItem>("cosmos", Var.Const("id-1"), Var.Const(new Microsoft.Azure.Cosmos.PartitionKey("tenant-1"))),
                 new CosmosDbItemArtifactData<TestCosmosItem>(new TestCosmosItem("id-1", "tenant-1"))),
             CreateArtifactInstance<CosmosDbItemArtifactDescriber<TestCosmosItemAlternatePartition>, CosmosDbItemArtifactData<TestCosmosItemAlternatePartition>, CosmosDbItemArtifactReference<TestCosmosItemAlternatePartition>>(
                 new CosmosDbItemArtifactDescriber<TestCosmosItemAlternatePartition>(),
                 "second",
-                AzureExt.Artifact.DB.CosmosRef<TestCosmosItemAlternatePartition>("cosmos", Var.Const("id-2"), Var.Const(new Microsoft.Azure.Cosmos.PartitionKey("tenant-2"))),
+                AzureExt.Artifact.DB.CosmosDbRef<TestCosmosItemAlternatePartition>("cosmos", Var.Const("id-2"), Var.Const(new Microsoft.Azure.Cosmos.PartitionKey("tenant-2"))),
                 new CosmosDbItemArtifactData<TestCosmosItemAlternatePartition>(new TestCosmosItemAlternatePartition("id-2", "tenant-2")))
         ];
 
@@ -567,7 +567,7 @@ public class DockerAzureEnvironmentTests
     public async Task AStorageAccountNothingDescribesIsRefusedBeforeAnythingStarts()
     {
         DockerAzureEnvironment environment = DockerAzureEnvironment.For<TestStorageDefinition>();
-        var blobStep = new IsLiveTrigger().Blob("storage");
+        var blobStep = new IsLiveTriggers().Blob("storage");
 
         environment.ResolveComponents([], ((IHasEnvironmentRequirements)blobStep).GetEnvironmentRequirements(null!));
 
@@ -577,7 +577,7 @@ public class DockerAzureEnvironmentTests
 
         FrameworkConfigurationException exception = await Assert.ThrowsAsync<FrameworkConfigurationException>(async () => await createTask);
         Assert.Contains("nothing in this run supplies it", exception.Message, StringComparison.Ordinal);
-        Assert.Contains("azure.storage/'storage'", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("azure.storageaccount/'storage'", exception.Message, StringComparison.Ordinal);
 
         // Both ways out, because from here they are the same answer.
         Assert.Contains("Add the configuration entry", exception.ToString(), StringComparison.Ordinal);
@@ -679,19 +679,19 @@ public class DockerAzureEnvironmentTests
 
     private sealed class TestRow;
 
-    private sealed class TestStorageDefinition : DockerStorageDefinition
+    private sealed class TestStorageDefinition : DockerStorageAccountDefinition
     {
         public override StorageAccountIdentifier Identifier => "storage";
     }
 
-    private sealed class TestCosmosDefinition : DockerCosmosDefinition<TestCosmosItem>
+    private sealed class TestCosmosDefinition : DockerCosmosDbDefinition<TestCosmosItem>
     {
-        public override CosmosContainerIdentifier Identifier => "cosmos";
+        public override CosmosDbIdentifier Identifier => "cosmos";
     }
 
-    private sealed class DefaultedCosmosDefinition : DockerCosmosDefinition<TestCosmosItem>
+    private sealed class DefaultedCosmosDefinition : DockerCosmosDbDefinition<TestCosmosItem>
     {
-        public override CosmosContainerIdentifier Identifier => "cosmos-default";
+        public override CosmosDbIdentifier Identifier => "cosmos-default";
 
             protected override string? DatabaseName => "test-db";
             protected override string? ContainerName => "test-container";
@@ -746,8 +746,8 @@ public class DockerAzureEnvironmentTests
         protected override void Configure(DockerFunctionAppBuilder builder)
         {
             builder
-                .UseStorage<TestStorageDefinition>()
-                .UseCosmos<TestCosmosDefinition>()
+                .UseStorageAccount<TestStorageDefinition>()
+                .UseCosmosDb<TestCosmosDefinition>()
                 .UseServiceBusTrigger<TestServiceBusDefinition>(d => d.Trigger)
                 .UseServiceBusReply<TestServiceBusDefinition>(d => d.Reply);
         }

@@ -54,8 +54,8 @@
     - runBuilder.SetEnv(environment)
     - DockerAzureDefinition
     - DockerAzureInfrastructureDefinition
-    - DockerStorageDefinition
-    - DockerCosmosDefinition<T>
+    - DockerStorageAccountDefinition
+    - DockerCosmosDbDefinition<T>
     - DockerServiceBusDefinition
     - DockerFunctionAppDefinition with a declared ContainerSource Source (project sources publish on the host: .BuiltOnHost())
     - DockerWebEnvironment.For<TDefinition>().Include<TDefinition>().IncludeStub<TStub>()
@@ -169,7 +169,7 @@
     - assert that the expected environment components were created in EnvironmentContext
 
     Cosmos emulator pattern:
-    - name the database and container, in configuration or on the DockerCosmosDefinition
+    - name the database and container, in configuration or on the DockerCosmosDbDefinition
     - use a typed model whose id and partitionKey can be resolved by the shared resolver
     - rely on env pre-setup to publish the emulator's address and deploy the schema before the item artifact runs
 </sample_patterns>

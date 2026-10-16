@@ -31,7 +31,7 @@ internal sealed class MsSqlEnvComponent : DockerAzureEnvComponent
         DockerAzureEnvironment dockerEnvironment = GetDockerEnvironment(environment);
 
         // The Service Bus emulator is backed by this very container, so a SQL-only guard would break every Service Bus run.
-        if (dockerEnvironment.UsedSqlIdentifiers.Count == 0 && dockerEnvironment.UsedServiceBusIdentifiers.Count == 0)
+        if (dockerEnvironment.UsedSqlDatabaseIdentifiers.Count == 0 && dockerEnvironment.UsedServiceBusIdentifiers.Count == 0)
         {
             context.Logger.LogInformation("Skipping SQL environment setup because neither SQL nor Service Bus identifiers were requested.");
             return null;
@@ -73,10 +73,10 @@ internal sealed class MsSqlEnvComponent : DockerAzureEnvComponent
             // writing this store was the only channel that reached one. SqlDbContextRegistry now builds a context
             // from options the framework points at the run's database, which removed the need for the channel
             // instead of hiding it.
-            foreach (string identifier in dockerEnvironment.UsedSqlIdentifiers)
+            foreach (string identifier in dockerEnvironment.UsedSqlDatabaseIdentifiers)
             {
                 resources.Produce(
-                    AzureResourceKinds.SqlKind,
+                    AzureResourceKinds.SqlDatabaseKind,
                     identifier,
                     ValueNames.ConnectionString,
                     ResourceVantage.Host,

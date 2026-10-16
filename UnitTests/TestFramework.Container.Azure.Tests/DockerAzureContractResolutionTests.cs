@@ -21,7 +21,7 @@ public class DockerAzureContractResolutionTests
     public void ResolveComponents_ForBindsFunctionAppServiceBusDependencyFromContracts()
     {
         DockerAzureEnvironment environment = DockerAzureEnvironment.For<ContractFunctionAppDefinition>();
-        var functionStep = new TestFramework.Azure.Trigger.IsLive.IsLiveTrigger().FunctionApp("func");
+        var functionStep = new TestFramework.Azure.Trigger.IsLive.IsLiveTriggers().FunctionApp("func");
 
         IReadOnlyCollection<EnvComponentIdentifier> result = environment.ResolveComponents([], ((IHasEnvironmentRequirements)functionStep).GetEnvironmentRequirements(null!));
 

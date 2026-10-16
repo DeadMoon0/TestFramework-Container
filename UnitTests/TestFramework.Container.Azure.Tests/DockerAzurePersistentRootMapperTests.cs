@@ -21,7 +21,7 @@ public class DockerAzurePersistentRootMapperTests
         IReadOnlyCollection<EnvComponentIdentifier> result = DockerAzurePersistentRootMapper.Map(
             new DockerAzureEnvironment(),
         [
-            new(AzureResourceKinds.Storage, "PersistentStorage"),
+            new(AzureResourceKinds.StorageAccount, "PersistentStorage"),
         ]);
 
         Assert.Equal(2, result.Count);
@@ -39,9 +39,9 @@ public class DockerAzurePersistentRootMapperTests
         IReadOnlyCollection<EnvComponentIdentifier> result = DockerAzurePersistentRootMapper.Map(
             new DockerAzureEnvironment(),
         [
-            new(AzureResourceKinds.Storage, "storage"),
-            new(AzureResourceKinds.Cosmos, "cosmos"),
-            new(AzureResourceKinds.Sql, "sql"),
+            new(AzureResourceKinds.StorageAccount, "storage"),
+            new(AzureResourceKinds.CosmosDb, "cosmos"),
+            new(AzureResourceKinds.SqlDatabase, "sql"),
             new(AzureResourceKinds.ServiceBus, "bus"),
             new(AzureResourceKinds.FunctionApp, "func"),
         ]);
@@ -78,7 +78,7 @@ public class DockerAzurePersistentRootMapperTests
     {
     }
 
-    private sealed class StorageOnlyDefinition : DockerStorageDefinition
+    private sealed class StorageOnlyDefinition : DockerStorageAccountDefinition
     {
         public override StorageAccountIdentifier Identifier => new("storage-only-storage");
     }

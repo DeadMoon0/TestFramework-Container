@@ -9,16 +9,16 @@ namespace TestFramework.Container.Azure.Readme.Composition;
 public sealed record SampleDocument(string Id, string PartitionKey);
 
 #region snippet:composition
-public sealed class MainStorage : DockerStorageDefinition
+public sealed class MainStorage : DockerStorageAccountDefinition
 {
     public override StorageAccountIdentifier Identifier => "MainStorage";
 
     protected override string? BlobContainerName => "uploads";
 }
 
-public sealed class MainDb : DockerCosmosDefinition<SampleDocument>
+public sealed class MainDb : DockerCosmosDbDefinition<SampleDocument>
 {
-    public override CosmosContainerIdentifier Identifier => "MainDb";
+    public override CosmosDbIdentifier Identifier => "MainDb";
 
     protected override string? DatabaseName => "AppDb";
 
@@ -50,8 +50,8 @@ public sealed class DefaultFunctionApp : DockerFunctionAppDefinition
     protected override void Configure(DockerFunctionAppBuilder builder)
     {
         builder
-            .UseStorage<MainStorage>()
-            .UseCosmos<MainDb>()
+            .UseStorageAccount<MainStorage>()
+            .UseCosmosDb<MainDb>()
             .UseServiceBusReply<ProcessingReply>(bus => bus.Reply);
     }
 }

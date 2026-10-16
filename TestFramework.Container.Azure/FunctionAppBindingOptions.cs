@@ -10,10 +10,10 @@ namespace TestFramework.Container.Azure;
 /// parameter in the middle of the list, and every caller compiled against the old list stopped resolving. A new
 /// setting here is one more init property, which no compiled caller notices.
 /// </remarks>
-public sealed record FunctionAppStorageBinding
+public sealed record FunctionAppStorageAccountBinding
 {
     /// <summary>The defaults, as the Functions templates name them.</summary>
-    public static FunctionAppStorageBinding Default { get; } = new();
+    public static FunctionAppStorageAccountBinding Default { get; } = new();
 
     /// <summary>The app setting carrying the storage connection string the app reads.</summary>
     public string ConnectionSettingName { get; init; } = "StorageAccountConnectionString";
@@ -31,10 +31,10 @@ public sealed record FunctionAppStorageBinding
 /// <summary>
 /// How a Cosmos definition is bound into a Function App container.
 /// </summary>
-public sealed record FunctionAppCosmosBinding
+public sealed record FunctionAppCosmosDbBinding
 {
     /// <summary>The defaults, as the Functions templates name them.</summary>
-    public static FunctionAppCosmosBinding Default { get; } = new();
+    public static FunctionAppCosmosDbBinding Default { get; } = new();
 
     /// <summary>The app setting carrying the Cosmos connection string.</summary>
     public string ConnectionSettingName { get; init; } = "CosmosDbConnectionString";

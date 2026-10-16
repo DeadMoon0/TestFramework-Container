@@ -35,7 +35,7 @@ public class AzureResetEnvComponentTests
 
         IReadOnlyCollection<EnvComponentIdentifier> result = environment.ResolveComponents(
             [],
-            [new(AzureResourceKinds.Storage, "storage")]);
+            [new(AzureResourceKinds.StorageAccount, "storage")]);
 
         Assert.Contains(DockerAzureEnvironment.AzureResetComponentId, result);
     }
@@ -44,7 +44,7 @@ public class AzureResetEnvComponentTests
     public void ResetComponent_IsPerRunAndDependsOnlyOnTheEmulatorsThatResolved()
     {
         DockerAzureEnvironment environment = new();
-        environment.ResolveComponents([], [new(AzureResourceKinds.Storage, "storage")]);
+        environment.ResolveComponents([], [new(AzureResourceKinds.StorageAccount, "storage")]);
 
         EnvComponent reset = environment.GetComponent(DockerAzureEnvironment.AzureResetComponentId);
 
@@ -76,7 +76,7 @@ public class AzureResetEnvComponentTests
         IReadOnlyCollection<EnvComponentIdentifier> roots = DockerAzurePersistentRootMapper.Map(
             new DockerAzureEnvironment(),
             [
-                new(AzureResourceKinds.Storage, "storage"),
+                new(AzureResourceKinds.StorageAccount, "storage"),
                 new(AzureResourceKinds.ServiceBus, "bus"),
             ]);
 
@@ -110,7 +110,7 @@ public class AzureResetEnvComponentTests
     {
     }
 
-    private sealed class ResetProbeStorage : DockerStorageDefinition
+    private sealed class ResetProbeStorage : DockerStorageAccountDefinition
     {
         public override StorageAccountIdentifier Identifier => new("reset-probe-storage");
     }

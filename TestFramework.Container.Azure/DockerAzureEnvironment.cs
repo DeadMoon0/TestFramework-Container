@@ -1,8 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using TestFramework.Azure;
-using TestFramework.Azure.DB.CosmosDB;
-using TestFramework.Azure.DB.SqlServer;
+using TestFramework.Azure.DB.CosmosDb;
+using TestFramework.Azure.DB.SqlDatabase;
 using TestFramework.Azure.Identifier;
 using TestFramework.Azure.StorageAccount.Blob;
 using TestFramework.Azure.StorageAccount.Table;
@@ -80,9 +80,9 @@ public sealed partial class DockerAzureEnvironment : EnvironmentProviderBase, IR
     private bool _resolutionSummaryLogged;
     private AzureResetMode _resetMode = AzureResetMode.PurgeDeclaredResources;
     private readonly HashSet<EnvComponentIdentifier> _reusedPersistentComponents = [];
-    private readonly HashSet<string> _usedStorageIdentifiers = [];
-    private readonly HashSet<string> _usedCosmosIdentifiers = [];
-    private readonly HashSet<string> _usedSqlIdentifiers = [];
+    private readonly HashSet<string> _usedStorageAccountIdentifiers = [];
+    private readonly HashSet<string> _usedCosmosDbIdentifiers = [];
+    private readonly HashSet<string> _usedSqlDatabaseIdentifiers = [];
     private readonly HashSet<string> _usedServiceBusIdentifiers = [];
     private readonly HashSet<string> _usedFunctionAppIdentifiers = [];
 
@@ -100,18 +100,18 @@ public sealed partial class DockerAzureEnvironment : EnvironmentProviderBase, IR
     /// let you attempt.
     /// </para>
     /// </remarks>
-    public IReadOnlyCollection<string> UsedStorageIdentifiers => _usedStorageIdentifiers;
+    public IReadOnlyCollection<string> UsedStorageAccountIdentifiers => _usedStorageAccountIdentifiers;
 
-    /// <inheritdoc cref="UsedStorageIdentifiers" />
-    public IReadOnlyCollection<string> UsedCosmosIdentifiers => _usedCosmosIdentifiers;
+    /// <inheritdoc cref="UsedStorageAccountIdentifiers" />
+    public IReadOnlyCollection<string> UsedCosmosDbIdentifiers => _usedCosmosDbIdentifiers;
 
-    /// <inheritdoc cref="UsedStorageIdentifiers" />
-    public IReadOnlyCollection<string> UsedSqlIdentifiers => _usedSqlIdentifiers;
+    /// <inheritdoc cref="UsedStorageAccountIdentifiers" />
+    public IReadOnlyCollection<string> UsedSqlDatabaseIdentifiers => _usedSqlDatabaseIdentifiers;
 
-    /// <inheritdoc cref="UsedStorageIdentifiers" />
+    /// <inheritdoc cref="UsedStorageAccountIdentifiers" />
     public IReadOnlyCollection<string> UsedServiceBusIdentifiers => _usedServiceBusIdentifiers;
 
-    /// <inheritdoc cref="UsedStorageIdentifiers" />
+    /// <inheritdoc cref="UsedStorageAccountIdentifiers" />
     public IReadOnlyCollection<string> UsedFunctionAppIdentifiers => _usedFunctionAppIdentifiers;
     internal Dictionary<string, string> CosmosPartitionKeyPaths { get; } = [];
 
@@ -132,15 +132,15 @@ public sealed partial class DockerAzureEnvironment : EnvironmentProviderBase, IR
         AddComponent(new Components.AzureResetEnvComponent(this));
 
         MapResourceKind(AzureResourceKinds.FunctionApp, FunctionAppComponentId);
-        MapResourceKind(AzureResourceKinds.Storage, AzuriteComponentId);
-        MapResourceKind(AzureResourceKinds.Cosmos, CosmosDbComponentId);
-        MapResourceKind(AzureResourceKinds.Sql, MsSqlComponentId);
+        MapResourceKind(AzureResourceKinds.StorageAccount, AzuriteComponentId);
+        MapResourceKind(AzureResourceKinds.CosmosDb, CosmosDbComponentId);
+        MapResourceKind(AzureResourceKinds.SqlDatabase, MsSqlComponentId);
         MapResourceKind(AzureResourceKinds.ServiceBus, ServiceBusComponentId);
 
         MapArtifact<StorageAccountBlobArtifactDescriber>(AzuriteComponentId);
-        MapArtifact(typeof(TableStorageEntityArtifactDescriber<>), AzuriteComponentId);
+        MapArtifact(typeof(StorageAccountTableEntityArtifactDescriber<>), AzuriteComponentId);
         MapArtifact(typeof(CosmosDbItemArtifactDescriber<>), CosmosDbComponentId);
-        MapArtifact(typeof(AzureSqlRowArtifactDescriber<>), MsSqlComponentId);
+        MapArtifact(typeof(SqlDatabaseRowArtifactDescriber<>), MsSqlComponentId);
     }
 
     /// <summary>
@@ -220,10 +220,10 @@ public sealed partial class DockerAzureEnvironment : EnvironmentProviderBase, IR
         {
             switch (binding.Kind)
             {
-                case FunctionAppResourceBindingKind.Storage:
+                case FunctionAppResourceBindingKind.StorageAccount:
                     components.Add(AzuriteComponentId);
                     break;
-                case FunctionAppResourceBindingKind.Cosmos:
+                case FunctionAppResourceBindingKind.CosmosDb:
                     components.Add(CosmosDbComponentId);
                     break;
                 case FunctionAppResourceBindingKind.ServiceBusTrigger:
@@ -246,11 +246,11 @@ public sealed partial class DockerAzureEnvironment : EnvironmentProviderBase, IR
     internal IReadOnlyList<EnvComponentIdentifier> GetResetComponentDependencies()
     {
         List<EnvComponentIdentifier> dependencies = [NetworkComponentId];
-        if (UsedStorageIdentifiers.Count > 0)
+        if (UsedStorageAccountIdentifiers.Count > 0)
             dependencies.Add(AzuriteComponentId);
-        if (UsedCosmosIdentifiers.Count > 0)
+        if (UsedCosmosDbIdentifiers.Count > 0)
             dependencies.Add(CosmosDbComponentId);
-        if (UsedSqlIdentifiers.Count > 0)
+        if (UsedSqlDatabaseIdentifiers.Count > 0)
             dependencies.Add(MsSqlComponentId);
         if (UsedServiceBusIdentifiers.Count > 0)
             dependencies.Add(ServiceBusComponentId);
