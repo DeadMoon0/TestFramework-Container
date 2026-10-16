@@ -385,9 +385,9 @@ internal sealed class SiteEnvComponent : WebEnvComponentBase
         string identifier = site.Planned.Definition.Identifier;
         EnvironmentResources resources = PublishOn(context);
 
-        resources.Produce(WebEnvironmentResourceKinds.SiteKind, identifier, ValueNames.BaseUrl, ResourceVantage.Host, site.BaseUrl.ToString());
+        resources.Produce(WebResourceKinds.SiteKind, identifier, ValueNames.BaseUrl, ResourceVantage.Host, site.BaseUrl.ToString());
         resources.Produce(
-            WebEnvironmentResourceKinds.SiteKind,
+            WebResourceKinds.SiteKind,
             identifier,
             ValueNames.BaseUrl,
             ResourceVantage.Network,
@@ -445,7 +445,7 @@ internal sealed class SiteEnvComponent : WebEnvComponentBase
                 if (apis.FirstOrDefault(running => string.Equals(running.Identifier, identifier, StringComparison.Ordinal)) is { } api)
                     return networkFacing ? api.NetworkBaseUrl : api.BaseUrl;
 
-                if (TryGetSuppliedBaseUrl(WebEnvironmentResourceKinds.RestApi, identifier, networkFacing) is { } configured)
+                if (TryGetSuppliedBaseUrl(WebResourceKinds.RestApi, identifier, networkFacing) is { } configured)
                     return configured;
 
                 throw TargetUnresolvable("API", identifier, $"Include the {nameof(DockerApiDefinition)} for it, or configure 'Api:{identifier}:BaseUrl'.");
@@ -454,7 +454,7 @@ internal sealed class SiteEnvComponent : WebEnvComponentBase
             if (stubs.FirstOrDefault(running => string.Equals(running.Identifier, identifier, StringComparison.Ordinal)) is { } stub)
                 return networkFacing ? stub.NetworkBaseUrl : stub.HostBaseUrl;
 
-            if (TryGetSuppliedBaseUrl(WebEnvironmentResourceKinds.Stub, identifier, networkFacing) is { } configuredStub)
+            if (TryGetSuppliedBaseUrl(WebResourceKinds.Stub, identifier, networkFacing) is { } configuredStub)
                 return configuredStub;
 
             throw TargetUnresolvable("stub", identifier, $"Include the {nameof(StubDefinition)} for it, or configure 'Stub:{identifier}:BaseUrl'.");

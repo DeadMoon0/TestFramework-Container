@@ -81,10 +81,10 @@ public sealed class DockerWebEnvironment : EnvironmentProviderBase, IResourceNod
         // Each kind is provided for what this environment declares - one container per definition - and
         // for nothing else. A run may therefore reach one API in a container and another deployed
         // somewhere: a requirement for a resource configuration declared never reaches this environment.
-        MapDeclaredResources(WebEnvironmentResourceKinds.Sql, SqlServerComponentId);
-        MapDeclaredResources(WebEnvironmentResourceKinds.RestApi, ApiComponentId);
-        MapDeclaredResources(WebEnvironmentResourceKinds.Stub, StubComponentId);
-        MapDeclaredResources(WebEnvironmentResourceKinds.Site, SiteComponentId);
+        MapDeclaredResources(WebResourceKinds.Sql, SqlServerComponentId);
+        MapDeclaredResources(WebResourceKinds.RestApi, ApiComponentId);
+        MapDeclaredResources(WebResourceKinds.Stub, StubComponentId);
+        MapDeclaredResources(WebResourceKinds.Site, SiteComponentId);
     }
 
     /// <summary>
@@ -468,16 +468,16 @@ public sealed class DockerWebEnvironment : EnvironmentProviderBase, IResourceNod
             get
             {
                 foreach (DockerSqlDefinition definition in environment.GetSqlDefinitions())
-                    yield return Declared(WebEnvironmentResourceKinds.SqlKind, definition.Identifier.Identifier);
+                    yield return Declared(WebResourceKinds.SqlKind, definition.Identifier.Identifier);
 
                 foreach (DockerApiDefinition definition in environment.GetApiDefinitions())
-                    yield return Declared(WebEnvironmentResourceKinds.RestApiKind, definition.Identifier.Identifier);
+                    yield return Declared(WebResourceKinds.RestApiKind, definition.Identifier.Identifier);
 
                 foreach (StubDefinition definition in environment.GetStubDefinitions())
-                    yield return Declared(WebEnvironmentResourceKinds.StubKind, definition.Identifier.Identifier);
+                    yield return Declared(WebResourceKinds.StubKind, definition.Identifier.Identifier);
 
                 foreach (DockerSiteDefinition definition in environment.GetSiteDefinitions())
-                    yield return Declared(WebEnvironmentResourceKinds.SiteKind, definition.Identifier.Identifier);
+                    yield return Declared(WebResourceKinds.SiteKind, definition.Identifier.Identifier);
             }
         }
 

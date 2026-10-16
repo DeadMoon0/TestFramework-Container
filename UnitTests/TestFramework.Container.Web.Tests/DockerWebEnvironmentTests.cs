@@ -80,7 +80,7 @@ public class DockerWebEnvironmentTests
     {
         DockerWebEnvironment environment = DockerWebEnvironment.For<MainDefinition>();
 
-        IReadOnlyCollection<EnvComponentIdentifier> resolved = environment.ResolveComponents([], [new EnvironmentRequirement(WebEnvironmentResourceKinds.Sql, "main")]);
+        IReadOnlyCollection<EnvComponentIdentifier> resolved = environment.ResolveComponents([], [new EnvironmentRequirement(WebResourceKinds.Sql, "main")]);
 
         Assert.Contains(DockerWebEnvironment.SqlServerComponentId, resolved);
     }
@@ -107,10 +107,10 @@ public class DockerWebEnvironmentTests
         // configuration pointed at a deployed system. The engine now routes it only what it declares.
         DockerWebEnvironment environment = DockerWebEnvironment.For<MainDefinition>();
 
-        Assert.False(environment.ProvidesEveryResourceOf(WebEnvironmentResourceKinds.Sql));
-        Assert.False(environment.ProvidesEveryResourceOf(WebEnvironmentResourceKinds.RestApi));
-        Assert.False(environment.ProvidesEveryResourceOf(WebEnvironmentResourceKinds.Stub));
-        Assert.False(environment.ProvidesEveryResourceOf(WebEnvironmentResourceKinds.Site));
+        Assert.False(environment.ProvidesEveryResourceOf(WebResourceKinds.Sql));
+        Assert.False(environment.ProvidesEveryResourceOf(WebResourceKinds.RestApi));
+        Assert.False(environment.ProvidesEveryResourceOf(WebResourceKinds.Stub));
+        Assert.False(environment.ProvidesEveryResourceOf(WebResourceKinds.Site));
     }
 
     [Fact]

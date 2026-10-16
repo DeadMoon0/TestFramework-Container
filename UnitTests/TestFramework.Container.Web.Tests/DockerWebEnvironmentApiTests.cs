@@ -69,7 +69,7 @@ public class DockerWebEnvironmentApiTests
     {
         DockerWebEnvironment environment = DockerWebEnvironment.For<StandaloneApiDefinition>();
 
-        IReadOnlyCollection<EnvComponentIdentifier> resolved = environment.ResolveComponents([], [new EnvironmentRequirement(WebEnvironmentResourceKinds.RestApi, "orders")]);
+        IReadOnlyCollection<EnvComponentIdentifier> resolved = environment.ResolveComponents([], [new EnvironmentRequirement(WebResourceKinds.RestApi, "orders")]);
 
         Assert.Contains(DockerWebEnvironment.ApiComponentId, resolved);
         Assert.Contains("web.restapi/orders", environment.Nodes.Select(node => node.ToString()));

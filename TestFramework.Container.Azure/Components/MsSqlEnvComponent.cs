@@ -76,7 +76,7 @@ internal sealed class MsSqlEnvComponent : DockerAzureEnvComponent
             foreach (string identifier in dockerEnvironment.UsedSqlIdentifiers)
             {
                 resources.Produce(
-                    AzureEnvironmentResourceKinds.SqlKind,
+                    AzureResourceKinds.SqlKind,
                     identifier,
                     ValueNames.ConnectionString,
                     ResourceVantage.Host,

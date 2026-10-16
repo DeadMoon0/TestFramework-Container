@@ -35,7 +35,7 @@ internal sealed class ServiceBusEnvComponent : DockerAzureEnvComponent
 
         // Called for its effect, not its result: it refuses a used identifier with no configuration entry, and
         // seeds the store the run resolves for the ones that have defaults. Nothing writes to it any more.
-        EnvComponentResourceGuard.EnsureSupplied(context, AzureEnvironmentResourceKinds.ServiceBusKind, dockerEnvironment.UsedServiceBusIdentifiers, "Service Bus environment setup");
+        EnvComponentResourceGuard.EnsureSupplied(context, AzureResourceKinds.ServiceBusKind, dockerEnvironment.UsedServiceBusIdentifiers, "Service Bus environment setup");
         INetwork network = StateOf<INetwork>(context, DockerAzureEnvironment.NetworkComponentId);
         MsSqlRuntimeState sql = StateOf<MsSqlRuntimeState>(context, DockerAzureEnvironment.MsSqlComponentId);
         MaterializedServiceBusTopology materializedTopology = ServiceBusTopologyMaterializer.Materialize(dockerEnvironment.GetServiceBusTopologySource(), context.Logger);
@@ -71,7 +71,7 @@ internal sealed class ServiceBusEnvComponent : DockerAzureEnvComponent
             foreach (string identifier in dockerEnvironment.UsedServiceBusIdentifiers)
             {
                 PublishOn(context).Produce(
-                    AzureEnvironmentResourceKinds.ServiceBusKind,
+                    AzureResourceKinds.ServiceBusKind,
                     identifier,
                     ValueNames.ConnectionString,
                     ResourceVantage.Host,

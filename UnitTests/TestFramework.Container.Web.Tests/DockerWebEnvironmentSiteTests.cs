@@ -84,7 +84,7 @@ public class DockerWebEnvironmentSiteTests
         // the site of the same name itself and requires that, which is what reaches this environment.
         DockerWebEnvironment environment = new DockerWebEnvironment().Include<ShopSiteDefinition>();
 
-        IReadOnlyCollection<EnvComponentIdentifier> resolved = environment.ResolveComponents([], [new EnvironmentRequirement(WebEnvironmentResourceKinds.Site, "shop")]);
+        IReadOnlyCollection<EnvComponentIdentifier> resolved = environment.ResolveComponents([], [new EnvironmentRequirement(WebResourceKinds.Site, "shop")]);
 
         Assert.Contains(DockerWebEnvironment.SiteComponentId, resolved);
         Assert.Contains("web.site/shop", environment.Nodes.Select(node => node.ToString()));

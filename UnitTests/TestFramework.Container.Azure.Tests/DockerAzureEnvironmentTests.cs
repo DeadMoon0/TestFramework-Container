@@ -333,11 +333,11 @@ public class DockerAzureEnvironmentTests
 
         // Deliberately not resolved first: a run composes its resources before any step has run, so a
         // declaration that needed resolution would arrive too late to be one.
-        IReadOnlyDictionary<ValueKey, string> declared = DeclaredValues(environment, AzureEnvironmentResourceKinds.FunctionApp, "auto-func");
+        IReadOnlyDictionary<ValueKey, string> declared = DeclaredValues(environment, AzureResourceKinds.FunctionApp, "auto-func");
 
         Assert.Equal("http://localhost/", declared[new ValueKey(ValueNames.BaseUrl, ResourceVantage.Host)]);
-        Assert.Equal("unused", declared[new ValueKey(AzureEnvironmentResourceKinds.CodeValue)]);
-        Assert.Equal("unused", declared[new ValueKey(AzureEnvironmentResourceKinds.AdminCodeValue)]);
+        Assert.Equal("unused", declared[new ValueKey(AzureResourceKinds.CodeValue)]);
+        Assert.Equal("unused", declared[new ValueKey(AzureResourceKinds.AdminCodeValue)]);
     }
 
     /// <summary>
@@ -527,7 +527,7 @@ public class DockerAzureEnvironmentTests
         DockerAzureEnvironment environment = new();
         var logicAppStep = new IsLiveTrigger().LogicApp("logic");
 
-        Assert.False(environment.ProvidesEveryResourceOf(AzureEnvironmentResourceKinds.LogicApp));
+        Assert.False(environment.ProvidesEveryResourceOf(AzureResourceKinds.LogicApp));
         Assert.Empty(environment.ResolveComponents([], ((IHasEnvironmentRequirements)logicAppStep).GetEnvironmentRequirements(null!)));
     }
 

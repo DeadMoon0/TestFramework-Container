@@ -131,11 +131,11 @@ public sealed partial class DockerAzureEnvironment : EnvironmentProviderBase, IR
         AddComponent(new Components.ServiceBusEnvComponent());
         AddComponent(new Components.AzureResetEnvComponent(this));
 
-        MapResourceKind(AzureEnvironmentResourceKinds.FunctionApp, FunctionAppComponentId);
-        MapResourceKind(AzureEnvironmentResourceKinds.Storage, AzuriteComponentId);
-        MapResourceKind(AzureEnvironmentResourceKinds.Cosmos, CosmosDbComponentId);
-        MapResourceKind(AzureEnvironmentResourceKinds.Sql, MsSqlComponentId);
-        MapResourceKind(AzureEnvironmentResourceKinds.ServiceBus, ServiceBusComponentId);
+        MapResourceKind(AzureResourceKinds.FunctionApp, FunctionAppComponentId);
+        MapResourceKind(AzureResourceKinds.Storage, AzuriteComponentId);
+        MapResourceKind(AzureResourceKinds.Cosmos, CosmosDbComponentId);
+        MapResourceKind(AzureResourceKinds.Sql, MsSqlComponentId);
+        MapResourceKind(AzureResourceKinds.ServiceBus, ServiceBusComponentId);
 
         MapArtifact<StorageAccountBlobArtifactDescriber>(AzuriteComponentId);
         MapArtifact(typeof(TableStorageEntityArtifactDescriber<>), AzuriteComponentId);

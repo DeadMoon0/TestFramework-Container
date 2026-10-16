@@ -244,8 +244,8 @@ internal sealed class StubEnvComponent : WebEnvComponentBase
     {
         EnvironmentResources resources = PublishOn(context);
 
-        resources.Produce(WebEnvironmentResourceKinds.StubKind, stub.Identifier, ValueNames.BaseUrl, ResourceVantage.Host, stub.HostBaseUrl.ToString());
-        resources.Produce(WebEnvironmentResourceKinds.StubKind, stub.Identifier, ValueNames.BaseUrl, ResourceVantage.Network, stub.NetworkBaseUrl.ToString());
-        resources.Produce(WebEnvironmentResourceKinds.StubKind, stub.Identifier, WebEnvironmentResourceKinds.AdminPathValue, DockerWebDefaults.StubAdminPath);
+        resources.Produce(WebResourceKinds.StubKind, stub.Identifier, ValueNames.BaseUrl, ResourceVantage.Host, stub.HostBaseUrl.ToString());
+        resources.Produce(WebResourceKinds.StubKind, stub.Identifier, ValueNames.BaseUrl, ResourceVantage.Network, stub.NetworkBaseUrl.ToString());
+        resources.Produce(WebResourceKinds.StubKind, stub.Identifier, WebResourceKinds.AdminPathValue, DockerWebDefaults.StubAdminPath);
     }
 }

@@ -378,12 +378,12 @@ internal sealed class ApiEnvComponent : WebEnvComponentBase
         string identifier = api.Planned.Definition.Identifier;
         EnvironmentResources resources = PublishOn(context);
 
-        resources.Produce(WebEnvironmentResourceKinds.RestApiKind, identifier, ValueNames.BaseUrl, ResourceVantage.Host, api.BaseUrl.ToString());
-        resources.Produce(WebEnvironmentResourceKinds.RestApiKind, identifier, ValueNames.BaseUrl, ResourceVantage.Network, api.NetworkBaseUrl.ToString());
+        resources.Produce(WebResourceKinds.RestApiKind, identifier, ValueNames.BaseUrl, ResourceVantage.Host, api.BaseUrl.ToString());
+        resources.Produce(WebResourceKinds.RestApiKind, identifier, ValueNames.BaseUrl, ResourceVantage.Network, api.NetworkBaseUrl.ToString());
 
         if (api.Planned.Spec.HealthPath is { Length: > 0 } healthPath)
         {
-            resources.Produce(WebEnvironmentResourceKinds.RestApiKind, identifier, nameof(ApiConfig.HealthPath), healthPath);
+            resources.Produce(WebResourceKinds.RestApiKind, identifier, nameof(ApiConfig.HealthPath), healthPath);
         }
     }
 }

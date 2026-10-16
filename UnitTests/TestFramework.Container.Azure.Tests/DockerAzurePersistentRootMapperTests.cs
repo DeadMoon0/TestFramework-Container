@@ -21,7 +21,7 @@ public class DockerAzurePersistentRootMapperTests
         IReadOnlyCollection<EnvComponentIdentifier> result = DockerAzurePersistentRootMapper.Map(
             new DockerAzureEnvironment(),
         [
-            new(AzureEnvironmentResourceKinds.Storage, "PersistentStorage"),
+            new(AzureResourceKinds.Storage, "PersistentStorage"),
         ]);
 
         Assert.Equal(2, result.Count);
@@ -39,11 +39,11 @@ public class DockerAzurePersistentRootMapperTests
         IReadOnlyCollection<EnvComponentIdentifier> result = DockerAzurePersistentRootMapper.Map(
             new DockerAzureEnvironment(),
         [
-            new(AzureEnvironmentResourceKinds.Storage, "storage"),
-            new(AzureEnvironmentResourceKinds.Cosmos, "cosmos"),
-            new(AzureEnvironmentResourceKinds.Sql, "sql"),
-            new(AzureEnvironmentResourceKinds.ServiceBus, "bus"),
-            new(AzureEnvironmentResourceKinds.FunctionApp, "func"),
+            new(AzureResourceKinds.Storage, "storage"),
+            new(AzureResourceKinds.Cosmos, "cosmos"),
+            new(AzureResourceKinds.Sql, "sql"),
+            new(AzureResourceKinds.ServiceBus, "bus"),
+            new(AzureResourceKinds.FunctionApp, "func"),
         ]);
 
         Assert.Equal(5, result.Count);
@@ -63,7 +63,7 @@ public class DockerAzurePersistentRootMapperTests
         IReadOnlyCollection<EnvComponentIdentifier> result = DockerAzurePersistentRootMapper.Map(
             environment,
         [
-            new(AzureEnvironmentResourceKinds.FunctionApp, "storage-only-app"),
+            new(AzureResourceKinds.FunctionApp, "storage-only-app"),
         ]);
 
         Assert.Equal(2, result.Count);

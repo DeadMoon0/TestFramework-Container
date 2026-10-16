@@ -79,7 +79,7 @@ public class SharedEnvironmentTests
         public override async Task<EmptyStepResultContext?> Execute(RunContext context)
         {
             string connection = context.Values.Require(
-                ValueRef.For(WebEnvironmentResourceKinds.SqlKind.Name, "main", ValueNames.ConnectionString),
+                ValueRef.For(WebResourceKinds.SqlKind.Name, "main", ValueNames.ConnectionString),
                 ResourceVantage.Host);
             string port = Regex.Match(connection, @",(\d+)").Groups[1].Value;
 

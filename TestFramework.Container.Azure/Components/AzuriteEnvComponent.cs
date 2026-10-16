@@ -32,7 +32,7 @@ internal sealed class AzuriteEnvComponent : DockerAzureEnvComponent
             return null;
         }
 
-        EnvComponentResourceGuard.EnsureSupplied(context, AzureEnvironmentResourceKinds.StorageKind, dockerEnvironment.UsedStorageIdentifiers, "Azurite environment setup");
+        EnvComponentResourceGuard.EnsureSupplied(context, AzureResourceKinds.StorageKind, dockerEnvironment.UsedStorageIdentifiers, "Azurite environment setup");
         INetwork network = StateOf<INetwork>(context, DockerAzureEnvironment.NetworkComponentId);
         string azuriteImage = dockerEnvironment.GetAzuriteImage();
 
@@ -64,7 +64,7 @@ internal sealed class AzuriteEnvComponent : DockerAzureEnvComponent
             foreach (string identifier in dockerEnvironment.UsedStorageIdentifiers)
             {
                 PublishOn(context).Produce(
-                    AzureEnvironmentResourceKinds.StorageKind,
+                    AzureResourceKinds.StorageKind,
                     identifier,
                     ValueNames.ConnectionString,
                     ResourceVantage.Host,

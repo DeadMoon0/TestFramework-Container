@@ -320,13 +320,13 @@ public class SiteContainerSmokeTests
         public override bool DoesReturn => true;
 
         public IReadOnlyCollection<EnvironmentRequirement> GetEnvironmentRequirements(VariableStore variableStore)
-            => [new EnvironmentRequirement(WebEnvironmentResourceKinds.Site, siteIdentifier)];
+            => [new EnvironmentRequirement(WebResourceKinds.Site, siteIdentifier)];
 
         public override async Task<FetchSiteResult?> Execute(RunContext context)
         {
             Uri baseUrl = new(
                 context.Values.Require(
-                    ValueRef.For(WebEnvironmentResourceKinds.Site, siteIdentifier, ValueNames.BaseUrl),
+                    ValueRef.For(WebResourceKinds.Site, siteIdentifier, ValueNames.BaseUrl),
                     ResourceVantage.Host),
                 UriKind.Absolute);
 

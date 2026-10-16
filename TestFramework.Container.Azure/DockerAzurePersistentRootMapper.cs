@@ -26,19 +26,19 @@ internal static class DockerAzurePersistentRootMapper
     {
         switch (requirement.ResourceKind)
         {
-            case AzureEnvironmentResourceKinds.Storage:
+            case AzureResourceKinds.Storage:
                 persistentRoots.Add(DockerAzureEnvironment.AzuriteComponentId);
                 return;
-            case AzureEnvironmentResourceKinds.Cosmos:
+            case AzureResourceKinds.Cosmos:
                 persistentRoots.Add(DockerAzureEnvironment.CosmosDbComponentId);
                 return;
-            case AzureEnvironmentResourceKinds.Sql:
+            case AzureResourceKinds.Sql:
                 persistentRoots.Add(DockerAzureEnvironment.MsSqlComponentId);
                 return;
-            case AzureEnvironmentResourceKinds.ServiceBus:
+            case AzureResourceKinds.ServiceBus:
                 persistentRoots.Add(DockerAzureEnvironment.ServiceBusComponentId);
                 return;
-            case AzureEnvironmentResourceKinds.FunctionApp:
+            case AzureResourceKinds.FunctionApp:
                 // Only the emulators this Function App actually binds to. The Function App component itself is PerRun,
                 // so it must never become a persistent root — ValidatePersistentRoots would throw. MsSql is pulled in
                 // behind Service Bus by PersistentEnvironmentContext.ValidatePersistentClosure.

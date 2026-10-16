@@ -140,13 +140,13 @@ internal sealed class SqlServerEnvComponent : WebEnvComponentBase
     {
         EnvironmentResources resources = PublishOn(context);
 
-        resources.Produce(WebEnvironmentResourceKinds.SqlKind, identifier, ValueNames.ConnectionString, ResourceVantage.Host, endpoint.HostConnectionString);
-        resources.Produce(WebEnvironmentResourceKinds.SqlKind, identifier, ValueNames.ConnectionString, ResourceVantage.Network, endpoint.NetworkConnectionString);
+        resources.Produce(WebResourceKinds.SqlKind, identifier, ValueNames.ConnectionString, ResourceVantage.Host, endpoint.HostConnectionString);
+        resources.Produce(WebResourceKinds.SqlKind, identifier, ValueNames.ConnectionString, ResourceVantage.Network, endpoint.NetworkConnectionString);
 
         // The name of the database this component just created, which is the same seen from either side.
         // A Database-level liveness probe compares DB_NAME() against what the run holds, so a container
         // that publishes only a connection string leaves the probe nothing to verify and it refuses -
         // correctly, rather than passing on whatever catalog the login happens to default to.
-        resources.Produce(WebEnvironmentResourceKinds.SqlKind, identifier, WebEnvironmentResourceKinds.DatabaseNameValue, databaseName);
+        resources.Produce(WebResourceKinds.SqlKind, identifier, WebResourceKinds.DatabaseNameValue, databaseName);
     }
 }

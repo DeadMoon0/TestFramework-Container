@@ -233,19 +233,19 @@ public sealed partial class DockerAzureEnvironment
     {
         switch (requirement.ResourceKind)
         {
-            case AzureEnvironmentResourceKinds.Storage:
+            case AzureResourceKinds.Storage:
                 _usedStorageIdentifiers.Add(requirement.ResourceIdentifier);
                 break;
-            case AzureEnvironmentResourceKinds.Cosmos:
+            case AzureResourceKinds.Cosmos:
                 _usedCosmosIdentifiers.Add(requirement.ResourceIdentifier);
                 break;
-            case AzureEnvironmentResourceKinds.Sql:
+            case AzureResourceKinds.Sql:
                 _usedSqlIdentifiers.Add(requirement.ResourceIdentifier);
                 break;
-            case AzureEnvironmentResourceKinds.ServiceBus:
+            case AzureResourceKinds.ServiceBus:
                 _usedServiceBusIdentifiers.Add(requirement.ResourceIdentifier);
                 break;
-            case AzureEnvironmentResourceKinds.FunctionApp:
+            case AzureResourceKinds.FunctionApp:
                 _usedFunctionAppIdentifiers.Add(requirement.ResourceIdentifier);
                 break;
         }

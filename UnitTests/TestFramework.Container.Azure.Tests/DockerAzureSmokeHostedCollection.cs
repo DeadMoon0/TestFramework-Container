@@ -25,14 +25,14 @@ public sealed class DockerAzureSmokeState : IDockerAzureHostedFixtureState
 {
     public IReadOnlyList<EnvironmentRequirement> PersistentRequirements =>
     [
-        new(AzureEnvironmentResourceKinds.Storage, "storage"),
-        new(AzureEnvironmentResourceKinds.Cosmos, "cosmos"),
-        new(AzureEnvironmentResourceKinds.Sql, "sql"),
-        new(AzureEnvironmentResourceKinds.ServiceBus, "bus"),
-        new(AzureEnvironmentResourceKinds.ServiceBus, "func-trigger-bus"),
-        new(AzureEnvironmentResourceKinds.ServiceBus, "func-reply-bus"),
-        new(AzureEnvironmentResourceKinds.FunctionApp, "func"),
-        new(AzureEnvironmentResourceKinds.FunctionApp, "func-sb"),
+        new(AzureResourceKinds.Storage, "storage"),
+        new(AzureResourceKinds.Cosmos, "cosmos"),
+        new(AzureResourceKinds.Sql, "sql"),
+        new(AzureResourceKinds.ServiceBus, "bus"),
+        new(AzureResourceKinds.ServiceBus, "func-trigger-bus"),
+        new(AzureResourceKinds.ServiceBus, "func-reply-bus"),
+        new(AzureResourceKinds.FunctionApp, "func"),
+        new(AzureResourceKinds.FunctionApp, "func-sb"),
     ];
 
     public DockerAzureEnvironment CreateEnvironment()

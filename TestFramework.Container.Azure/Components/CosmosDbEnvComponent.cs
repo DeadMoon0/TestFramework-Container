@@ -42,7 +42,7 @@ internal sealed class CosmosDbEnvComponent : DockerAzureEnvComponent
             return null;
         }
 
-        EnvComponentResourceGuard.EnsureSupplied(context, AzureEnvironmentResourceKinds.CosmosKind, dockerEnvironment.UsedCosmosIdentifiers, "Cosmos environment setup");
+        EnvComponentResourceGuard.EnsureSupplied(context, AzureResourceKinds.CosmosKind, dockerEnvironment.UsedCosmosIdentifiers, "Cosmos environment setup");
         INetwork network = StateOf<INetwork>(context, DockerAzureEnvironment.NetworkComponentId);
         string cosmosImage = dockerEnvironment.GetCosmosDbImage();
 
@@ -79,7 +79,7 @@ internal sealed class CosmosDbEnvComponent : DockerAzureEnvComponent
             foreach (string identifier in dockerEnvironment.UsedCosmosIdentifiers)
             {
                 PublishOn(context).Produce(
-                    AzureEnvironmentResourceKinds.CosmosKind,
+                    AzureResourceKinds.CosmosKind,
                     identifier,
                     ValueNames.ConnectionString,
                     ResourceVantage.Host,

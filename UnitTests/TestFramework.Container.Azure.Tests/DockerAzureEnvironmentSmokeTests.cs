@@ -337,7 +337,7 @@ public class DockerAzureEnvironmentSmokeTests
         public override bool DoesReturn => true;
 
         public IReadOnlyCollection<EnvironmentRequirement> GetEnvironmentRequirements(VariableStore variableStore)
-            => [new(AzureEnvironmentResourceKinds.ServiceBus, "bus")];
+            => [new(AzureResourceKinds.ServiceBus, "bus")];
 
         public override Task<InspectServiceBusConfigResult?> Execute(RunContext context)
         {

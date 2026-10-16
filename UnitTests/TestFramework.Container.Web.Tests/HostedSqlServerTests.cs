@@ -131,7 +131,7 @@ public class HostedSqlServerTests
         public override async Task<EmptyStepResultContext?> Execute(RunContext context)
         {
             string connectionString = context.Values.Require(
-                ValueRef.For(WebEnvironmentResourceKinds.SqlKind.Name, "main", ValueNames.ConnectionString),
+                ValueRef.For(WebResourceKinds.SqlKind.Name, "main", ValueNames.ConnectionString),
                 ResourceVantage.Host);
 
             await using SqlConnection connection = new(connectionString);

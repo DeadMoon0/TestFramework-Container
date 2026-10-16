@@ -52,7 +52,7 @@ internal sealed class FunctionAppEnvComponent(DockerAzureEnvironment owner) : Do
         if (dockerEnvironment.UsedFunctionAppIdentifiers.Count == 0)
             return new FunctionAppComponentState([]);
 
-        EnvComponentResourceGuard.EnsureSupplied(context, AzureEnvironmentResourceKinds.FunctionAppKind, dockerEnvironment.UsedFunctionAppIdentifiers, "Function App environment setup");
+        EnvComponentResourceGuard.EnsureSupplied(context, AzureResourceKinds.FunctionAppKind, dockerEnvironment.UsedFunctionAppIdentifiers, "Function App environment setup");
         INetwork network = StateOf<INetwork>(context, DockerAzureEnvironment.NetworkComponentId);
         DockerEndpointMap endpointMap = dockerEnvironment.GetEndpointMap();
 
@@ -74,7 +74,7 @@ internal sealed class FunctionAppEnvComponent(DockerAzureEnvironment owner) : Do
         foreach (StartedFunctionApp app in started)
         {
             PublishOn(context).Produce(
-                AzureEnvironmentResourceKinds.FunctionAppKind,
+                AzureResourceKinds.FunctionAppKind,
                 app.Identifier,
                 ValueNames.BaseUrl,
                 ResourceVantage.Host,

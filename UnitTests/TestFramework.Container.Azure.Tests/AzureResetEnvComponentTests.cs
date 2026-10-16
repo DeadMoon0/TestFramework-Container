@@ -35,7 +35,7 @@ public class AzureResetEnvComponentTests
 
         IReadOnlyCollection<EnvComponentIdentifier> result = environment.ResolveComponents(
             [],
-            [new(AzureEnvironmentResourceKinds.Storage, "storage")]);
+            [new(AzureResourceKinds.Storage, "storage")]);
 
         Assert.Contains(DockerAzureEnvironment.AzureResetComponentId, result);
     }
@@ -44,7 +44,7 @@ public class AzureResetEnvComponentTests
     public void ResetComponent_IsPerRunAndDependsOnlyOnTheEmulatorsThatResolved()
     {
         DockerAzureEnvironment environment = new();
-        environment.ResolveComponents([], [new(AzureEnvironmentResourceKinds.Storage, "storage")]);
+        environment.ResolveComponents([], [new(AzureResourceKinds.Storage, "storage")]);
 
         EnvComponent reset = environment.GetComponent(DockerAzureEnvironment.AzureResetComponentId);
 
@@ -62,7 +62,7 @@ public class AzureResetEnvComponentTests
     public void FunctionAppComponent_DependsOnTheResetSoItNeverStartsAgainstUnpurgedStores()
     {
         DockerAzureEnvironment environment = DockerAzureEnvironment.ForFunctionAppWithStorage<ResetProbeStorage>(new FunctionAppIdentifier("reset-probe-app"), ContainerSource.Directory(AppContext.BaseDirectory));
-        environment.ResolveComponents([], [new(AzureEnvironmentResourceKinds.FunctionApp, "reset-probe-app")]);
+        environment.ResolveComponents([], [new(AzureResourceKinds.FunctionApp, "reset-probe-app")]);
 
         EnvComponent functionApp = environment.GetComponent(DockerAzureEnvironment.FunctionAppComponentId);
 
@@ -76,8 +76,8 @@ public class AzureResetEnvComponentTests
         IReadOnlyCollection<EnvComponentIdentifier> roots = DockerAzurePersistentRootMapper.Map(
             new DockerAzureEnvironment(),
             [
-                new(AzureEnvironmentResourceKinds.Storage, "storage"),
-                new(AzureEnvironmentResourceKinds.ServiceBus, "bus"),
+                new(AzureResourceKinds.Storage, "storage"),
+                new(AzureResourceKinds.ServiceBus, "bus"),
             ]);
 
         Assert.DoesNotContain(DockerAzureEnvironment.AzureResetComponentId, roots);
