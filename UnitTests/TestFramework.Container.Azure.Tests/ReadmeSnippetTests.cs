@@ -26,6 +26,16 @@ public class ReadmeSnippetTests
     private static readonly Regex RegionEnd = new(@"^\s*#endregion\s*$", RegexOptions.Compiled);
 
     [Fact]
+    public void TheSamplesProjectIsCompiledButNeverRunAsTests()
+    {
+        // It references xunit so its samples can show [Fact], which makes a test runner try to start it - and
+        // fail on assemblies it never needed. Declaring it is the only thing that keeps it out of a test run.
+        string csproj = File.ReadAllText(Path.Combine(RepositoryRoot(), "UnitTests", "TestFramework.Container.Azure.Readme", "TestFramework.Container.Azure.Readme.csproj"));
+
+        Assert.Contains("<IsTestProject>false</IsTestProject>", csproj, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void EveryCSharpBlockInTheReadmeNamesTheCompiledSnippetItShows()
     {
         IReadOnlyList<ReadmeBlock> blocks = ReadmeBlocks();
