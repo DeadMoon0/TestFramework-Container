@@ -20,6 +20,7 @@ Targets `net8.0` and `net10.0`. Needs a reachable Docker daemon.
 
 Declare what the database is made of:
 
+<!-- snippet: quickstart-definition -->
 ```csharp
 internal sealed class SampleSqlDefinition : DockerSqlDefinition
 {
@@ -34,6 +35,7 @@ internal sealed class SampleSqlDefinition : DockerSqlDefinition
 
 Then point a run at it:
 
+<!-- snippet: quickstart-run -->
 ```csharp
 ConfigInstance config = ConfigInstance.Create()
     .LoadWebConfig()
@@ -69,6 +71,7 @@ Generation covers schemas, tables, columns, nullability, identities and primary 
 else a database needs belongs in a script, applied after the generated tables in the order the
 scripts are added:
 
+<!-- snippet: schema-scripts -->
 ```csharp
 builder.WithSchemaFromModels<Order>()
        .WithSchemaScript(SqlScript.FromFile("Schema/views.sql"))
@@ -103,6 +106,7 @@ Starting SQL Server is most of a run's setup time. A collection fixture starts t
 once and hands every run an environment on top of them; applications, stubs and sites are still started per
 run.
 
+<!-- snippet: hosted-collection -->
 ```csharp
 public sealed class OrdersStack : IDockerWebHostedFixtureState
 {
@@ -124,6 +128,7 @@ models a schema is generated from there. Each run's configuration is layered on 
 
 Declare the application the same way, pointing a configuration value at the database:
 
+<!-- snippet: api-definition -->
 ```csharp
 internal sealed class OrdersApiDefinition : DockerApiDefinition
 {
@@ -147,6 +152,7 @@ stays a black box, addressed only by the paths it exposes.
 Both go into the same environment, and the timeline calls the API while asserting on the database
 behind it:
 
+<!-- snippet: api-run -->
 ```csharp
 Timeline timeline = Timeline.Create()
     .Trigger(WebExt.Api.Http("orders").Post("api/orders")
@@ -172,10 +178,11 @@ By default the SDK builds an image from the project — no Dockerfile, and the b
 project's framework, so `net10.0` becomes `mcr.microsoft.com/dotnet/aspnet:10.0`. Two other
 strategies are one call away:
 
+<!-- snippet: container-sources -->
 ```csharp
-ContainerSource.Project(path)                     // SDK builds the image        ~8 s
-ContainerSource.Project(path).BuiltOnHost()       // publish to temp, copy in    ~2 s
-ContainerSource.Project(path).BuiltInContainer()  // built in Docker, clean host ~6 s
+ContainerSource sdkBuilt = ContainerSource.Project(path);                          // SDK builds the image        ~8 s
+ContainerSource hostBuilt = ContainerSource.Project(path).BuiltOnHost();           // publish to temp, copy in    ~2 s
+ContainerSource containerBuilt = ContainerSource.Project(path).BuiltInContainer(); // built in Docker, clean host ~6 s
 ```
 
 `BuiltInContainer` leaves no build output on the host at all and needs **no feed credentials**: the
@@ -186,9 +193,10 @@ inside the container.
 
 Other sources are available where a project is not the right answer:
 
+<!-- snippet: other-sources -->
 ```csharp
-ContainerSource.Image("orders-api:ci-1234")            // a pipeline already built it
-ContainerSource.Directory(@"C:\out\orders-api")        // this exact folder
+ContainerSource prebuilt = ContainerSource.Image("orders-api:ci-1234");      // a pipeline already built it
+ContainerSource folder = ContainerSource.Directory(@"C:\out\orders-api");    // this exact folder
 ```
 
 Whatever the source, the plan is written to the run log before anything starts and kept on the
@@ -200,8 +208,9 @@ Settings become a generated `appsettings.<Environment>.json` copied in beside th
 set of doubly underscored environment variables — a file can be read back when a run misbehaves. It
 is written to the run log, and kept on the state:
 
+<!-- snippet: api-state -->
 ```csharp
-ApiComponentState state = run.EnvironmentContext.GetState<ApiComponentState>(DockerWebEnvironment.ApiComponentId);
+ApiComponentState state = run.EnvironmentContext.GetState<ApiComponentState>(DockerWebEnvironment.ApiComponentId)!;
 RunningApi api = state.GetRequiredApi("orders");
 // api.SettingsJson, api.BaseUrl, api.Plan.ProjectPath, api.Plan.Image, api.Plan.BuiltAtUtc
 ```
@@ -220,6 +229,7 @@ application container is per-run and the SQL container is not.
 A stub definition comes from `TestFramework.Web` and says nothing about hosting — declaring it here
 is what decides that a container serves it:
 
+<!-- snippet: stub-definition -->
 ```csharp
 internal sealed class PaymentsStubDefinition : StubDefinition
 {
@@ -230,27 +240,35 @@ internal sealed class PaymentsStubDefinition : StubDefinition
             .RespondJson(HttpStatusCode.OK, new { currency = "EUR", rate = 1.08 })
         .OnPost("/api/charges")
             .WithHeader("Idempotency-Key")
-            .RespondJson(HttpStatusCode.Created, new { id = "{{Random Type=Guid}}" }, useTemplating: true);
+            .Respond(StubResponse.Json(HttpStatusCode.Created, new { id = "{{Random Type=Guid}}" }) with { UseTemplating = true });
 }
 ```
 
 The application is pointed at it the same way it is pointed at a database:
 
+<!-- snippet: stub-wiring -->
 ```csharp
 protected override void Configure(DockerApiBuilder builder) => builder
     .UseSql<SalesSqlDefinition>("ConnectionStrings:Sales")
     .UseStub<PaymentsStubDefinition>("Services:Payments:BaseUrl");
 
-DockerWebEnvironment.For<SalesSqlDefinition>()
+DockerWebEnvironment environment = DockerWebEnvironment.For<SalesSqlDefinition>()
     .Include<OrdersApiDefinition>()
     .IncludeStub<PaymentsStubDefinition>();
 ```
 
 Then the timeline asserts on what the application sent **outwards**, which no response body can show:
 
+<!-- snippet: stub-assertions -->
 ```csharp
-.WaitForEvent(WebExt.Stub.Called("payments", HttpMethod.Post, "/api/charges")).Label("charged")
-.Trigger(WebExt.Stub.Calls("payments")).Label("calls")
+Timeline timeline = Timeline.Create()
+    .Trigger(WebExt.Api.Http("orders").Post("api/orders")
+        .WithJsonBody(Var.Const(new CreateOrder("charged-order", 3))).Call())
+    .WaitForEvent(WebExt.Stub.Called("payments", HttpMethod.Post, "/api/charges")).Label("charged")
+    .Trigger(WebExt.Stub.Calls("payments")).Label("calls")
+    .Build();
+
+TimelineRun run = await timeline.SetupRun(config).SetEnv(environment).RunAsync();
 
 run.StubCall("charged").Select(call => call.Body).Should().Contain("\"amount\":30");
 run.StubCalls("calls").Should().HaveCount(1);
@@ -274,6 +292,7 @@ A site is the application a browser loads: an Angular build, any other npm frame
 plain folder of pages. Nothing framework-specific is baked into the container kind — a fixed nginx
 image gets the payload copied in, and the `Source` only says where that payload comes from:
 
+<!-- snippet: site-definition -->
 ```csharp
 internal sealed class ShopSiteDefinition : DockerSiteDefinition
 {
@@ -286,7 +305,7 @@ internal sealed class ShopSiteDefinition : DockerSiteDefinition
         .ProxyApi<OrdersApiDefinition>("/api");
 }
 
-DockerWebEnvironment.For<SalesSqlDefinition>()
+DockerWebEnvironment environment = DockerWebEnvironment.For<SalesSqlDefinition>()
     .Include<OrdersApiDefinition>()
     .Include<ShopSiteDefinition>();
 ```
@@ -334,20 +353,22 @@ The declarative bindings write into one JSON file (default `assets/config.json`)
 the file the payload ships: a checked-in `{ "apiBaseUrl": null, "theme": "dark" }` keeps `theme`.
 For every other shape — `env.js`, `window.__env`, a patched page — one composer covers it:
 
+<!-- snippet: config-file -->
 ```csharp
-.WithConfigFile("env.js", ctx =>
-    $"window.__env = {{ ordersApi: \"{ctx.Addresses.ApiBaseUrl("orders")}\" }};")
+builder.WithConfigFile("env.js", ctx =>
+    $"window.__env = {{ ordersApi: \"{ctx.Addresses.ApiBaseUrl("orders")}\" }};");
 
 // or patch one field of the shipped JSON without rebuilding the rest:
-.WithConfigFile("assets/config.json", ctx =>
-    ctx.MergeJson(("apiBaseUrl", ctx.Addresses.ApiBaseUrl("orders").ToString())))
+builder.WithConfigFile("assets/config.json", ctx =>
+    ctx.MergeJson(("apiBaseUrl", ctx.Addresses.ApiBaseUrl("orders").ToString())));
 ```
 
 Every generated file — the nginx config included — is logged verbatim and kept on the component
 state, so a test can state what was actually served:
 
+<!-- snippet: site-state -->
 ```csharp
-SiteComponentState state = run.EnvironmentContext.GetState<SiteComponentState>(DockerWebEnvironment.SiteComponentId);
+SiteComponentState state = run.EnvironmentContext.GetState<SiteComponentState>(DockerWebEnvironment.SiteComponentId)!;
 RunningSite site = state.GetRequiredSite("shop");
 // site.BaseUrl, site.NginxConfig, site.GeneratedFiles["assets/config.json"], site.Plan
 ```
@@ -369,8 +390,9 @@ SQL Server and the stub server.
 The test process gets the **host** connection string; the application container gets the **network**
 one. Both describe the same database, and handing over the wrong one is the classic failure:
 
+<!-- snippet: two-addresses -->
 ```csharp
-SqlServerComponentState state = run.EnvironmentContext.GetState<SqlServerComponentState>(DockerWebEnvironment.SqlServerComponentId);
+SqlServerComponentState state = run.EnvironmentContext.GetState<SqlServerComponentState>(DockerWebEnvironment.SqlServerComponentId)!;
 SqlDatabaseEndpoint endpoint = state.GetRequiredDatabase("main");
 // endpoint.HostConnectionString    -> localhost,<mapped port>   (published to the timeline)
 // endpoint.NetworkConnectionString -> sqlserver,1433            (injected via UseSql)
@@ -383,11 +405,12 @@ SqlDatabaseEndpoint endpoint = state.GetRequiredDatabase("main");
 One container serves every declared database, so the server settings belong to the environment
 rather than to a definition:
 
+<!-- snippet: tuning -->
 ```csharp
-DockerWebEnvironment.For<SampleSqlDefinition>()
+DockerWebEnvironment environment = DockerWebEnvironment.For<SampleSqlDefinition>()
     .Include<ReportingSqlDefinition>()
     .UseSqlImage("mcr.microsoft.com/mssql/server:2019-latest")
-    .UseSqlMemoryLimit(2048)
+    .UseSqlMemoryLimit(2048);
 ```
 
 ## Troubleshooting

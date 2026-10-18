@@ -17,6 +17,8 @@
 		<ProjectReference Include="..\..\TestFramework.Container.Web\TestFramework.Container.Web.csproj" />
 		<!-- The application under test. Referencing it is what builds the output the container ships. -->
 		<ProjectReference Include="..\TestFramework.Container.Web.SampleApi\TestFramework.Container.Web.SampleApi.csproj" />
+		<!-- The README's samples, compiled; ReadmeSnippetTests holds the README to them. -->
+		<ProjectReference Include="..\TestFramework.Container.Web.Readme\TestFramework.Container.Web.Readme.csproj" />
 	</ItemGroup>
 
 </Project>
