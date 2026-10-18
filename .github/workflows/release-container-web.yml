@@ -85,8 +85,9 @@ jobs:
         run: |
           set -euo pipefail
           # The notes describe this release. A copy of the previous one's tells a consumer nothing new - or tells
-          # them again about a break they already took - and twelve releases of this family shipped exactly that.
-          previous="$(git tag -l "${PACKAGE_PREFIX}-v*" --sort=-v:refname | grep -vx "$GITHUB_REF_NAME" | head -n1 || true)"
+          # them again about a break they already took. "Previous" is the release just below this one, so a patch
+          # of an older line is compared with that line, not with the newest release.
+          previous="$( { git tag -l "${PACKAGE_PREFIX}-v*"; echo "$GITHUB_REF_NAME"; } | sort -uV | grep -x -B1 "$GITHUB_REF_NAME" | grep -vx "$GITHUB_REF_NAME" || true)"
           if [ -z "$previous" ]; then
             echo "No earlier ${PACKAGE_PREFIX} release to compare with."
             exit 0
