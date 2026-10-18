@@ -26,7 +26,7 @@ The package plugs into the run through `SetEnv(...)` with a `DockerAzureEnvironm
 
 That environment:
 - starts the required emulator components before the main timeline steps run
-- rewrites registered Azure config entries to the mapped local Docker endpoints
+- publishes each container's mapped endpoint on the run, where steps read it with `context.Configured<T>(identifier)`
 - validates the resolved component graph and binds compatible contracts before startup
 - keeps the normal identifier-driven Azure config contract intact
 
@@ -48,7 +48,7 @@ Logic Apps are not supported in the Docker container package. Keep Logic App tes
 If you already have a timeline that runs against real Azure, the migration path is intentionally small:
 
 1. Keep the timeline itself unchanged.
-2. Keep the same Azure identifier names in your config stores.
+2. Keep the same Azure identifier names in your configuration.
 3. Give each identifier its names, in configuration or on its definition; the containers publish the addresses.
 4. Load configuration with `LoadDockerAzureConfig()` in place of `LoadAzureConfig()`.
 5. Switch the run builder to `SetEnv(DockerAzureEnvironment.For<TRootDefinition>())`.
@@ -190,7 +190,7 @@ TimelineRun run = await timeline
 ```
 
 In that example, including `DefaultFunctionApp` is enough because its `Configure(...)` method already declares `MainStorage`, `MainDb`, and `ProcessingReply` by component type.
-The component types are the contract: identifier, dependency graph, and, when useful for a shared setup, the default config they own before the environment rewrites runtime endpoints.
+The component types are the contract: identifier, dependency graph, and, when useful for a shared setup, the default names they own; the addresses are published by the containers when they start.
 
 `.UseStorageAccount<TStorage>()` injects `StorageTableName` by default when the storage config defines `TableName`.
 Pass a `FunctionAppStorageAccountBinding` when your Function App reads a different setting name, or set `TableNameSettingName` to `null` to inject none:
@@ -562,7 +562,7 @@ dotnet test .\UnitTests\TestFramework.Container.Azure.Tests\TestFramework.Contai
 ## Related Packages
 
 - `TestFramework.Azure` for Azure triggers, waits, and artifact types
-- `TestFramework.Config` for building the service provider and config stores used by the run
+- `TestFramework.Config` for building the service provider and reading configuration in a run
 - `TestFramework.Core` for the base timeline model and run assertions
 
 ## Further Reading

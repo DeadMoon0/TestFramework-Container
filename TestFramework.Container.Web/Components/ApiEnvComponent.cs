@@ -101,6 +101,7 @@ internal sealed class ApiEnvComponent : WebEnvComponentBase
             planned,
             (plan, token) => StartApiAsync(plan, network, context.Logger, token),
             result => result.Container,
+            context.Logger,
             context.Deadline.Token).ConfigureAwait(false);
 
         List<RunningApi> apis = [];
@@ -147,7 +148,7 @@ internal sealed class ApiEnvComponent : WebEnvComponentBase
     {
         string alias = NetworkAlias(planned.Definition.Identifier);
         IContainer container = BuildContainer(planned, network, alias);
-        return await ContainerStartup.BringUpAsync(container, async () =>
+        return await ContainerStartup.BringUpAsync(container, logger, async () =>
         {
             await StartAsync(container, planned.Definition, planned.Image, logger, cancellationToken).ConfigureAwait(false);
 

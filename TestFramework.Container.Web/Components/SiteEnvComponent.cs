@@ -123,6 +123,7 @@ internal sealed class SiteEnvComponent : WebEnvComponentBase
             planned,
             (site, token) => StartSiteAsync(site, network, context.Logger, token),
             result => result.Container,
+            context.Logger,
             context.Deadline.Token).ConfigureAwait(false);
 
         List<RunningSite> sites = [];
@@ -263,7 +264,7 @@ internal sealed class SiteEnvComponent : WebEnvComponentBase
         string identifier = planned.Definition.Identifier;
         IContainer container = BuildContainer(planned, network, NetworkAlias(identifier));
 
-        return await ContainerStartup.BringUpAsync(container, async () =>
+        return await ContainerStartup.BringUpAsync(container, logger, async () =>
         {
             await StartAsync(container, identifier, ServingImage(planned), logger, cancellationToken).ConfigureAwait(false);
 

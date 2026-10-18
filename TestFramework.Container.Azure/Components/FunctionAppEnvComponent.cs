@@ -68,6 +68,7 @@ internal sealed class FunctionAppEnvComponent(DockerAzureEnvironment owner) : Do
             planned,
             (plan, token) => StartFunctionAppAsync(plan, network, endpointMap, context.Logger, token),
             result => result.Container,
+            context.Logger,
             context.Deadline.Token).ConfigureAwait(false);
 
         // Published once every start has settled, so a half-started set never advertises addresses.
@@ -257,7 +258,7 @@ internal sealed class FunctionAppEnvComponent(DockerAzureEnvironment owner) : Do
         IContainer container = builder.Build();
         logger.LogInformation("Function App '{0}' starting image '{1}' with mount '{2}' -> '{3}'.", plan.Identifier, plan.Image, plan.PayloadDirectory, FunctionAppRoot);
 
-        return await ContainerStartup.BringUpAsync(container, async () =>
+        return await ContainerStartup.BringUpAsync(container, logger, async () =>
         {
             await container.StartAsync(cancellationToken).ConfigureAwait(false);
             logger.LogInformation("Function App '{0}' container '{1}' started. Waiting for host readiness.", plan.Identifier, container.Id);

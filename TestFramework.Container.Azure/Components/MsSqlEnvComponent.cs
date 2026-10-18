@@ -60,7 +60,7 @@ internal sealed class MsSqlEnvComponent : DockerAzureEnvComponent
             },
             network);
 
-        return await ContainerStartup.BringUpAsync(container, async () =>
+        return await ContainerStartup.BringUpAsync(container, context.Logger, async () =>
         {
             await container.StartAsync(context.Deadline.Token).ConfigureAwait(false);
 

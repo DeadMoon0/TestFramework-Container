@@ -55,7 +55,21 @@ internal sealed class ServiceBusEnvComponent : DockerAzureEnvComponent
             .WithCreateParameterModifier(ContainerPortBinding.Apply)
             .Build();
 
-        return await ContainerStartup.BringUpAsync(container, async () =>
+        // Once the emulator is up its runtime state owns the topology file; until then, a start that fails
+        // would leave the file to the one-day sweep.
+        try
+        {
+            return await BringUpAsync(context, dockerEnvironment, container, materializedTopology).ConfigureAwait(false);
+        }
+        catch
+        {
+            materializedTopology.DiscardIfTemporary();
+            throw;
+        }
+    }
+
+    private Task<ServiceBusRuntimeState> BringUpAsync(RunContext context, DockerAzureEnvironment dockerEnvironment, ServiceBusContainer container, MaterializedServiceBusTopology materializedTopology)
+        => ContainerStartup.BringUpAsync(container, context.Logger, async () =>
         {
             await container.StartAsync(context.Deadline.Token).ConfigureAwait(false);
 
@@ -79,8 +93,7 @@ internal sealed class ServiceBusEnvComponent : DockerAzureEnvComponent
             }
 
             return new ServiceBusRuntimeState(container, materializedTopology.IsTemporary ? materializedTopology.ConfigPath : null);
-        }).ConfigureAwait(false);
-    }
+        });
 
     public override async Task DeconstructAsync(object? state, IEnvironmentProvider environment, RunContext context)
     {

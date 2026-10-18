@@ -47,11 +47,11 @@ The package plugs into the run builder through `SetEnv(...)` with a `DockerAzure
 
 That environment:
 - starts only the emulator components the timeline actually needs
-- rewrites the configured Azure connection settings to the mapped local Docker endpoints
+- publishes each container's mapped endpoint on the run, where steps read it
 - validates the resolved component graph and binds compatible contracts before startup
 - keeps the normal identifier-driven Azure config contract intact
 
-Those placeholder config entries can be registered directly by the test project, or owned by shared component classes when a reusable test stack wants each component to describe itself completely. The environment treats those configs as identifier registrations plus logical placeholders, then rewrites the runtime endpoints from the activated component graph.
+Each identifier's names - which blob container, which database - come from a configuration entry or from its definition, when a reusable test stack wants each component to describe itself completely. The addresses come from the containers: nothing a person declared is rewritten.
 
 The timeline still reads like a normal TestFramework timeline. The environment is the switch that makes the run container-backed.
 
@@ -64,9 +64,9 @@ If your timeline includes Logic App triggers or events, keep those tests on the 
 ## Prerequisites
 
 - Docker Desktop or another compatible Docker engine must be running
-- the test project must already reference the normal Azure config identifiers it uses in the timeline
+- every Azure identifier the timeline uses needs its names, from configuration or from its definition
 - Service Bus scenarios need a valid topology, preferably through `ConfigureServiceBusTopology(...)`
-- Cosmos scenarios often need emulator-specific client options such as certificate bypass
+- configuration is loaded with `LoadDockerAzureConfig()`, which also points the Cosmos client at the emulator and accepts its development certificate
 
 ## Start Here
 
@@ -101,7 +101,7 @@ dotnet test .\UnitTests\TestFramework.Container.Azure.Tests\TestFramework.Contai
 - If a resource is not created, check whether the timeline or environment requirements actually activate the owning definition.
 - If a definition is included but never used, treat that as "available" rather than "activated".
 - If Service Bus startup fails, inspect topology ownership and SQL dependency first.
-- If Cosmos tests fail after the emulator starts, inspect client options and confirm the test process is using the rewritten mapped endpoint.
+- If Cosmos tests fail after the emulator starts, confirm configuration was loaded with `LoadDockerAzureConfig()` rather than `LoadAzureConfig()`.
 
 ### "Failed to download" / CONTAINER1006 when building an image from a project
 

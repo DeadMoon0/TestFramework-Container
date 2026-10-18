@@ -17,7 +17,7 @@
 		<PackageTags>Test;UnitTest;IntegrationTest;Framework;Timeline;Docker</PackageTags>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<Copyright>Copyright (c) DeadMoon0 2026</Copyright>
-		<PackageReleaseNotes>BREAKING - needs TestFramework.Core 0.7.0. MsSqlContainerOptions takes init properties, and optional parameters became overloads. ContainerStartup.BringUpAsync removes a container that started but failed before its component could hand it over. New: HostedRunEnvironment, the run environment every hosted fixture in the family hands out. ContainerRuntime.EnsureInitialized is now EnsureReadyAsync: it also asks the daemon, and refuses a missing CLI, a daemon that does not answer, or Windows containers by name. A built image is reused only while its project's sources are unchanged. Readiness waits end with the step's deadline and bound every attempt (new: ContainerReadiness.WaitUntilAsync). New: SqlDatabaseLifecycle, the one drop-and-recreate both container packages use; it never drops a system database or the Service Bus emulator's own.</PackageReleaseNotes>
+		<PackageReleaseNotes>BREAKING - needs TestFramework.Core 0.7.0; ContainerRuntime.EnsureInitialized is EnsureReadyAsync, ContainerStartup.BringUpAsync and ContainerStartCoordinator.StartAllAsync take the logger they report a failed removal to, and optional parameters became overloads. A built image is reused only while its project's sources are unchanged, and readiness waits end with the step's deadline.</PackageReleaseNotes>
 	</PropertyGroup>
 
 	<ItemGroup>

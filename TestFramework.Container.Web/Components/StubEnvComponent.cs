@@ -64,6 +64,7 @@ internal sealed class StubEnvComponent : WebEnvComponentBase
             ordered,
             (definition, token) => StartStubAsync(webEnvironment, definition, network, context.Logger, token),
             result => result.Container,
+            context.Logger,
             context.Deadline.Token).ConfigureAwait(false);
 
         // The admin client resolves the address through the run, so counting has to follow publishing.
@@ -114,7 +115,7 @@ internal sealed class StubEnvComponent : WebEnvComponentBase
 
         logger.LogInformation("Stub '{0}' starts with {1} mapping(s) on image '{2}'.", definition.Identifier, mappings.Count, webEnvironment.StubImage);
 
-        return await ContainerStartup.BringUpAsync(container, async () =>
+        return await ContainerStartup.BringUpAsync(container, logger, async () =>
         {
             await StartAsync(container, definition.Identifier, webEnvironment.StubImage, logger, cancellationToken).ConfigureAwait(false);
 

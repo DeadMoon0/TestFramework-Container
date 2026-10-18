@@ -17,7 +17,7 @@
 		<PackageTags>Test;UnitTest;IntegrationTest;Framework;Timeline;Docker;Web;Sql;SqlServer</PackageTags>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<Copyright>Copyright (c) DeadMoon0 2026</Copyright>
-		<PackageReleaseNotes>BREAKING - needs TestFramework.Core 0.7.0, TestFramework.Config 0.4.0 and TestFramework.Web 0.6.0. Optional parameters became overloads, the specs and running-state records are built by the package, and DockerWebDefinition can only be derived as a SQL, API or site definition. DockerWebEnvironment.SqlPassword is gone: each SQL Server container generates its own login unless UseSqlPassword pins one, so runs sharing an environment no longer share state. DockerWebEnvironment is sealed. New: DockerWebHostedCollectionFixture starts the network and SQL Server once per collection, and each later run applies the databases' reset modes. A site built with npm on the host waits for any other build of the same project instead of racing it.</PackageReleaseNotes>
+		<PackageReleaseNotes>BREAKING - needs TestFramework.Core 0.7.0, TestFramework.Config 0.4.0 and TestFramework.Web 0.6.0; optional parameters became overloads, and DockerWebEnvironment.SqlPassword is gone - each SQL Server container generates its own login unless UseSqlPassword pins one. New: DockerWebHostedCollectionFixture starts the network and SQL Server once per collection, and each later run applies the databases' reset modes.</PackageReleaseNotes>
 	</PropertyGroup>
 
 	<ItemGroup>

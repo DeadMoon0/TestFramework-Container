@@ -199,7 +199,17 @@ internal sealed class ServiceBusTopologySource
     }
 }
 
-internal sealed record MaterializedServiceBusTopology(string ConfigPath, bool IsTemporary);
+internal sealed record MaterializedServiceBusTopology(string ConfigPath, bool IsTemporary)
+{
+    /// <summary>
+    /// Removes a file written for this run when the emulator never came up to own it.
+    /// </summary>
+    internal void DiscardIfTemporary()
+    {
+        if (IsTemporary && File.Exists(ConfigPath))
+            File.Delete(ConfigPath);
+    }
+}
 
 internal static class ServiceBusTopologyMaterializer
 {

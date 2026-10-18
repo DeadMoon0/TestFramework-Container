@@ -68,7 +68,7 @@ internal sealed class SqlServerEnvComponent : WebEnvComponentBase
             },
             network);
 
-        return await ContainerStartup.BringUpAsync(container, async () =>
+        return await ContainerStartup.BringUpAsync(container, context.Logger, async () =>
         {
             await container.StartAsync(context.Deadline.Token).ConfigureAwait(false);
 

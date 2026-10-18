@@ -40,6 +40,17 @@ public sealed class SourceFingerprintTests : IDisposable
         => AssertChangesFingerprint(Path.Combine("Core", "Program.cs"));
 
     [Fact]
+    public void DeletingASourceFile_ChangesWhatCountsAsTheSameBuild()
+    {
+        Write(Path.Combine("App", "Helper.cs"), "class H { }");
+        string before = SourceFingerprint.Of(AppProject);
+
+        File.Delete(Path.Combine(_root, "App", "Helper.cs"));
+
+        Assert.NotEqual(before, SourceFingerprint.Of(AppProject));
+    }
+
+    [Fact]
     public void ABuildWritingItsOutput_DoesNotChangeWhatCountsAsTheSameBuild()
     {
         string before = SourceFingerprint.Of(AppProject);

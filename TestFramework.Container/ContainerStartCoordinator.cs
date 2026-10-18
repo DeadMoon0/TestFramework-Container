@@ -4,6 +4,7 @@ using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNet.Testcontainers.Containers;
+using TestFramework.Core.Logging;
 
 namespace TestFramework.Container;
 
@@ -56,6 +57,7 @@ public static class ContainerStartCoordinator
     /// <param name="items">The declarations, in the order the results should come back in.</param>
     /// <param name="startAsync">Starts one container and waits for it to be usable.</param>
     /// <param name="containerSelector">Reads the container out of a result so a failed run can remove it.</param>
+    /// <param name="logger">Told when a started container could not be removed after a sibling failed.</param>
     /// <param name="maxConcurrency">How many starts may be in flight at once.</param>
     /// <param name="cancellationToken">The cancellation token for the running setup.</param>
     /// <returns>One result per item, in the order the items were given.</returns>
@@ -63,6 +65,7 @@ public static class ContainerStartCoordinator
         IReadOnlyList<TItem> items,
         Func<TItem, CancellationToken, Task<TResult>> startAsync,
         Func<TResult, IContainer?> containerSelector,
+        ScopedLogger? logger,
         int maxConcurrency,
         CancellationToken cancellationToken)
     {
@@ -96,7 +99,7 @@ public static class ContainerStartCoordinator
         {
             // Whatever came up before the failure is nobody's to dispose: the component never returned
             // state, so the framework will not tear it down.
-            await RemoveStartedAsync(results, started, containerSelector).ConfigureAwait(false);
+            await RemoveStartedAsync(results, started, containerSelector, logger).ConfigureAwait(false);
             Rethrow(starts, cancellationToken);
             throw;
         }
@@ -133,16 +136,18 @@ public static class ContainerStartCoordinator
     /// <param name="items">The declarations, in the order the results should come back in.</param>
     /// <param name="startAsync">Starts one container and waits for it to be usable.</param>
     /// <param name="containerSelector">Reads the container out of a result so a failed run can remove it.</param>
+    /// <param name="logger">Told when a started container could not be removed after a sibling failed.</param>
     /// <param name="cancellationToken">The cancellation token for the running setup.</param>
     /// <returns>One result per item, in the order the items were given.</returns>
     public static Task<IReadOnlyList<TResult>> StartAllAsync<TItem, TResult>(
         IReadOnlyList<TItem> items,
         Func<TItem, CancellationToken, Task<TResult>> startAsync,
         Func<TResult, IContainer?> containerSelector,
+        ScopedLogger? logger,
         CancellationToken cancellationToken)
-        => StartAllAsync(items, startAsync, containerSelector, DefaultMaxConcurrency, cancellationToken);
+        => StartAllAsync(items, startAsync, containerSelector, logger, DefaultMaxConcurrency, cancellationToken);
 
-    private static async Task RemoveStartedAsync<TResult>(TResult[] results, bool[] started, Func<TResult, IContainer?> containerSelector)
+    private static async Task RemoveStartedAsync<TResult>(TResult[] results, bool[] started, Func<TResult, IContainer?> containerSelector, ScopedLogger? logger)
     {
         for (int index = 0; index < results.Length; index++)
         {
@@ -153,14 +158,8 @@ public static class ContainerStartCoordinator
             if (container is null)
                 continue;
 
-            try
-            {
-                // Cleanup after a failure must never replace the failure with one of its own.
-                await ContainerDockerCommands.ForceRemoveContainerAsync(container, CancellationToken.None).ConfigureAwait(false);
-            }
-            catch
-            {
-            }
+            // Cleanup after a failure must never replace the failure with one of its own.
+            await ContainerRemoval.RemoveAfterFailureAsync(container, logger).ConfigureAwait(false);
         }
     }
 

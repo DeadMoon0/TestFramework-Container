@@ -2,13 +2,15 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
 using System.Xml.Linq;
 
 namespace TestFramework.Container.Sources;
 
 /// <summary>
-/// When the sources an image is built from last changed: the project and every project it references,
-/// transitively.
+/// Which sources an image is built from, and when they last changed: the project and every project it
+/// references, transitively.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -28,25 +30,34 @@ internal static class SourceFingerprint
     private static readonly HashSet<string> Ignored = new(StringComparer.OrdinalIgnoreCase) { "bin", "obj", "node_modules", ".git", ".vs", ".idea" };
 
     /// <summary>
-    /// The newest write among the sources of a project and its references, as a stable string.
+    /// The newest write among the sources of a project and its references, and which files they are, as a
+    /// stable string.
     /// </summary>
+    /// <remarks>
+    /// The newest write alone misses an edit that only removes: deleting a file leaves every remaining date as it
+    /// was, and so does a file copied in with its old date. The list of files catches both.
+    /// </remarks>
     /// <param name="projectPath">The project file.</param>
     public static string Of(string projectPath)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(projectPath);
 
         DateTime newest = DateTime.MinValue;
+        List<string> files = [];
         foreach (string directory in SourceDirectories(Path.GetFullPath(projectPath)))
         {
             foreach (string file in FilesUnder(directory))
             {
+                files.Add(file);
                 DateTime written = File.GetLastWriteTimeUtc(file);
                 if (written > newest)
                     newest = written;
             }
         }
 
-        return newest.Ticks.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        files.Sort(StringComparer.Ordinal);
+        string which = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(string.Join('\n', files))));
+        return $"{newest.Ticks.ToString(System.Globalization.CultureInfo.InvariantCulture)}-{which}";
     }
 
     /// <summary>
@@ -93,16 +104,35 @@ internal static class SourceFingerprint
 
     private static IEnumerable<string> FilesUnder(string directory)
     {
-        foreach (string file in Directory.EnumerateFiles(directory))
+        foreach (string file in Readable(() => Directory.GetFiles(directory)))
             yield return file;
 
-        foreach (string child in Directory.EnumerateDirectories(directory))
+        foreach (string child in Readable(() => Directory.GetDirectories(directory)))
         {
             if (Ignored.Contains(Path.GetFileName(child)))
                 continue;
 
             foreach (string file in FilesUnder(child))
                 yield return file;
+        }
+    }
+
+    /// <summary>
+    /// What a directory lists, or nothing when it cannot be read.
+    /// </summary>
+    /// <remarks>
+    /// A folder the build cannot see into - a tool's lock, another user's cache - must not take the build
+    /// decision down with it; it is not a source a person edits.
+    /// </remarks>
+    private static string[] Readable(Func<string[]> list)
+    {
+        try
+        {
+            return list();
+        }
+        catch (Exception exception) when (exception is UnauthorizedAccessException or IOException)
+        {
+            return [];
         }
     }
 }

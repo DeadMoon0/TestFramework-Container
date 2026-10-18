@@ -82,7 +82,7 @@ public class ConventionTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public void EveryExceptionThisPackageThrowsIsAFrameworkException()
+    public void EveryExceptionTypeThisPackageDeclaresIsAFrameworkException()
     {
         // One base, so a failure carries its recovery steps and reads the same way in a run's failure detail as
         // every other package's.

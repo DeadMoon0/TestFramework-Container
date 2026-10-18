@@ -51,7 +51,7 @@ internal sealed class AzuriteEnvComponent : DockerAzureEnvComponent
             .WithCommand("azurite", "--blobHost", "0.0.0.0", "--queueHost", "0.0.0.0", "--tableHost", "0.0.0.0", "--skipApiVersionCheck")
             .Build();
 
-        return await ContainerStartup.BringUpAsync(container, async () =>
+        return await ContainerStartup.BringUpAsync(container, context.Logger, async () =>
         {
             await container.StartAsync(context.Deadline.Token).ConfigureAwait(false);
 

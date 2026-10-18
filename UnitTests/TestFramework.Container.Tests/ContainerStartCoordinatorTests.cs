@@ -34,6 +34,7 @@ public class ContainerStartCoordinatorTests
                 return item;
             },
             static _ => null,
+            null,
             CancellationToken.None);
 
         Assert.Equal([0, 1, 2, 3], results);
@@ -59,6 +60,7 @@ public class ContainerStartCoordinatorTests
                 return containers[item];
             },
             static container => (IContainer)container,
+            null,
             CancellationToken.None));
 
         Assert.Same(failure, reported);
@@ -91,6 +93,7 @@ public class ContainerStartCoordinatorTests
                 return item;
             },
             static _ => null,
+            null,
             CancellationToken.None));
 
         Assert.True(await siblingCancelled.Task.WaitAsync(TimeSpan.FromSeconds(10)));
@@ -113,6 +116,7 @@ public class ContainerStartCoordinatorTests
                 return item;
             },
             static _ => null,
+            null,
             maxConcurrency: 3,
             CancellationToken.None);
 
@@ -136,6 +140,7 @@ public class ContainerStartCoordinatorTests
                 throw new InvalidOperationException("a start that failed because the run was stopped");
             },
             static started => (IContainer)started,
+            null,
             caller.Token));
 
         Assert.True(StandIn.Of(container).TakenDown, "A container that had started was left running after the caller stopped.");
