@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
@@ -237,7 +238,14 @@ public class SiteContainerSmokeTests
         Assert.Contains("app-root", Fetched(run, "index").Body, StringComparison.Ordinal);
 
         SiteComponentState? state = run.EnvironmentContext.GetState<SiteComponentState>(DockerWebEnvironment.SiteComponentId);
-        Assert.Equal(SiteSourceKind.NpmProject, state!.GetRequiredSite("shop").Plan.Kind);
+        SiteSourcePlan plan = state!.GetRequiredSite("shop").Plan;
+        Assert.Equal(SiteSourceKind.NpmProject, plan.Kind);
+
+        // Served from the run's own copy, not the project's output: the other framework's test process rebuilds
+        // into that folder, and a run copying from it while it was rewritten failed its upload.
+        Assert.False(
+            Path.GetFullPath(plan.DistDirectory!).StartsWith(Path.GetFullPath(SiteTestEnvironmentGate.AngularProjectDirectory), StringComparison.OrdinalIgnoreCase),
+            $"The site was served from the project's own output '{plan.DistDirectory}'.");
     }
 
     private sealed class AngularSiteDefinition : DockerSiteDefinition

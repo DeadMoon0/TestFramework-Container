@@ -102,7 +102,17 @@ public static class SitePayloadBuilder
         logger.LogInformation("Site '{0}' built in {1:0.0}s.", identifier, stopwatch.Elapsed.TotalSeconds);
 
         EnsureBuiltPayload(plan.DistDirectory!, identifier);
-        return plan with { BuiltAtUtc = File.GetLastWriteTimeUtc(Path.Combine(plan.DistDirectory!, "index.html")) };
+        DateTime builtAtUtc = File.GetLastWriteTimeUtc(Path.Combine(plan.DistDirectory!, "index.html"));
+
+        // Taken while the gate is still held. The project's own output is shared: once the gate is released, the
+        // other framework's process rebuilds into it - deleting and rewriting the files - while this run would still
+        // be copying them into its container, which broke the upload mid-stream. The run serves its own copy.
+        string snapshot = Path.Combine(Path.GetTempPath(), $"tf-site-{Guid.NewGuid():N}"[..20]);
+        Directory.CreateDirectory(snapshot);
+        int copied = InContainerBuild.CopySources(plan.DistDirectory!, snapshot);
+        logger.LogInformation("Site '{0}' took {1} built file(s) into '{2}' for this run.", identifier, copied, snapshot);
+
+        return plan with { DistDirectory = snapshot, TemporaryRoot = snapshot, BuiltAtUtc = builtAtUtc };
     }
 
     private static async Task<SiteSourcePlan> BuildInContainerAsync(
