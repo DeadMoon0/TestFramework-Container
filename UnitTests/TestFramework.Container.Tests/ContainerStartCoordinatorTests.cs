@@ -72,16 +72,23 @@ public class ContainerStartCoordinatorTests
     public async Task WhenOneStartFails_TheStartsStillWaitingStopPayingForTheirTimeouts()
     {
         TaskCompletionSource<bool> siblingCancelled = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<bool> siblingWaiting = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => ContainerStartCoordinator.StartAllAsync(
             [0, 1],
             async (item, token) =>
             {
+                // Fails only once the sibling is in its wait. Failing straight away let the coordinator cancel before the
+                // sibling had even started on a busy machine - which costs it nothing either, but proves nothing here.
                 if (item == 0)
-                    throw new InvalidOperationException("failed at once");
+                {
+                    await siblingWaiting.Task.WaitAsync(TimeSpan.FromSeconds(10));
+                    throw new InvalidOperationException("failed once the other was waiting");
+                }
 
                 try
                 {
+                    siblingWaiting.TrySetResult(true);
                     await Task.Delay(TimeSpan.FromMinutes(5), token);
                 }
                 catch (OperationCanceledException)
