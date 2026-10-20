@@ -268,6 +268,11 @@ internal sealed class SiteEnvComponent : WebEnvComponentBase
         {
             await StartAsync(container, identifier, ServingImage(planned), logger, cancellationToken).ConfigureAwait(false);
 
+            // Before the readiness wait, so the site is never reported ready while it still serves the image's own
+            // page instead of the payload.
+            if (planned.Plan.Kind != SiteSourceKind.Image)
+                await UploadPayloadAsync(container, identifier, planned.Plan.DistDirectory!, logger, cancellationToken).ConfigureAwait(false);
+
             Uri baseUrl = ContainerEndpoints.HostEndpoint(container, planned.Spec.InternalPort);
             await WaitForReadinessAsync(container, identifier, planned.Spec, baseUrl, logger, cancellationToken).ConfigureAwait(false);
 
@@ -290,10 +295,9 @@ internal sealed class SiteEnvComponent : WebEnvComponentBase
 
         if (planned.Plan.Kind != SiteSourceKind.Image)
         {
-            // The payload is copied rather than bind-mounted, so nothing is written back into the
-            // project's own output. Generated files are already inside the staged payload.
+            // The server's configuration only: it has to be in place before nginx starts, and it is a few hundred
+            // bytes. The payload follows once the container runs - see UploadPayloadAsync.
             builder = builder
-                .WithResourceMapping(new DirectoryInfo(planned.Plan.DistDirectory!), DockerWebDefaults.SiteContentRoot)
                 .WithResourceMapping(NginxConfigFile.ToBytes(planned.NginxConfig!), DockerWebDefaults.SiteNginxConfPath);
 
             return builder.Build();
@@ -331,6 +335,47 @@ internal sealed class SiteEnvComponent : WebEnvComponentBase
             };
         }
     }
+
+    /// <summary>
+    /// Copies the site's payload into its running container.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Copied rather than bind-mounted, so nothing is written back into the project's own output; generated files
+    /// are already inside the staged payload.
+    /// </para>
+    /// <para>
+    /// Through the Docker CLI rather than a resource mapping. Handed to the client library, an npm-built payload's
+    /// upload broke off on CI runners with nothing but "Broken pipe" - while the daemon's own log showed the archive
+    /// received and unpacked, and the files had not changed. Whatever the daemon says about a copy, the CLI prints,
+    /// so a refusal arrives as the daemon's reason rather than as a closed socket.
+    /// </para>
+    /// </remarks>
+    private static async Task UploadPayloadAsync(IContainer container, string identifier, string payload, ScopedLogger logger, CancellationToken cancellationToken)
+    {
+        // "/." copies what the folder holds rather than the folder itself.
+        string source = Path.Combine(payload, ".");
+        ContainerDockerCommands.CommandResult copied = await ContainerDockerCommands
+            .RunAsync($"cp \"{source}\" {container.Id}:{DockerWebDefaults.SiteContentRoot}", cancellationToken)
+            .ConfigureAwait(false);
+
+        if (copied.ExitCode == 0)
+        {
+            logger.LogInformation("Site '{0}' copied its payload from '{1}' into the container.", identifier, payload);
+            return;
+        }
+
+        throw new FrameworkStateException(
+            $"The payload for site '{identifier}' could not be copied into its container from '{payload}': {Describe(copied)}")
+        {
+            RecoverySteps = ["The message above is Docker's own; it names what the daemon refused."],
+        };
+    }
+
+    private static string Describe(ContainerDockerCommands.CommandResult result)
+        => string.IsNullOrWhiteSpace(result.StandardError)
+            ? $"docker exited with {result.ExitCode}."
+            : result.StandardError.Trim();
 
     private static async Task WaitForReadinessAsync(IContainer container, string identifier, DockerSiteSpec spec, Uri baseUrl, ScopedLogger logger, CancellationToken cancellationToken)
     {
