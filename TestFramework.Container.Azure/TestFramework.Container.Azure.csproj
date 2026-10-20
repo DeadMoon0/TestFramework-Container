@@ -60,7 +60,7 @@
 		<PackageReference Include="Testcontainers.ServiceBus" Version="4.11.0" />
 		<PackageReference Include="TestFramework.Azure" Version="0.5.0" />
 		<PackageReference Include="TestFramework.Config" Version="0.4.0" />
-		<PackageReference Include="TestFramework.Core" Version="0.7.1" />
+		<PackageReference Include="TestFramework.Core" Version="0.7.2" />
 	</ItemGroup>
 
 	<ItemGroup>
